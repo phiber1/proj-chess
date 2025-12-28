@@ -1601,3 +1601,84 @@ After fix, program runs but returns to "Initializing..." entry point after ABCPQ
 
 - **main.asm:** Added explicit R2 = $7FFF init in BIOS mode
 - **negamax.asm:** Fixed move loop termination check
+
+---
+
+## Session: December 27, 2025 - Move Count Corruption Debug
+
+### Problem
+
+Move count in NEGAMAX loop shows values jumping around (e.g., `#21, #1E, #21, #22`) instead of decrementing monotonically (`#21, #20, #1F, #1E...`). This causes infinite loop because count never reaches 0.
+
+### Bugs Found & Fixed
+
+#### Bug #1: STR 2 Corrupting Stack (FIXED in VI)
+
+Using `STR 2` for scratch space corrupts the stack because it writes to M(R2) which holds important data.
+
+**Fix:** Added `COMPARE_TEMP` at $6449 for scratch, use `SEX 10 / STR 10` pattern instead.
+
+#### Bug #2: CALL Corrupting Move Count at IRX Position (FIXED in VJ)
+
+When R2 points at move_count (after IRX), doing a CALL pushes R6 linkage to M(R2), corrupting the move count. Then reloading with `LDN 2` gets garbage.
+
+**Fix:** Save count to R15.0 before CALL, use `GLO 15` after CALL to get saved value.
+
+```asm
+; VJ fix - save to R15 before CALL
+IRX                ; Point to move_count
+LDN 2              ; Get move count
+PLO 15             ; Save to R15.0
+CALL SERIAL_PRINT_HEX   ; CALL corrupts M(R2)
+GLO 15             ; Get saved count from R15
+SMI 1              ; Decrement
+BZ NEGAMAX_LOOP_DONE
+STR 2              ; Store decremented count (fixes M(R2))
+DEC 2
+LBR NEGAMAX_MOVE_LOOP
+```
+
+**VK:** Confirmed working - loop terminates and shows `@` marker at count=0.
+
+### Current Issue (VN - Unsolved)
+
+Even with memory-based saving (MOVECOUNT_TEMP at $644A), counts still jump around. 
+
+**Attempted fixes that didn't work:**
+- VL: Extra debug output corrupted R15 (SERIAL_PRINT_HEX uses R15 for F_MSG)
+- VM: Reverted to VK logic but still broken
+- VN: Used memory instead of R15, still broken
+
+**Mystery:** VK was reported working, but VM (identical logic) and VN (memory-based) are not.
+
+### Possible Causes to Investigate Tomorrow
+
+1. Something in the move loop BODY (between NEGAMAX_MOVE_LOOP and NEGAMAX_NEXT_MOVE) is corrupting either:
+   - The move_count on the stack
+   - R2 (stack pointer) itself
+   - R10 (used to point to MOVECOUNT_TEMP)
+
+2. The recursive CALL NEGAMAX is not properly balancing the stack
+
+3. There's a different code path that's jumping around (not a simple decrement issue)
+
+### Git Status
+
+Repository initialized with commits:
+- `cdb2e3d` Initial commit (VJ)
+- `d73e1f1` VK: Add '@' marker
+- `0c947bb` VL: Add count-after-decrement debug (broken)
+- `975e642` VM: Revert to VK logic
+- `b294b60` VN: Use memory instead of R15
+
+### Files Modified
+
+- **board-0x88.asm:** Added COMPARE_TEMP ($6449), MOVECOUNT_TEMP ($644A)
+- **negamax.asm:** Multiple attempts to fix move count corruption
+
+### Next Steps
+
+1. Add debug output showing R2 value at key points to verify stack pointer consistency
+2. Check if the issue is in the FIRST read (LDN 2 after IRX) vs the save/restore
+3. Consider removing all debug CALL statements temporarily to isolate the issue
+4. Trace through one complete loop iteration manually
