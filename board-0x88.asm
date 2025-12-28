@@ -104,6 +104,7 @@ SCORE_LO        EQU $6446   ; 1 byte - score return low byte
 SCORE_HI        EQU $6447   ; 1 byte - score return high byte
 CURRENT_PLY     EQU $6448   ; 1 byte - current search ply (0=root)
 COMPARE_TEMP    EQU $6449   ; 1 byte - scratch for comparisons (NEVER use STR 2!)
+MOVECOUNT_TEMP  EQU $644A   ; 1 byte - saved move count for loop decrement
 
 ; ------------------------------------------------------------------------------
 ; UCI state: $6500-$6600
