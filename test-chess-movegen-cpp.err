@@ -1,0 +1,53 @@
+/home/phiber/proj-chess/test-chess-movegen.asm:5:38: warning: missing terminating ' character
+    5 | ; Expected output: "Moves: 20" (white's opening moves)
+      |                                      ^
+In file included from /home/phiber/proj-chess/test-chess-movegen.asm:14:
+/home/phiber/proj-chess/serial-io.asm:3:14: warning: missing terminating ' character
+    3 | ; Chuck Yakym's 9600 baud routines + helper functions
+      |              ^
+/home/phiber/proj-chess/serial-io.asm:4:26: warning: missing terminating ' character
+    4 | ; For use with Mark Abene's SCRT implementation
+      |                          ^
+/home/phiber/proj-chess/serial-io.asm:154:34: warning: missing terminating ' character
+  154 |     BDF SPN_AF          ; Yes, it's A-F
+      |                                  ^
+/home/phiber/proj-chess/serial-io.asm:180:27: warning: missing terminating ' character
+  180 | ; SERIAL_READ_CHAR - Chuck's B96IN (Inverted EF3 logic)
+      |                           ^
+/home/phiber/proj-chess/serial-io.asm:223:28: warning: missing terminating ' character
+  223 | ; SERIAL_WRITE_CHAR - Chuck's B96OUT (Inverted Q logic)
+      |                            ^
+In file included from /home/phiber/proj-chess/test-chess-movegen.asm:74:
+/home/phiber/proj-chess/support.asm:9:35: warning: missing terminating ' character
+    9 | ; NEG16 - Negate 16-bit value (two's complement)
+      |                                   ^
+/home/phiber/proj-chess/support.asm:16:30: warning: missing terminating ' character
+   16 | ; Algorithm: -x = ~x + 1 (two's complement)
+      |                              ^
+In file included from /home/phiber/proj-chess/test-chess-movegen.asm:75:
+/home/phiber/proj-chess/board-0x88.asm:130:16: warning: missing terminating ' character
+  130 | ; Rank 1 (white's back rank)
+      |                ^
+/home/phiber/proj-chess/board-0x88.asm:150:16: warning: missing terminating ' character
+  150 | ; Rank 8 (black's back rank)
+      |                ^
+In file included from /home/phiber/proj-chess/test-chess-movegen.asm:76:
+/home/phiber/proj-chess/movegen-helpers.asm:12:21: warning: missing terminating ' character
+   12 | ; Output: D = 0 (can't move), 1 (empty square), 2 (capture)
+      |                     ^
+/home/phiber/proj-chess/movegen-helpers.asm:44:27: warning: missing terminating ' character
+   44 |     ; Friendly piece - can't move here
+      |                           ^
+/home/phiber/proj-chess/movegen-helpers.asm:66:49: warning: missing terminating ' character
+   66 | ; Output: 8 = encoded 16-bit move (NOT R6 - that's SCRT link register!)
+      |                                                 ^
+/home/phiber/proj-chess/movegen-helpers.asm:198:9: warning: missing terminating ' character
+  198 |     ; We'll encode promotion type in upper bits (bits beyond 16)
+      |         ^
+In file included from /home/phiber/proj-chess/test-chess-movegen.asm:77:
+/home/phiber/proj-chess/movegen-fixed.asm:41:46: warning: missing terminating ' character
+   41 |     BNZ GEN_SKIP_SQUARE  ; Skip if colors don't match
+      |                                              ^
+/home/phiber/proj-chess/test-chess-movegen.asm:148:49: warning: missing terminating ' character
+  148 |     ; Just show pass/fail based on blinking (can't check value now)
+      |                                                 ^

@@ -1,0 +1,451 @@
+
+ * ▐▛███▜▌ *   Claude Code v2.0.75
+* ▝▜█████▛▘ *  Opus 4.5 · Claude Max
+ *  ▘▘ ▝▝  *   ~/proj-chess
+══════════════════ Conversation compacted · ctrl+o for history ═════════════════
+  ⎿  Read test-bios-movegen.asm (375 lines)
+  ⎿  Read movegen-dump.out (7 lines)
+  ⎿  Read test-bios-movegen.out (7 lines)
+  ⎿  Referenced file movegen-new.asm
+  ⎿  Read test-bios-movegen.hex (60 lines)
+  ⎿  Todo list read (5 items)
+
+● Looking at the current state, I need to rebuild the test to make sure the memory-based R9 save fix is properly compiled. Let me rebuild and check the results.
+
+● Bash(./build-test.sh test-bios-movegen -DBIOS 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +4 lines (ctrl+o to expand)
+
+> Uh oh, compacted. Best to reread PROGRESS.md and Learnings*.txt also. 
+
+● Let me refresh context from those files:
+
+● Read(PROGRESS.md)
+  ⎿  Read 810 lines
+
+● Search(pattern: "Learnings*.txt")
+  ⎿  Found 7 files (ctrl+o to expand)
+
+> By the way, there is no use of R9 in F_TYPE. I checked the BIOS source. 
+
+● Good to know R9 is not used by F_TYPE. Let me read the latest learnings and serial-io.asm to understand what's actually happening:
+
+● Read(Learnings_December_18th_final.txt)
+  ⎿  Read 941 lines
+
+● Read(serial-io.asm)
+  ⎿  Read 416 lines
+
+● Looking at the code, I see that SERIAL_PRINT_HEX uses R9.0 internally (line 143: PLO 9). But the user says F_TYPE doesn't use R9. The issue is that my SERIAL_PRINT_HEX wrapper itself clobbers R9.0.
+
+  Let me check the current build and verify there are no branch errors:
+
+● Bash(grep "^B" /home/phiber/proj-chess/test-bios-movegen.lst 2>/dev/null ||
+      echo "No branch errors found")
+  ⎿  No branch errors found
+
+● Read(test-bios-movegen.asm)
+  ⎿  Read 60 lines
+
+● Let me update the todo list and check the movegen memory usage more carefully:
+
+● Read(movegen-new.asm)
+  ⎿  Read 100 lines
+
+> Hey, you can call me Mark. "the user" sounds so old fashioned.  :) 
+
+● Got it, Mark! Let me trace through the code more carefully. The issue is puzzling since the memory-based R9 save should work correctly.
+
+  Let me check the listing to verify the save/restore code compiled correctly:
+
+● Bash(grep -n -A 3 "SAVE_R9\|Save R9\|Restore R9"
+      /home/phiber/proj-chess/test-bios-movegen.lst | head -40)
+  ⎿  361:   50e0                 SAVE_R9_LO EQU $50E0
+     362:   50e1                 SAVE_R9_HI EQU $50E1
+     363-   012f                 PRINT_MOVES:
+     … +28 lines (ctrl+o to expand)
+
+● Let me check if there might be a terminal/buffer limitation. The output line is quite long:
+
+● Bash(echo "03-12 03-21 03-30 03-14 03-25 03-36 03-47 03-13 03-23 03-33 03-43
+      03-53 03-63 03-73 03-02 03-01 03-00 04-05 04-13 04-14" | wc -c)
+  ⎿  120
+
+● 119 characters! If we add 3 more moves (18 chars), that's 137 characters. Some terminals have 128-character line buffers.
+
+  Let me modify the test to add a move counter so we can see exactly where it stops:
+
+● Read(test-bios-movegen.asm)
+  ⎿  Read 50 lines
+
+● Let me modify the print loop to add newlines periodically (to avoid terminal line buffer issues) and add a counter:
+
+● Update(test-bios-movegen.asm)
+  ⎿  Added 31 lines, removed 4 lines                                     
+      266      SEP 4                                                     
+      267      DW SERIAL_WRITE_CHAR                                      
+      268                                                                
+      269 -    ; Print first few moves                                   
+      269 +    ; Print moves                                             
+      270      LDI HIGH(MOVELIST)                                        
+      271      PHI 9                                                     
+      272      LDI LOW(MOVELIST)                                         
+      273      PLO 9                                                     
+      274 +    LDI 0                                                     
+      275 +    PLO 13              ; R13.0 = move counter                
+      276                                                                
+      277  ; Memory location to save R9 (avoid stack issues with BIOS)   
+      278  SAVE_R9_LO  EQU $50E0                                         
+      279  SAVE_R9_HI  EQU $50E1                                         
+      280 +SAVE_CNT    EQU $50E2   ; Move counter save                   
+      281                                                                
+      282  PRINT_MOVES:                                                  
+      283      LDA 9           ; from                                    
+     ...
+      284      PLO 11          ; save from in R11.0                      
+      285      LDA 9           ; to                                      
+      286      PHI 11          ; save to in R11.1                        
+      287 -    ; Save R9 to memory (avoid BIOS stack issues)             
+      287 +    ; Increment and save move counter                         
+      288 +    INC 13                                                    
+      289 +    ; Save R9 and R13.0 to memory                             
+      290      LDI HIGH(SAVE_R9_LO)                                      
+      291      PHI 8                                                     
+      292      LDI LOW(SAVE_R9_LO)                                       
+     ...
+      294      INC 8                                                     
+      295      GHI 9                                                     
+      296      STR 8                                                     
+      297 +    INC 8                                                     
+      298 +    GLO 13                                                    
+      299 +    STR 8           ; Save counter at $50E2                   
+      300 +    ; Print move number first                                 
+      301 +    GLO 13                                                    
+      302 +    SEP 4                                                     
+      303 +    DW SERIAL_PRINT_HEX                                       
+      304 +    LDI ':'                                                   
+      305 +    SEP 4                                                     
+      306 +    DW SERIAL_WRITE_CHAR                                      
+      307      ; Print from                                              
+      308      GLO 11                                                    
+      309      SEP 4                                                     
+     ...
+      308      LDI ' '                                                   
+      309      SEP 4                                                     
+      310      DW SERIAL_WRITE_CHAR                                      
+      311 -    ; Restore R9 from memory                                  
+      311 +    ; Restore R9 and R13.0 from memory                        
+      312      LDI HIGH(SAVE_R9_LO)                                      
+      313      PHI 8                                                     
+      314      LDI LOW(SAVE_R9_LO)                                       
+      315      PLO 8                                                     
+      316      LDA 8                                                     
+      317      PLO 9                                                     
+      318 -    LDN 8                                                     
+      318 +    LDA 8                                                     
+      319      PHI 9                                                     
+      320 +    LDN 8                                                     
+      321 +    PLO 13                                                    
+      322 +    ; Newline every 8 moves                                   
+      323 +    GLO 13                                                    
+      324 +    ANI $07                                                   
+      325 +    LBNZ PRINT_MOVES                                          
+      326 +    LDI 0DH                                                   
+      327 +    SEP 4                                                     
+      328 +    DW SERIAL_WRITE_CHAR                                      
+      329 +    LDI 0AH                                                   
+      330 +    SEP 4                                                     
+      331 +    DW SERIAL_WRITE_CHAR                                      
+      332      LBR PRINT_MOVES                                           
+      333                                                                
+      334  PRINT_DONE:                                                   
+
+● Now let me rebuild and check for any errors:
+
+● Bash(./build-test.sh test-bios-movegen -DBIOS 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +4 lines (ctrl+o to expand)
+
+● Build successful. The new hex file has move numbering and newlines every 8 moves. Mark, please run test-bios-movegen.hex and we'll see each move with its number (format: 01:03-12 02:03-21 ...). This will show us exactly where it stops.
+
+  Expected output format:
+  01:03-12 02:03-21 03:03-30 04:03-14 05:03-25 06:03-36 07:03-47 08:03-13
+  09:03-23 10:03-33 11:03-43 12:03-53 13:03-63 14:03-73 15:03-02 16:03-01
+  17:03-00 18:04-05 19:04-13 20:04-14 21:04-15 22:10-20 23:10-30
+
+  If it stops at 14:04-14, then the loop is definitely terminating after 20 iterations. If it shows all 23, then it was a line length issue.
+
+> I think you may have been correct, line wrapping is off by default in 
+minicom. That's really silly. Let me turn it on. 
+
+● That would explain it perfectly! With line wrapping off, characters past the terminal width (typically 80 or 132 columns) simply disappear into the void. The print loop was likely working correctly - we just couldn't see moves 21-23 because they were off-screen.
+
+  The updated test now has:
+  1. Move numbers (01:, 02:, etc.) so we can verify the count
+  2. Newlines every 8 moves to keep lines short regardless of terminal settings
+
+  But with line wrapping enabled, even the original version should show all 23 moves. Let me know what you see!
+
+> Better output. Look at test-bios-movegen.out 
+
+● Read(test-bios-movegen.out)
+  ⎿  Read 9 lines
+
+● All 23 moves showing now! 🎉
+
+  Move count: 17 (hex = 23 decimal) ✓
+  01-17: Queen moves (03-XX)
+  18-21: King moves (04-XX)
+  22-23: Pawn moves (10-XX)
+
+  So it was indeed the minicom line wrapping setting - the print loop was working correctly all along. Mystery solved!
+
+● Now we're ready for the main event - getting test-step22 (the full search) running with BIOS. Let me check if it needs BIOS conditionals added:
+
+● Bash(grep -n "BIOS\|#ifdef\|#ifndef\|LBR.*8003"
+      /home/phiber/proj-chess/test-step22.asm | head -20)
+  ⎿  14:#ifdef BIOS                                                 
+     15:    LBR START           ; BIOS already set up SCRT and stack
+     22:#ifndef BIOS
+     … +2 lines (ctrl+o to expand)
+
+● test-step22 already has BIOS conditionals. Let me check if it has the proper exit to monitor:
+
+● Bash(grep -n "8003\|DONE\|EXIT\|halt" /home/phiber/proj-chess/test-step22.asm
+      | head -10)
+  ⎿  350:    LDI HIGH(STR_DONE)   
+     352:    LDI LOW(STR_DONE)
+     425:    LBZ NR_DONE
+     … +6 lines (ctrl+o to expand)
+
+● Read(test-step22.asm)
+  ⎿  Read 30 lines
+
+● I see it has HALT: BR HALT which loops forever. For BIOS mode, it should return to monitor. Let me fix that:
+
+● Update(test-step22.asm)
+  ⎿  Added 4 lines                                                       
+      353      PLO 8                                                     
+      354      CALL SERIAL_PRINT_STRING                                  
+      355                                                                
+      356 +#ifdef BIOS                                                   
+      357 +    LBR $8003           ; Return to BIOS monitor              
+      358 +#else                                                         
+      359  HALT:                                                         
+      360      BR HALT                                                   
+      361 +#endif                                                        
+      362                                                                
+      363  ; =========================================================== 
+           ===================                                           
+      364  ; NEGAMAX_ROOT - Root-level search                            
+
+● Now let me build test-step22 with BIOS mode:
+
+● Bash(./build-test.sh test-step22 -DBIOS 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +4 lines (ctrl+o to expand)
+
+● Build successful with no errors. Let me verify the search depth setting:
+
+● Bash(grep -n "SEARCH_DEPTH\|LDI 2\|LDI 3\|LDI 4"
+      /home/phiber/proj-chess/test-step22.asm | grep -A1 -B1 "depth\|DEPTH" |
+      head -10)
+  ⎿  100:SEARCH_DEPTH    EQU $50D0 
+     238:    LDI HIGH(SEARCH_DEPTH)
+     240:    LDI LOW(SEARCH_DEPTH)
+     … +3 lines (ctrl+o to expand)
+
+● Search depth is set to 3. The hex file is ready at test-step22.hex.
+
+  What to expect on your 12 MHz 1806:
+  - At 1.75 MHz, depth-3 took ~1 minute
+  - At 12 MHz (~7x faster), should take roughly 8-10 seconds
+  - Expected result: Best: 03-12, Score: 0384, Nodes: 0E73, Cutoffs: 001B
+
+  Go ahead and run it, Mark! This is the big test - full alpha-beta search on the real hardware.
+
+> Yes! Output is totally correct, and we cleanly exited to the monitor. It 
+took 9 seconds. 
+
+● Excellent! That's a huge milestone!
+
+  Performance comparison:
+  | Hardware        | Clock    | Depth-3 Time |
+  |-----------------|----------|--------------|
+  | Membership Card | 1.75 MHz | ~60 seconds  |
+  | Your 1806       | 12 MHz   | 9 seconds    |
+
+  That's a 6.7x speedup - right in line with the clock ratio!
+
+  Ready to try depth-4? At this speed, it should take roughly 1-2 minutes instead of the 10-20 minutes it would have taken on the Membership Card.
+
+● Update(test-step22.asm)
+  ⎿  Added 1 line, removed 1 line                                        
+      239      PHI 10                                                    
+      240      LDI LOW(SEARCH_DEPTH)                                     
+      241      PLO 10                                                    
+      242 -    LDI 3                                                     
+      242 +    LDI 4               ; Depth 4 for faster hardware         
+      243      STR 10                                                    
+      244                                                                
+      245      ; Set side to move = WHITE                                
+
+● Bash(./build-test.sh test-step22 -DBIOS 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +4 lines (ctrl+o to expand)
+
+● Depth-4 build ready at test-step22.hex. Give it a go!
+
+> 1 minute, 2 seconds! Best: 03-12 0384, Nodes: 67B5, Cutoffs: 00A3. 
+
+● This is fantastic, Mark!
+
+  Depth-4 Results:
+  | Metric  | Depth-3 | Depth-4 | Ratio |
+  |---------|---------|---------|-------|
+  | Time    | 9 sec   | 62 sec  | 6.9x  |
+  | Nodes   | 3,699   | 26,549  | 7.2x  |
+  | Cutoffs | 27      | 163     | 6x    |
+
+  The alpha-beta pruning is working beautifully - without it, depth-4 would have been ~30-40x more nodes than depth-3. We're getting 7.2x, which means the pruning is cutting off huge portions of the search tree.
+
+  A 1-minute think time is very playable for a chess game!
+
+● Read(PROGRESS.md)
+  ⎿  Read 30 lines
+
+● Update(PROGRESS.md)
+  ⎿  Added 3 lines, removed 2 lines                                      
+      743  - [x] Add alpha-beta pruning cutoffs - test-step21 PASSING (2 
+            cutoffs)                                                     
+      744  - [x] Test depth-2 search - test-step22 PASSING (Best: 03-12  
+           0384, Nodes: 00B3, Cutoffs: 0002)                             
+      745  - [x] Test depth-3 search - PASSING (Best: 03-12 0384, Nodes: 
+            0E73/3699, Cutoffs: 001B/27, ~1 min @ 1.75MHz)               
+      746 -- [ ] Test depth-4 search (pending faster hardware)           
+      747 -- [ ] Integrate BIOS I/O routines (replace bit-bang serial)   
+      746 +- [x] Integrate BIOS I/O routines (replace bit-bang serial) - 
+          + test-step22 with -DBIOS flag                                 
+      747 +- [x] Test depth-3 on 12 MHz 1806 - PASSING (9 seconds!)      
+      748 +- [x] Test depth-4 on 12 MHz 1806 - PASSING (Best: 03-12      
+          +0384, Nodes: 67B5/26549, Cutoffs: 00A3/163, 62 sec)           
+      749  - [ ] Add quiescence search                                   
+      750  - [ ] Main chess-engine.asm integration                       
+      751                                                                
+
+● Read(PROGRESS.md)
+  ⎿  Read 12 lines
+
+● Bash(tail -20 /home/phiber/proj-chess/PROGRESS.md)
+  ⎿  | BQ | LBQ | Q = 1 |             
+     | BNQ | LBNQ | Q = 0 |
+     | B1-B4 | LB1-LB4 | EF1-EF4 = 1 |
+     … +19 lines (ctrl+o to expand)
+
+● Update(PROGRESS.md)
+  ⎿  Added 44 lines                                                      
+      808  5. Found corruption happened inside CHECK_SCORE_GT_PLY_BEST   
+      809  6. Checked assembler listing → found "B" flags on branch      
+           instructions                                                  
+      810  7. Fixed short branches → bug resolved                        
+      811 +                                                              
+      812 +---                                                           
+      813 +                                                              
+      814 +## Session: December 21, 2025 - BIOS Integration & 12 MHz     
+          +Testing                                                       
+      815 +                                                              
+      816 +### BIOS I/O Integration Complete                             
+      817 +                                                              
+      818 +Successfully integrated BIOS I/O routines for running on real 
+          + 1806 hardware:                                               
+      819 +                                                              
+      820 +**BIOS Entry Points:**                                        
+      821 +- F_TYPE ($FF03) - Output character                           
+      822 +- F_READ ($FF06) - Read character with echo                   
+      823 +- F_MSG ($FF09) - Output null-terminated string               
+      824 +                                                              
+      825 +**Key Changes:**                                              
+      826 +- `serial-io.asm` - Added `#ifdef BIOS` wrappers for thin     
+          +BIOS calls                                                    
+      827 +- `test-step22.asm` - Added conditional compilation for BIOS  
+          +mode                                                          
+      828 +- `movegen-new.asm` - Replaced R14 usage with memory-based    
+          +scan index (GM_SCAN_IDX at $50DF) since BIOS uses R14.1 for   
+          +baud rate                                                     
+      829 +- Build with: `./build-test.sh test-step22 -DBIOS`            
+      830 +- Exit to monitor: `LBR $8003`                                
+      831 +                                                              
+      832 +**Register Constraints (BIOS mode):**                         
+      833 +- R14.1 = baud constant (NEVER touch!)                        
+      834 +- R14.0 = clobbered by every BIOS call                        
+      835 +                                                              
+      836 +### Performance Results on 12 MHz 1806                        
+      837 +                                                              
+      838 +| Depth | Nodes | Cutoffs | Time (12 MHz) | Time (1.75 MHz) | 
+      839 +|-------|-------|---------|---------------|-----------------| 
+      840 +| 3 | 3,699 | 27 | 9 sec | ~60 sec |                          
+      841 +| 4 | 26,549 | 163 | 62 sec | ~7 min (est) |                  
+      842 +                                                              
+      843 +**Speedup: 6.7x** - Right in line with clock ratio (12/1.75 = 
+          + 6.86x)                                                       
+      844 +                                                              
+      845 +### Minicom Line Wrap Issue                                   
+      846 +                                                              
+      847 +Discovered that minicom's line wrapping was off by default,   
+          +causing long output lines to be truncated visually. This      
+          +initially appeared as a bug where only 20 of 23 moves were    
+          +printed. Solution: Enable line wrapping in minicom settings.  
+      848 +                                                              
+      849 +### Current State                                             
+      850 +                                                              
+      851 +- Depth-4 search working in ~1 minute on 12 MHz 1806          
+      852 +- Alpha-beta pruning achieving good cutoff rates              
+      853 +- Best move consistently found: Qd1-c2 (03-12) with score     
+          ++900                                                          
+      854 +- Ready for quiescence search and main integration            
+
+● Excellent session! We've achieved:
+
+  1. ✅ BIOS I/O integration working
+  2. ✅ Depth-3 in 9 seconds on 12 MHz
+  3. ✅ Depth-4 in 62 seconds on 12 MHz
+  4. ✅ Clean exit to monitor
+
+  What would you like to tackle next?
+
+  1. Quiescence search - Continue searching captures until position is "quiet" (avoids horizon effect where engine misses obvious recaptures)
+  2. Depth-5 test - See how long it takes (probably 5-10 minutes, ~200K nodes estimated)
+  3. Main integration - Start building the actual playable chess game (input parsing, board display, game loop)
+  4. Move ordering - Try captures first to improve pruning (could speed up search significantly)
+
+> We're going to have to break for tonight. We got a late start, and it's 
+now just after midnight. I must sleep. Awesome progress though! We're now 
+running on our intended hardware platform, with fantastic performance. 
+
+● Absolutely, Mark! Get some well-deserved rest.
+
+  Tonight's achievements:
+  - 🎯 BIOS I/O integration complete
+  - 🚀 Running on real 12 MHz 1806 hardware
+  - ⚡ Depth-4 search in just over a minute
+  - 📊 6.7x speedup over the Membership Card
+
+  This is a major milestone - the chess engine is now running on your intended target platform with excellent performance. Depth-4 in a minute is genuinely playable!
+
+  Next session options when you're ready:
+  - Quiescence search (tactical accuracy)
+  - Move ordering (faster search)
+  - Main game integration (playable UI)
+
+  Sleep well! 🌙
+
+
+

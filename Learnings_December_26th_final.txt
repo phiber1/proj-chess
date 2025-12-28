@@ -1,0 +1,777 @@
+
+ * ▐▛███▜▌ *   Claude Code v2.0.76
+* ▝▜█████▛▘ *  Opus 4.5 · Claude Max
+ *  ▘▘ ▝▝  *   ~/proj-chess
+
+  A gift for you
+  Your rate limits are 2x higher through 12/31. Enjoy the extra room to think!
+══════════════════ Conversation compacted · ctrl+o for history ═════════════════
+  ⎿  Referenced file negamax.asm
+  ⎿  Read uci.asm (475 lines)
+  ⎿  Referenced file PROGRESS.md
+  ⎿  Referenced file board-0x88.asm
+  ⎿  Referenced file chess-engine.asm
+
+● Continuing from where we left off - I just fixed the function name from SERIAL_PRINT_HEX_BYTE to SERIAL_PRINT_HEX. Let me rebuild and test to see what PLY values are printed when we reach NEGAMAX_SCORE_BETTER.
+
+● Bash(./build.sh 2>&1 | tail -20)
+  ⎿  fixes for LCC/Windows by HRJ update Jan 2022         
+     A18 source_file | -l list_file | -o/-m/-b object_file
+     … +17 lines (ctrl+o to expand)
+
+● Build succeeded. Let me check for assembly errors:
+
+● Bash(grep "^[A-Z]" chess-engine.lst 2>/dev/null | head -20)
+  ⎿  (No content)
+
+● No assembly errors. Now let's run the test to see what PLY values are printed:
+
+● Bash(timeout 60 ./build-integration-test.sh 2>&1 | tee engine.out | tail -30)
+  ⎿  Adding integration tests...                   
+     Assembling with a18...
+     1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     … +25 lines (ctrl+o to expand)
+
+● That just built the test - let me run the actual emulator test:
+
+● Bash(printf "uci\nisready\nposition startpos\ngo depth 4\nquit\n" | timeout
+      120 ./run1802 chess-engine.hex 2>&1 | tee engine.out)
+  ⎿ Tool use rejected with user message: Claude, you don't have an emulator. 
+    We're running this on my hardware.
+
+● Right, sorry about that. The build is ready. Please run it on your hardware with:
+  - uci
+  - isready
+  - position startpos
+  - go depth 4
+
+  The debug output should now show !XX where XX is the PLY value in hex when we reach NEGAMAX_SCORE_BETTER. This will reveal whether PLY is staying high (increment/decrement imbalance) or being corrupted by something else.
+
+> Let's stick with depth 3 for now. It will give results much quicker. 
+
+● Good idea - depth 3 will be much faster for debugging. Go ahead and run it with go depth 3 and let me know what PLY values you see in the debug output.
+
+> Several iterations of debug output, finally hanging on 
+"GHIJKLMNabcO.ABCD00EF[07:!r08:!n09:!b0::!q0;:!k0<:!b0=:!n0>:!r17:!p18:!p19:
+!p1::!p1;:!p1<:!p2=:!p2>:!p57:5<:67:68:69:6::6;:6<:6=:6>:77:79:7::7<:7>:]GHI
+JKLMNabcO.ABCPQJKLMNabcO.ABCPQJKLMNabcO.BCPQJKLMNabcO.ABCPQJKLMNabcO.ABCPQJK
+LMNabcO.ABCPQJKLMNabcO.ABCPQJv". 
+
+● This is very revealing! The PLY values being printed are r, n, b, q, k, p - these are the piece character codes, not PLY numbers!
+
+  Looking at the pattern 07:!r08:!n09:!b0::!q0;:!k0<:!b0=:!n0>:!r - that's squares a8-h8 with "PLY" values spelling out the back rank pieces (rook, knight, bishop, queen, king, bishop, knight, rook).
+
+  This means CURRENT_PLY at $6448 is reading from the board array instead of a dedicated PLY counter. Let me check the memory layout:
+
+● Search(pattern: "CURRENT_PLY|6448|\$6448", path: "~/proj-chess", output_mode:
+        "content")
+  ⎿  Found 159 lines (ctrl+o to expand)
+
+● CURRENT_PLY is at $6448. Let me check if that address overlaps with the board or other data:
+
+● Search(pattern: "EQU \$64[0-9A-F][0-9A-F]|BOARD_BASE|6400", path:
+        "board-0x88.asm", output_mode: "content")
+  ⎿  Found 29 lines (ctrl+o to expand)
+
+● The memory layout looks fine - CURRENT_PLY is at $6448 after SCORE_HI at $6447. But we're reading piece characters ('r', 'n', 'b', etc.) instead of 0, 1, 2, 3.
+
+  Let me check if CURRENT_PLY is being initialized properly in SEARCH_POSITION:
+
+● Search(pattern: "CURRENT_PLY = 0|PLY = 0", path: "chess-engine.lst",
+        output_mode: "content")
+  ⎿  Found 7 lines (ctrl+o to expand)
+
+● Initialization looks correct. Let me check the PLY increment/decrement code:
+
+● Search(pattern: "CURRENT_PLY\+\+|CURRENT_PLY--", path: "chess-engine.lst",
+        output_mode: "content")
+  ⎿  Found 27 lines (ctrl+o to expand)
+
+● Let me look at the debug print code in NEGAMAX_SCORE_BETTER:
+
+● Search(pattern: "NEGAMAX_SCORE_BETTER", path: "chess-engine.lst", output_mode:
+         "content")
+  ⎿  Found 66 lines (ctrl+o to expand)
+
+● I see the issue now. Let me check what SERIAL_PRINT_HEX actually does - if it's outputting the raw byte instead of hex-formatted output, that would explain why we see 'r', 'n', 'p' instead of '00', '01', '02':
+
+● Search(pattern: "SERIAL_PRINT_HEX", path: "chess-engine.lst", output_mode:
+        "content")
+  ⎿  Found 91 lines (ctrl+o to expand)
+
+● Let me check the full SERIAL_PRINT_NIBBLE implementation:
+
+● Read(serial-io-bios.asm)
+  ⎿  Error reading file
+
+● Search(pattern: "**/serial*.asm")
+  ⎿  Found 5 files (ctrl+o to expand)
+
+● Search(pattern: "SERIAL_PRINT_NIBBLE", path: "serial-io.asm", output_mode:
+        "content")
+  ⎿  Found 30 lines (ctrl+o to expand)
+
+● I see SERIAL_PRINT_HEX looks correct. The mystery is why we're seeing single characters like 'r', 'n', 'p' instead of two hex digits. Let me simplify the debug - instead of calling SERIAL_PRINT_HEX, let's just add '0' to PLY and print it directly. This will show '0'-'9' for PLY 0-9:
+
+● Read(negamax.asm)
+  ⎿  Read 40 lines
+
+> I can dump memory, you know. I can reset after a hang, and dump any range 
+of memory to assist debugging. 
+
+● Excellent! A memory dump would be very helpful. Let me simplify the debug first - instead of SERIAL_PRINT_HEX, I'll print PLY directly as '0'-'9':
+
+● Update(negamax.asm)
+  ⎿  Added 4 lines, removed 4 lines                                      
+      669      LBR NEGAMAX_NEXT_MOVE       ; Sign=0: score <= best, skip 
+      670                                                                
+      671  NEGAMAX_SCORE_BETTER:                                         
+      672 -    ; Debug: reached score better, print PLY value            
+      672 +    ; Debug: reached score better, print PLY as '0'-'9'       
+      673      LDI '!'                                                   
+      674      CALL SERIAL_WRITE_CHAR                                    
+      675 -    ; Print PLY as hex digit                                  
+      675      LDI HIGH(CURRENT_PLY)                                     
+      676      PHI 10                                                    
+      677      LDI LOW(CURRENT_PLY)                                      
+      678      PLO 10                                                    
+      679 -    LDN 10              ; Get PLY                             
+      680 -    CALL SERIAL_PRINT_HEX                                     
+      679 +    LDN 10              ; Get PLY (should be 0-3 for depth 3) 
+      680 +    ADI '0'             ; Convert to ASCII '0'-'9'            
+      681 +    CALL SERIAL_WRITE_CHAR                                    
+      682                                                                
+      683      ; Score is better, update best score                      
+      684      GLO 9                                                     
+
+● Bash(./build.sh 2>&1 | tail -5 && grep "^[A-Z]" chess-engine.lst | head -5)
+  ⎿ Next steps:                                                            
+      1. If assembly succeeded, flash chess-engine.hex to your RCA 1806 sys
+    tem
+    … +2 lines (ctrl+o to expand)
+
+
+● Build succeeded. Now please test with go depth 3.
+
+  For the memory dump, here's what would be useful after it hangs:
+
+  Dump $6440-$6450 - this covers:
+  - $6440-$6441: EVAL_TEMP1/2
+  - $6442-$6445: ALPHA/BETA
+  - $6446-$6447: SCORE_LO/HI
+  - $6448: CURRENT_PLY (should be 0-3, not 0x70+)
+  - $6449+: should be empty
+
+  With the simplified debug, if PLY is truly 0, you'll see !0. If it's 0x72 ('r'), you'll see !b (since 0x72 + 0x30 = 0xA2, which is 'b' with high bit... actually that would be garbage).
+
+  Actually, if PLY is 0x72 and we add '0' (0x30), we get 0xA2 which is outside printable ASCII. So if you see readable characters like '0', '1', '2', PLY is correct. If you see garbage, PLY is corrupted.
+
+> After the run, I'll just dump the full range of 6400 through 64FF. Much 
+easier. 
+
+● Perfect, that'll show everything. Run the test and let me know what you see in the debug output, then dump $6400-$64FF after it hangs.
+
+> Ends with: ".ABCD00EF[07:!r08:!n09:!b0::!q0;:!k0<:!b0=:!n0>:!r17:!p18:!p19
+:!p1::!p1;:!p1<:!p2=:!p2>:!p57:5<:67:68:69:6::6;:6<:6=:6>:77:79:7::7<:7>:]GH
+IJKLMNabcO.ABCPQJKLMNabcO.ABCPQJKLMNabcO.ABCPQJKLMNabcO.ABCPQJKLMNabcO.ABCPQ
+JKLMNabcO.ABCPQJKLMNabcO.ABCPQJv". Memory dump is in engine-memorydump.out. 
+
+● Let me look at the memory dump:
+
+● Read(engine-memorydump.out)
+  ⎿  Read 18 lines
+
+● This is very revealing. Looking at $6448 (CURRENT_PLY):
+
+  $6448: 6A (should be 0-3, not 106!)
+  $6449-onwards: 71 00 64 1D 62 3C 1D...
+
+  The memory from $6448 onwards contains what looks like stack data or return addresses:
+  - 64 1D, 64 02 - addresses in the $64xx variable region
+  - 68 12, 12 xx - looks like return addresses to code around $12xx (NEGAMAX is at $10FA)
+
+  Something is treating this variable area as a stack or buffer. Let me check what SCORE_LO/HI shows:
+
+  $6446: FE (SCORE_LO)
+  $6447: 9B (SCORE_HI)
+  $6448: 6A (CURRENT_PLY - corrupted!)
+
+  I see the pattern now - let me check the code that saves SCORE after negation. The issue might be an off-by-one error writing past SCORE_HI into CURRENT_PLY:
+
+● Search(pattern: "SCORE_LO|SCORE_HI", path: "negamax.asm", output_mode:
+        "content")
+  ⎿  Found 8 lines (ctrl+o to expand)
+
+● Read(negamax.asm)
+  ⎿  Read 25 lines
+
+● Let me check what the SAVE_SEARCH_CONTEXT and RESTORE_SEARCH_CONTEXT do - they might be using more stack than expected:
+
+● Search(pattern: "SAVE_SEARCH_CONTEXT|RESTORE_SEARCH_CONTEXT", path:
+        "negamax.asm", output_mode: "content")
+  ⎿  Found 62 lines (ctrl+o to expand)
+
+● Search(pattern: "^SAVE_SEARCH_CONTEXT:|^RESTORE_SEARCH_CONTEXT:", path:
+        "~/proj-chess")
+  ⎿  Found 6 files (ctrl+o to expand)
+
+● Search(pattern: "SAVE_SEARCH_CONTEXT", path: "stack.asm", output_mode:
+        "content")
+  ⎿  Found 48 lines (ctrl+o to expand)
+
+● Search(pattern: "PUSH_HISTORY_ENTRY|POP_HISTORY_ENTRY", path: "stack.asm",
+        output_mode: "content")
+  ⎿  Found 0 lines 
+
+● Search(pattern: "PUSH_HISTORY_ENTRY", path: "~/proj-chess")
+  ⎿  Found 14 files (ctrl+o to expand)
+
+● Search(pattern: "PUSH_HISTORY_ENTRY", path: "makemove-helpers.asm",
+        output_mode: "content")
+  ⎿  Found 58 lines (ctrl+o to expand)
+
+● Search(pattern: "HISTORY_BASE|HISTORY_PTR", path: "board-0x88.asm",
+        output_mode: "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● Search(pattern: "HISTORY|6[6-7][0-9A-F][0-9A-F]", path: "board-0x88.asm",
+        output_mode: "content")
+  ⎿  Found 5 lines (ctrl+o to expand)
+
+● Search(pattern: "INIT_MOVE_HISTORY"", path: "board-0x88.asm", output_mode:
+        "content")
+  ⎿  Found 0 lines 
+
+● Read(board-0x88.asm)
+  ⎿  Read 25 lines
+
+● Search(pattern: "MOVE_HIST\s+EQU", path: "board-0x88.asm", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● Wait - looking at the memory dump, HISTORY_PTR at $6400-$6401 = FF FE. That's pointing to $FFFE, which is wrong! It should point somewhere in the $6090 range (MOVE_HIST).
+
+  Let me check how HISTORY_PTR is initialized:
+
+● Search(pattern: "HISTORY_PTR", path: "~/proj-chess", glob: "*.asm",
+        output_mode: "content")
+  ⎿  Found 45 lines (ctrl+o to expand)
+
+● Found the bug! Looking at INIT_MOVE_HISTORY:
+
+  INIT_MOVE_HISTORY:
+      LDI HIGH(MOVE_HIST)
+      PHI 10
+      LDI LOW(MOVE_HIST)
+      PLO 10
+      LDI 0
+      STR 10               ; Set history pointer to 0  <-- WRONG!
+      RETN
+
+  This stores 0 to MOVE_HIST ($6090), not to HISTORY_PTR ($6400)! The comment is wrong and HISTORY_PTR is never initialized. So it contains garbage ($FFFE from your dump), and history entries get written to random memory - corrupting CURRENT_PLY and other variables.
+
+  Let me fix this:
+
+● Read(board-0x88.asm)
+  ⎿  Read 15 lines
+
+● Update(board-0x88.asm)
+  ⎿  Added 11 lines, removed 6 lines                                     
+      486      RETN                                                      
+      487                                                                
+      488  ; =========================================================== 
+           ===================                                           
+      489 -; INIT_MOVE_HISTORY - Clear move history                      
+      489 +; INIT_MOVE_HISTORY - Initialize history pointer to start of  
+          +history buffer                                                
+      490  ; =========================================================== 
+           ===================                                           
+      491 -; Uses: A, D                                                  
+      491 +; Sets HISTORY_PTR to point to MOVE_HIST base address         
+      492 +; Uses: R10, D                                                
+      493  ; =========================================================== 
+           ===================                                           
+      494  INIT_MOVE_HISTORY:                                            
+      495 -    LDI HIGH(MOVE_HIST)                                       
+      495 +    ; Set HISTORY_PTR to point to start of MOVE_HIST buffer   
+      496 +    LDI HIGH(HISTORY_PTR)                                     
+      497      PHI 10                                                    
+      498 -    LDI LOW(MOVE_HIST)                                        
+      498 +    LDI LOW(HISTORY_PTR)                                      
+      499      PLO 10                                                    
+      500 -    LDI 0                                                     
+      501 -    STR 10               ; Set history pointer to 0           
+      500 +    LDI HIGH(MOVE_HIST)                                       
+      501 +    STR 10              ; HISTORY_PTR high byte = $60         
+      502 +    INC 10                                                    
+      503 +    LDI LOW(MOVE_HIST)                                        
+      504 +    STR 10              ; HISTORY_PTR low byte = $90          
+      505      RETN                                                      
+      506                                                                
+      507  ; =========================================================== 
+           ===================                                           
+
+● Now let me rebuild:
+
+● Bash(./build.sh 2>&1 | tail -5 && grep "^[A-Z]" chess-engine.lst | head -5)
+  ⎿ Next steps:                                                            
+      1. If assembly succeeded, flash chess-engine.hex to your RCA 1806 sys
+    tem
+    … +2 lines (ctrl+o to expand)
+
+
+● Build succeeded. That was a critical bug - HISTORY_PTR was never initialized, so it contained garbage ($FFFE). Every PUSH_HISTORY_ENTRY was writing to random memory, corrupting your variable area including CURRENT_PLY.
+
+  Please test with go depth 3. With HISTORY_PTR now properly pointing to $6090, the history entries should go to the right place and PLY should show !0 at root level.
+
+> Can you log this discovery to PROGRESS.md? 
+
+● Read(PROGRESS.md)
+  ⎿  Read 50 lines
+
+● Bash(grep -n "^## Session:" /home/phiber/proj-chess/PROGRESS.md | tail -5)
+  ⎿ 898:## Session: December 21, 2025 (continued) - R14 Elimination Refacto
+    ring
+    934:## Session: December 21, 2025 (continued) - Main Engine Integration
+    … +4 lines (ctrl+o to expand)
+
+
+
+● Read(PROGRESS.md)
+  ⎿  Read 17 lines
+
+● Update(PROGRESS.md)
+  ⎿  Added 72 lines                                                      
+      1463  3. Saves the best move found at root level                   
+      1464                                                               
+      1465  Awaiting user test on real hardware.                         
+      1466 +                                                             
+      1467 +---                                                          
+      1468 +                                                             
+      1469 +## Session: December 26, 2025 - HISTORY_PTR Initialization   
+           +Bug                                                          
+      1470 +                                                             
+      1471 +### The Problem                                              
+      1472 +                                                             
+      1473 +After Dec 24 fixes, search still outputting invalid          
+           +"bestmove h8h8" (later "h@h@"). Debug output showed          
+           +CURRENT_PLY containing piece characters ('r', 'n', 'b', 'q', 
+           + 'k', 'p') instead of ply values (0, 1, 2, 3).               
+      1474 +                                                             
+      1475 +### Investigation                                            
+      1476 +                                                             
+      1477 +User provided memory dump of $6400-$64FF after hang. Key     
+           +findings:                                                    
+      1478 +                                                             
+      1479 +```                                                          
+      1480 +$6400-$6401: HISTORY_PTR = FF FE  (GARBAGE - should be       
+           +$6090!)                                                      
+      1481 +$6448: CURRENT_PLY = 6A (106 decimal - way too high!)        
+      1482 +```                                                          
+      1483 +                                                             
+      1484 +The memory from $6448 onwards contained structured data with 
+           + return addresses (like $1268 - the instruction after CALL   
+           +NEGAMAX), indicating stack or buffer data was overwriting    
+           +the variable area.                                           
+      1485 +                                                             
+      1486 +### Root Cause                                               
+      1487 +                                                             
+      1488 +**INIT_MOVE_HISTORY was completely broken:**                 
+      1489 +                                                             
+      1490 +```asm                                                       
+      1491 +; WRONG - writes to MOVE_HIST, not HISTORY_PTR!              
+      1492 +INIT_MOVE_HISTORY:                                           
+      1493 +    LDI HIGH(MOVE_HIST)   ; $60                              
+      1494 +    PHI 10                                                   
+      1495 +    LDI LOW(MOVE_HIST)    ; $90                              
+      1496 +    PLO 10                                                   
+      1497 +    LDI 0                                                    
+      1498 +    STR 10               ; This writes 0 to $6090, NOT to    
+           +HISTORY_PTR!                                                 
+      1499 +    RETN                                                     
+      1500 +```                                                          
+      1501 +                                                             
+      1502 +The comment said "Set history pointer to 0" but the code     
+           +stored 0 to MOVE_HIST ($6090), leaving HISTORY_PTR           
+           +($6400-$6401) uninitialized with garbage.                    
+      1503 +                                                             
+      1504 +When PUSH_HISTORY_ENTRY read HISTORY_PTR, it got garbage     
+           +($FFFE), and wrote history entries to random memory -        
+           +corrupting CURRENT_PLY, SCORE, ALPHA, BETA, and other        
+           +variables in the $64xx region.                               
+      1505 +                                                             
+      1506 +### The Fix                                                  
+      1507 +                                                             
+      1508 +```asm                                                       
+      1509 +; CORRECT - initialize HISTORY_PTR to point to MOVE_HIST     
+      1510 +INIT_MOVE_HISTORY:                                           
+      1511 +    LDI HIGH(HISTORY_PTR)                                    
+      1512 +    PHI 10                                                   
+      1513 +    LDI LOW(HISTORY_PTR)                                     
+      1514 +    PLO 10                                                   
+      1515 +    LDI HIGH(MOVE_HIST)                                      
+      1516 +    STR 10              ; HISTORY_PTR high byte = $60        
+      1517 +    INC 10                                                   
+      1518 +    LDI LOW(MOVE_HIST)                                       
+      1519 +    STR 10              ; HISTORY_PTR low byte = $90         
+      1520 +    RETN                                                     
+      1521 +```                                                          
+      1522 +                                                             
+      1523 +### Lesson Learned                                           
+      1524 +                                                             
+      1525 +When debugging memory corruption:                            
+      1526 +1. Memory dumps are invaluable - user can dump ranges after  
+           +crashes                                                      
+      1527 +2. Look for uninitialized pointers - they cause writes to    
+           +random locations                                             
+      1528 +3. Pattern recognition: seeing return addresses in variable  
+           +areas = stack/buffer overflow                                
+      1529 +4. Always verify pointer initialization writes to the        
+           +POINTER, not the TARGET                                      
+      1530 +                                                             
+      1531 +### Files Modified                                           
+      1532 +                                                             
+      1533 +- **board-0x88.asm:** Fixed INIT_MOVE_HISTORY to properly    
+           +initialize HISTORY_PTR                                       
+      1534 +                                                             
+      1535 +### Status                                                   
+      1536 +                                                             
+      1537 +Awaiting hardware test to confirm fix.                       
+
+● Done. Logged the HISTORY_PTR initialization bug discovery to PROGRESS.md with:
+  - Problem description
+  - Investigation findings from the memory dump
+  - Root cause analysis (writing to MOVE_HIST instead of HISTORY_PTR)
+  - The fix
+  - Lessons learned for debugging memory corruption
+
+> Very long debug output, ending with "abcO.ABCD0EF[09:0::0;:0<:0=:0>:17:18:
+19:1::1;:1<:5<:!p5>:!p67:!p68:!p69:!p6::!p6;:!p6<:!p77:!r]". 
+
+● Progress! The pattern is different now - we're seeing !p and !r for later squares (5<, 5>, 67-77) instead of all squares. But PLY is still showing piece characters:
+  - !p = PLY + '0' = 'p', so PLY = 0x40 (64 decimal)
+  - !r = PLY + '0' = 'r', so PLY = 0x42 (66 decimal)
+
+  Still corrupted, but differently. Can you do another memory dump of $6400-$64FF? That will show if HISTORY_PTR is now correct ($6090) and what's at CURRENT_PLY ($6448).
+
+> Yes. Look at engine-memorydump2.out. 
+
+● Read(engine-memorydump2.out)
+  ⎿  Read 18 lines
+
+● Interesting! Looking at the dump:
+
+  $6400-$6401: HISTORY_PTR = 00 01 (should be 60 90 = $6090!)
+  $6448: CURRENT_PLY = 76 (118 decimal - still corrupted!)
+
+  HISTORY_PTR is 00 01 not 60 90. My fix should have stored $60 then $90. Either:
+  1. The fix didn't compile into the build
+  2. INIT_MOVE_HISTORY isn't being called
+  3. Something is overwriting HISTORY_PTR after init
+
+  Let me verify the fix is in the listing:
+
+● Search(pattern: "INIT_MOVE_HISTORY", path: "chess-engine.lst", output_mode:
+        "content")
+  ⎿  Found 72 lines (ctrl+o to expand)
+
+● The fix is in the listing and looks correct. INIT_MOVE_HISTORY is called at startup ($173A) and in UCI_CMD_POSITION ($1699). Yet the dump shows HISTORY_PTR = 00 01 instead of 60 90.
+
+  Something is overwriting HISTORY_PTR after initialization. The dump shows repeating patterns with 71 72 ('q' 'r') and 64 19, 6C 12 (addresses) - these look like stack frames being written to the variable area.
+
+  Let me check if there's a stack pointer issue. Where is R2 (stack) initialized?
+
+● Search(pattern: "STACK_TOP|INIT_STACK", path: "chess-engine.lst", output_mode:
+         "content")
+  ⎿  Found 52 lines (ctrl+o to expand)
+
+● Search(pattern: "^START:|INIT_STACK"", path: "chess-engine.lst", output_mode:
+        "content")
+  ⎿  Found 0 lines 
+
+● Search(pattern: "START:", path: "chess-engine.lst", output_mode: "content")
+  ⎿  Found 26 lines (ctrl+o to expand)
+
+● The startup code doesn't call INIT_STACK! It says "1 has already set up R4=CALL, R5=RET, R2=stack" - relying on the BIOS. But if the BIOS sets R2 to a lower address (like $6500), the stack would grow down into our variable area!
+
+● Search(pattern: "CALL INIT_STACK|d4 02 0f", path: "chess-engine.lst",
+        output_mode: "content")
+  ⎿  Found 0 lines 
+
+● INIT_STACK is never called! The code assumes the BIOS set up R2, but if the BIOS sets R2 to something like $6500, the stack grows down into $6400 and corrupts our variables.
+
+  Let me add an explicit INIT_STACK call at startup:
+
+● Read(main.asm)
+  ⎿  Read 50 lines
+
+● I see the issue. In BIOS mode, we assume the BIOS set up R2, but it might not be at $7FFF. Let me fix this:
+
+● Update(main.asm)
+  ⎿  Added 7 lines, removed 2 lines                                      
+      10                                                                 
+      11  #ifdef BIOS                                                    
+      12  ; ------------------------------------------------------------ 
+          ------------------                                             
+      13 -; BIOS Mode Entry - SCRT and stack already set up by BIOS      
+      13 +; BIOS Mode Entry - SCRT set up by BIOS                        
+         +, but we set our own stack                                     
+      14  ; ------------------------------------------------------------ 
+          ------------------                                             
+      15  START:                                                         
+      16 +    ; BIOS has set up R4=CALL, R5=RET but stack may not be at  
+         +$7FFF                                                          
+      17 +    ; Explicitly set stack to $7FFF to avoid corrupting our    
+         +variables                                                      
+      18 +    LDI $7F                                                    
+      19 +    PHI 2                                                      
+      20 +    LDI $FF                                                    
+      21 +    PLO 2               ; R2 = $7FFF (stack top)               
+      22      SEX 2               ; Ensure X = R2 for stack operations   
+      23 -    ; BIOS has already set up R4=CALL, R5=RET, R2=stack        
+      23      ; Serial I/O uses BIOS entry points, no init needed        
+      24  #else                                                          
+      25  ; ------------------------------------------------------------ 
+          ------------------                                             
+
+● Bash(./build.sh 2>&1 | tail -5 && grep "^[A-Z]" chess-engine.lst | head -5)
+  ⎿ Next steps:                                                            
+      1. If assembly succeeded, flash chess-engine.hex to your RCA 1806 sys
+    tem
+    … +2 lines (ctrl+o to expand)
+
+
+● Search(pattern: "START:", path: "chess-engine.lst", output_mode: "content")
+  ⎿  Found 16 lines (ctrl+o to expand)
+
+● The startup now explicitly sets R2 = $7FFF before any calls:
+
+  1736   f8 7f             LDI $7F
+  1738   b2                PHI 2
+  1739   f8 ff             LDI $FF
+  173b   a2                PLO 2       ; R2 = $7FFF
+  173c   e2                SEX 2
+
+  This should fix the stack corruption. The BIOS probably had R2 set to something lower (maybe around $6500), causing stack operations to overwrite our variables at $6400+.
+
+  Please test with go depth 3 again.
+
+> I can assure you though, BIOS initializes the stack to 7FFF on its init. 
+
+● Good to know. Then the stack isn't the issue. Let me look more carefully at PUSH_HISTORY_ENTRY - maybe it's writing to the wrong address. Let me check if it updates HISTORY_PTR after writing:
+
+● Read(makemove-helpers.asm)
+  ⎿  Read 120 lines
+
+● The PUSH/POP_HISTORY_ENTRY code looks correct. But the dump shows MOVE_FROM/MOVE_TO ($6402-$6403) contain 72 71 ('r' 'q') - piece characters, not valid squares!
+
+  Let me check the decode code I added that writes to MOVE_FROM/MOVE_TO:
+
+● Search(pattern: "MOVE_FROM|MOVE_TO", path: "negamax.asm", output_mode:
+        "content")
+  ⎿  Found 28 lines (ctrl+o to expand)
+
+● Read(negamax.asm)
+  ⎿  Read 45 lines
+
+● Wait - 0x72 and 0x71 ARE valid 0x88 squares (c8 and b8)! I was wrong - MOVE_FROM/TO look fine.
+
+  Let me focus on the pattern. The dump shows repeating data like 71 72 and addresses like 64 19. What if DECODE_MOVE_16BIT or another function corrupts R10, and then subsequent writes go to the wrong place?
+
+● Search(pattern: "DECODE_MOVE_16BIT:", path: "~/proj-chess", glob: "*.asm",
+        output_mode: "content")
+  ⎿  Found 191 lines (ctrl+o to expand)
+
+● DECODE_MOVE_16BIT looks fine - it only uses R8, R13, and R2 (for temp storage).
+
+  You haven't tested the new build yet with the explicit R2 init. Even if the BIOS sets R2 to $7FFF, it doesn't hurt to set it again. Please flash the latest build and test - it has both:
+  1. HISTORY_PTR initialized to $6090
+  2. R2 explicitly set to $7FFF at START
+
+  If corruption still happens, the next step would be to dump $6090-$60FF (the actual MOVE_HIST buffer) to see if history entries are being written there correctly, and a fresh dump of $6400-$64FF to compare.
+
+> I see the sequence "71 72" repeatedly, from before and after 6400, for 
+several kilobytes before and after. It seems obvious there's a stack 
+overflow completely overwriting everything from 7FFF downwards, way past our
+ memory region. 
+
+● That's a massive stack overflow - infinite recursion! The pattern 71 72 being repeated for kilobytes means SAVE_SEARCH_CONTEXT or similar is being called endlessly without returning.
+
+  The likely culprit is the depth check. If depth never reaches 0 (or the check is broken), NEGAMAX recurses forever. Let me check the depth decrement logic:
+
+● Search(pattern: "depth.*0|NEGAMAX_LEAF|SMI 1.*depth", path: "negamax.asm",
+        output_mode: "content")
+  ⎿  Found 38 lines (ctrl+o to expand)
+
+● Read(negamax.asm)
+  ⎿  Read 60 lines
+
+● Now let me find where depth is decremented before recursive NEGAMAX call:
+
+● Search(pattern: "depth.*1|SMI 1|decrement.*depth", path: "negamax.asm",
+        output_mode: "content")
+  ⎿  Found 14 lines (ctrl+o to expand)
+
+● Read(negamax.asm)
+  ⎿  Read 80 lines
+
+● Read(negamax.asm)
+  ⎿  Read 50 lines
+
+● Read(negamax.asm)
+  ⎿  Read 20 lines
+
+● Wait - I see that SAVE_SEARCH_CONTEXT is called BEFORE the depth check! Let me verify the order:
+
+● Read(negamax.asm)
+  ⎿  Read 55 lines
+
+> The "71 72" isn't the only data, but it's repeatedly appearing in the 
+stack data for several kilobytes downward, through our memory region, to be 
+clear. 
+
+● Let me check the move loop termination - maybe it's not exiting properly:
+
+● Read(negamax.asm)
+  ⎿  Read 50 lines
+
+● Found it! Look at lines 736-742:
+
+  NEGAMAX_NEXT_MOVE:
+      IRX
+      LDN 2              ; Get move count
+      SMI 1               ; Decrement
+      STR 2              ; Store back
+      DEC 2              ; Re-decrement stack pointer
+
+      LBR NEGAMAX_MOVE_LOOP   ; <-- ALWAYS loops! Never checks if count == 0!
+
+  The loop never terminates! It decrements the move count but unconditionally jumps back to NEGAMAX_MOVE_LOOP without checking if count reached 0.
+
+  Let me fix this:
+
+● Update(negamax.asm)
+  ⎿  Added 2 lines, removed 1 line                                       
+      736      IRX                                                       
+      737      LDN 2              ; Get move count                       
+      738      SMI 1               ; Decrement                           
+      739 -    STR 2              ; Store back                           
+      739 +    LBZ NEGAMAX_RETURN  ; If count == 0, exit loop            
+      740 +    STR 2              ; Store decremented count back         
+      741      DEC 2              ; Re-decrement stack pointer           
+      742                                                                
+      743      LBR NEGAMAX_MOVE_LOOP                                     
+
+● Bash(./build.sh 2>&1 | tail -5 && grep "^[A-Z]" chess-engine.lst | head -5)
+  ⎿ Next steps:                                                            
+      1. If assembly succeeded, flash chess-engine.hex to your RCA 1806 sys
+    tem
+    … +2 lines (ctrl+o to expand)
+
+
+● Build succeeded. That was a critical bug - the move loop never checked for termination, causing infinite recursion and massive stack overflow!
+
+  Please test with go depth 3. This should finally work correctly - the loop now exits when all moves are processed.
+
+> We ended with an ABCPQ, then we seem to have incorrectly returned to the 
+"Initializing..." entry point. I'll have to stop for the night, and pick up 
+on this tomorrow. 
+
+● Understood. The return to "Initializing..." suggests a stack imbalance or corrupted return address - we're making progress but there's still something off with the stack management.
+
+  Let me log today's discoveries to PROGRESS.md before you go:
+
+● Update(PROGRESS.md)
+  ⎿  Added 66 lines                                                      
+      1535  ### Status                                                   
+      1536                                                               
+      1537  Awaiting hardware test to confirm fix.                       
+      1538 +                                                             
+      1539 +---                                                          
+      1540 +                                                             
+      1541 +## Session: December 26, 2025 (continued) - Stack Overflow & 
+           + Infinite Loop                                               
+      1542 +                                                             
+      1543 +### Additional Discoveries                                   
+      1544 +                                                             
+      1545 +#### Bug #2: Explicit Stack Initialization Needed            
+      1546 +                                                             
+      1547 +Added explicit R2 = $7FFF initialization in BIOS mode        
+           +startup. Even though BIOS initializes the stack, we set it   
+           +explicitly to be safe:                                       
+      1548 +                                                             
+      1549 +```asm                                                       
+      1550 +START:                                                       
+      1551 +    LDI $7F                                                  
+      1552 +    PHI 2                                                    
+      1553 +    LDI $FF                                                  
+      1554 +    PLO 2               ; R2 = $7FFF (stack top)             
+      1555 +    SEX 2                                                    
+      1556 +```                                                          
+      1557 +                                                             
+      1558 +#### Bug #3: CRITICAL - Move Loop Never Terminated!          
+      1559 +                                                             
+      1560 +**Root cause of massive stack overflow:** The move loop in   
+           +NEGAMAX never checked if the move count reached 0. It        
+           +unconditionally jumped back to the loop start:               
+      1561 +                                                             
+      1562 +```asm                                                       
+      1563 +; WRONG - infinite loop!                                     
+      1564 +NEGAMAX_NEXT_MOVE:                                           
+      1565 +    IRX                                                      
+      1566 +    LDN 2              ; Get move count                      
+      1567 +    SMI 1              ; Decrement                           
+      1568 +    STR 2              ; Store back                          
+      1569 +    DEC 2                                                    
+      1570 +    LBR NEGAMAX_MOVE_LOOP  ; Always loops - never exits!     
+      1571 +```                                                          
+      1572 +                                                             
+      1573 +**The fix:**                                                 
+      1574 +                                                             
+      1575 +```asm                                                       
+      1576 +; CORRECT - check for termination                            
+      1577 +NEGAMAX_NEXT_MOVE:                                           
+      1578 +    IRX                                                      
+      1579 +    LDN 2              ; Get move count                      
+      1580 +    SMI 1              ; Decrement                           
+      1581 +    LBZ NEGAMAX_RETURN  ; If count == 0, exit loop!          
+      1582 +    STR 2              ; Store decremented count back        
+      1583 +    DEC 2                                                    
+      1584 +    LBR NEGAMAX_MOVE_LOOP                                    
+      1585 +```                                                          
+      1586 +                                                             
+      1587 +This caused the `71 72` pattern (encoded moves) to repeat    
+           +for kilobytes as the stack overflowed from $7FFF down        
+           +through $6400 and beyond, corrupting all variables.          
+      1588 +                                                             
+      1589 +### Memory Dump Analysis                                     
+      1590 +                                                             
+      1591 +User provided dumps showing:                                 
+      1592 +- HISTORY_PTR corrupted (should be $6090, was garbage)       
+      1593 +- CURRENT_PLY corrupted (should be 0-3, was 0x6A+)           
+      1594 +- Repeating patterns of move data and return addresses       
+           +throughout $6400-$64FF                                       
+      1595 +                                                             
+      1596 +### Current Status                                           
+      1597 +                                                             
+      1598 +After fix, program runs but returns to "Initializing..."     
+           +entry point after ABCPQ sequence - suggests remaining stack  
+           +imbalance. To investigate tomorrow.                          
+      1599 +                                                             
+      1600 +### Files Modified                                           
+      1601 +                                                             
+      1602 +- **main.asm:** Added explicit R2 = $7FFF init in BIOS mode  
+      1603 +- **negamax.asm:** Fixed move loop termination check         
+
+● Good progress today! Summary of fixes:
+
+  1. HISTORY_PTR init - Was writing to wrong address ($6090 instead of $6400)
+  2. Explicit stack init - Added R2 = $7FFF at startup
+  3. Infinite loop fix - Move loop never checked termination condition
+
+  Tomorrow we'll investigate the stack imbalance causing the return to "Initializing...". The ABCPQ output suggests we're getting partway through NEGAMAX before something goes wrong with the return path.
+
+  Have a good night!
+
+
+

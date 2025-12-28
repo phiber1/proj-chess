@@ -1,0 +1,23 @@
+# Generated files
+*.hex
+*.lst
+*.out
+*.bin
+
+# Preprocessed/concatenated files
+*-pp.asm
+*-preprocessed.asm
+chess-engine.asm
+chess-engine-test.asm
+chess-unified.asm
+
+# Backup files
+*.bak
+*.old
+
+# Claude Code cache
+.claude/
+
+# Editor files
+*~
+*.swp

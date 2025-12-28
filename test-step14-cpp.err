@@ -1,0 +1,25 @@
+test-step14.asm:19:48: warning: missing terminating ' character
+   19 | ; 4. Black up a rook - score = -500 ($FE0C in 2's complement)
+      |                                                ^
+In file included from test-step14.asm:25:
+serial-io.asm:3:14: warning: missing terminating ' character
+    3 | ; Chuck Yakym's 9600 baud routines + helper functions
+      |              ^
+serial-io.asm:4:26: warning: missing terminating ' character
+    4 | ; For use with Mark Abene's SCRT implementation
+      |                          ^
+serial-io.asm:154:34: warning: missing terminating ' character
+  154 |     BDF SPN_AF          ; Yes, it's A-F
+      |                                  ^
+serial-io.asm:180:27: warning: missing terminating ' character
+  180 | ; SERIAL_READ_CHAR - Chuck's B96IN (Inverted EF3 logic)
+      |                           ^
+serial-io.asm:223:28: warning: missing terminating ' character
+  223 | ; SERIAL_WRITE_CHAR - Chuck's B96OUT (Inverted Q logic)
+      |                            ^
+test-step14.asm:347:38: warning: missing terminating ' character
+  347 |     ANI $80             ; Check if we've passed row 7
+      |                                      ^
+test-step14.asm:348:40: warning: missing terminating ' character
+  348 |     LBNZ EM_DONE        ; If >= $80, we're done
+      |                                        ^

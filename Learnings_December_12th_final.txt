@@ -1,0 +1,1115 @@
+
+ ▐▛███▜▌   Claude Code v2.0.58
+▝▜█████▛▘  Opus 4.5 · Claude Max
+  ▘▘ ▝▝    ~/proj-chess
+══════════════════ Conversation compacted · ctrl+o for history ═════════════════
+  ⎿  Read test-debug16.asm (525 lines)
+  ⎿  Read PROGRESS.md (312 lines)
+  ⎿  Read test-debug16.hex (53 lines)
+  ⎿  Referenced file test-debug16.lst
+  ⎿  Read test-debug16-cpp.err (26 lines)
+  ⎿  Todo list read (6 items)
+
+● Looking at the context, I was debugging test-debug16.asm which returns
+  "Pseudo-legal: 05, Legal: 00" instead of the expected "05, 04". The
+  make/unmake memory-based approach works (verified in test-debug15), but
+  something in the legal move loop is wrong.
+
+  Let me analyze IS_IN_CHECK more carefully. I notice a potential issue:
+
+● Read(test-debug16.asm)
+  ⎿  Read 110 lines
+
+● I see a potential issue in the IS_IN_CHECK ray logic at lines 466-476. Let
+   me check what happens when we find a piece - specifically, R10 is being
+  corrupted by PLO 10:
+
+      LDN 10              ; D = piece at position
+      LBZ IIC_ORTH_RAY    ; if empty, continue
+
+      PLO 10              ; <-- This corrupts R10 (board pointer)!
+
+  But more importantly, let me check the ROOK_DIRS table in movegen-new.asm:
+
+● Search(pattern: "ROOK_DIRS", path: "~/proj-chess", output_mode: "content")
+  ⎿  Found 253 lines (ctrl+o to expand)
+
+● Let me check the actual ROOK_DIRS table content:
+
+● Read(movegen-new.asm)
+  ⎿  Read 13 lines
+
+● Let me check the listing file for test-debug16 to see if there are any
+  issues with how IS_IN_CHECK is assembled:
+
+● Read(test-debug16.lst)
+  ⎿  Read 80 lines
+
+● Let me find the IS_IN_CHECK function in the listing:
+
+● Search(pattern: "IS_IN_CHECK:", path: "test-debug16.lst", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● Read(test-debug16.lst)
+  ⎿  Read 110 lines
+
+● Let me look at the GEN_LEGAL_MOVES function in the listing:
+
+● Search(pattern: "GEN_LEGAL_MOVES:", path: "test-debug16.lst", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● Read(test-debug16.lst)
+  ⎿  Read 100 lines
+
+● I notice something - let me compare the source and listing. Looking at the
+   listing, I don't see the R12 initialization. Let me verify the source:
+
+● Read(test-debug16.asm)
+  ⎿  Read 25 lines
+
+● The source has the R12 init, but the listing doesn't show it. Let me check
+   the preprocessed file:
+
+● Search(pattern: "LDI WHITE", path: "test-debug16-pp.asm", output_mode:
+        "content")
+  ⎿  Found 2 lines (ctrl+o to expand)
+
+● Read(test-debug16-pp.asm)
+  ⎿  Read 25 lines
+
+● Search(pattern: "GEN_LEGAL_MOVES:", path: "test-debug16-pp.asm", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● Read(test-debug16-pp.asm)
+  ⎿  Read 30 lines
+
+● I found the problem! Looking at the preprocessed file (test-debug16-pp.asm
+   lines 485-487), the LDI WHITE / PLO 12 code is missing - it jumps
+  straight from PLO 14 to GLM_LOOP. The source file has the fix at lines
+  215-216, but the preprocessed file was generated from an older version.
+
+  The hex file needs to be rebuilt to include the R12 initialization fix.
+  Let me rebuild it:
+
+● Bash(cpp -P test-debug16.asm 2>test-debug16-cpp.err > test-debug16-pp.asm &&
+      ./a18 test-debug16-pp.asm -o test-debug16.hex -l test-debug16.lst)
+  ⎿  Error: Exit code 127
+     /bin/bash: line 1: ./a18: No such file or directory
+
+● Bash(which a18 || ls -la /usr/local/bin/a18 2>/dev/null || find . -name "a18"
+      -type f 2>/dev/null)
+  ⎿  Tool use rejected with user message: Use a18 with the ./
+
+● Bash(cpp -P test-debug16.asm 2>test-debug16-cpp.err > test-debug16-pp.asm &&
+      a18 test-debug16-pp.asm -o test-debug16.hex -l test-debug16.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● The assembly succeeded. Let me verify the R12 initialization is now in the
+   listing:
+
+● Search(pattern: "PLO 12.*WHITE", path: "test-debug16.lst", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● The fix is now included. Let me verify the full GEN_LEGAL_MOVES sequence:
+
+● Read(test-debug16.lst)
+  ⎿  Read 30 lines
+
+● The fix is now in place. The rebuilt test-debug16.hex includes:
+  - LDI WHITE at $01C5
+  - PLO 12 at $01C7
+
+  This ensures R12 = WHITE (0) before the legal move loop starts, so
+  IS_IN_CHECK can correctly compute the king piece code as 6 (W_KING).
+
+  The hex file is ready to test. Expected output:
+  - Pseudo-legal: 05 (5 king moves from e1)
+  - Legal: 04 (all except Ke2 which is attacked by the queen on e-file)
+
+  Run the test and let me know the result!
+
+> Still 05 and 00 
+
+● The R12 fix didn't help. Let me dig deeper. I want to check the move
+  storage format - there might be a from/to mismatch. Let me look at how
+  moves are stored in movegen-new.asm:
+
+● Search(pattern: "STR 9.*INC 9", path: "movegen-new.asm", output_mode:
+        "content")
+  ⎿  Found 0 lines 
+
+● Search(pattern: "STR 9", path: "movegen-new.asm", output_mode: "content")
+  ⎿  Found 161 lines (ctrl+o to expand)
+
+● Let me check the ROOK_DIRS table address and content in the listing:
+
+● Search(pattern: "ROOK_DIRS:", path: "test-debug16.lst", output_mode:
+        "content")
+  ⎿  Found 6 lines (ctrl+o to expand)
+
+● Wait! ROOK_DIRS is at $0595, but let me check what address IS_IN_CHECK is
+  loading:
+
+● Search(pattern: "LDI LOW.ROOK_DIRS", path: "test-debug16.lst", output_mode:
+        "content")
+  ⎿  Found 2 lines (ctrl+o to expand)
+
+● Let me create a minimal test to isolate the issue - testing IS_IN_CHECK
+  directly on the position with the king already at d1:
+
+● Write(test-debug17.asm)
+  ⎿  Wrote 387 lines to test-debug17.asm                                   
+     ; =====================================================================
+     =========
+     ; Debug Test 17: Minimal IS_IN_CHECK test
+     ; Setup: Kd1, BQe8, BKa8 - king at d1 should NOT be in check
+     ; =====================================================================
+     =========
+         ORG $0000
+         LBR MAIN
+     #include "serial-io.asm"
+     … +377 lines (ctrl+o to expand)
+
+● Bash(cpp -P test-debug17.asm 2>test-debug17-cpp.err > test-debug17-pp.asm &&
+      a18 test-debug17-pp.asm -o test-debug17.hex -l test-debug17.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Built successfully. This test will:
+  1. Set up Kd1, BQe8, BKa8
+  2. Print D1 and E8 square contents for verification
+  3. Test IS_IN_CHECK with king at d1 (should be 00 - not in check)
+  4. Move king to e2 and test again (should be 01 - in check from queen on
+  e-file)
+
+  Expected output:
+  Debug17: IS_IN_CHECK test
+  D1=06
+  E8=0D
+  King at: 03
+  Check: 00
+  E2 test: King at: 14
+  Check: 01
+
+  Run test-debug17.hex and let me know the result!
+
+> Unfortunately, that last Check is 00, not 01. 
+
+● The debug prints in my test are clobbering R11! SERIAL_WRITE_CHAR uses
+  R11.0 internally, so after printing, the king square is lost.
+
+  Let me fix test-debug17 by properly saving/restoring R11 around the debug
+  output:
+
+● Update(test-debug17.asm)
+  ⎿  Updated test-debug17.asm with 5 additions and 4 removals            
+       267        RETN
+       268    
+       269    IIC_FOUND_KING:
+       270 -      ; Print found king at square
+       270 +      ; Print found king at square
+           +   - must save R11 since serial clobbers it!
+       271        GLO 11
+       272        STXD                ; save king square
+       273        LDI HIGH(STR_KINGAT)
+     ...
+       275        LDI LOW(STR_KINGAT)
+       276        PLO 8
+       277        CALL SERIAL_PRINT_STRING
+       278 -      IRX
+       279 -      LDX                 ; restore king square to D
+       280 -      PLO 11              ; and back to R11
+       278 +      LDX                 ; D = king square (don't IRX yet - 
+           + keep on stack)
+       279        CALL SERIAL_PRINT_HEX
+       280        CALL PRINT_CRLF
+       281 +      IRX
+       282 +      LDX                 ; D = king square
+       283 +      PLO 11              ; restore R11.0 AFTER all serial 
+           + calls
+       284    
+       285        GLO 12
+       286        XRI BLACK
+
+● Wait, my fix still has an issue. Let me use a dedicated memory location
+  instead:
+
+● Update(test-debug17.asm)
+  ⎿  Updated test-debug17.asm with 2 additions                     
+       70    SQ_A8       EQU $70
+       71    SQ_E8       EQU $74
+       72    
+       73 +  TEMP_KING   EQU $5090   ; Temp storage for king square
+       74 +  
+       75    DIR_N       EQU $F0
+       76    DIR_S       EQU $10
+       77    DIR_E       EQU $01
+
+● Update(test-debug17.asm)
+  ⎿  Updated test-debug17.asm with 21 additions and 6 removals           
+       269        RETN
+       270    
+       271    IIC_FOUND_KING:
+       272 -      ; Print found king at square - must save R11 
+           -  since serial clobbers it!
+       272 +      ; Print found king at square - save to memory 
+           +  since serial clobbers R11!
+       273 +      LDI HIGH(TEMP_KING)
+       274 +      PHI 10
+       275 +      LDI LOW(TEMP_KING)
+       276 +      PLO 10
+       277        GLO 11
+       278 -      STXD                ; save king square
+       278 +      STR 10              ; save king square to memory
+       279 +  
+       280        LDI HIGH(STR_KINGAT)
+       281        PHI 8
+       282        LDI LOW(STR_KINGAT)
+       283        PLO 8
+       284        CALL SERIAL_PRINT_STRING
+       285 -      LDX                 ; D = king square (don't IRX yet - 
+           - keep on stack)
+       285 +  
+       286 +      LDI HIGH(TEMP_KING)
+       287 +      PHI 10
+       288 +      LDI LOW(TEMP_KING)
+       289 +      PLO 10
+       290 +      LDN 10              ; D = king square
+       291        CALL SERIAL_PRINT_HEX
+       292        CALL PRINT_CRLF
+       293 -      IRX
+       294 -      LDX                 ; D = king square
+       295 -      PLO 11              ; restore R11.0 AFTER all serial 
+           - calls
+       293    
+       294 +      ; Restore R11 from memory AFTER all serial calls
+       295 +      LDI HIGH(TEMP_KING)
+       296 +      PHI 10
+       297 +      LDI LOW(TEMP_KING)
+       298 +      PLO 10
+       299 +      LDN 10
+       300 +      PLO 11              ; R11.0 = king square
+       301 +  
+       302        GLO 12
+       303        XRI BLACK
+       304        PLO 13
+
+● Bash(cpp -P test-debug17.asm 2>test-debug17-cpp.err > test-debug17-pp.asm &&
+      a18 test-debug17-pp.asm -o test-debug17.hex -l test-debug17.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Rebuilt. Now the king square is saved to a dedicated memory location
+  ($5090) and restored AFTER all serial calls complete.
+
+  Expected output now:
+  Debug17: IS_IN_CHECK test
+  D1=06
+  E8=0D
+  King at: 03
+  Check: 00
+  E2 test: King at: 14
+  Check: 01
+
+  Run the updated test-debug17.hex - the e2 test should now return 01 (in
+  check).
+
+> I now get expected output. 
+
+● Excellent! So IS_IN_CHECK works correctly when R11 is preserved. Now I
+  understand the issue better.
+
+  In test-debug16's GEN_LEGAL_MOVES loop, IS_IN_CHECK uses R11 internally
+  for the king square scan, so after IS_IN_CHECK returns, R11 no longer
+  contains the original move. The code does reload R11 from the move list,
+  which should work...
+
+  Let me create a test that logs each step of the legal move loop to
+  pinpoint where things go wrong:
+
+● Write(test-debug18.asm)
+  ⎿  Wrote 585 lines to test-debug18.asm                                   
+     ; =====================================================================
+     =========
+     ; Debug Test 18: Single iteration of legal move loop with logging
+     ; Tests the first move only, with debug output at each step
+     ; =====================================================================
+     =========
+         ORG $0000
+         LBR MAIN
+     #include "serial-io.asm"
+     … +575 lines (ctrl+o to expand)
+
+● Bash(cpp -P test-debug18.asm 2>test-debug18-cpp.err > test-debug18-pp.asm &&
+      a18 test-debug18-pp.asm -o test-debug18.hex -l test-debug18.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● This test does a single iteration with detailed logging at each step.
+  Expected output:
+
+  Debug18: Single iteration test
+  Move: 04-03
+  R11: 04,03
+  After make: E1=00 D1=06
+  Check: 00
+  After unmake: E1=06 D1=00
+  Final check: 00
+  LEGAL
+
+  Run test-debug18.hex and tell me what you see!
+
+> I see everything the same EXCEPT R11: 20,03 
+
+● The R11 display showing 20,03 is because SERIAL_PRINT_STRING clobbered
+  R11.0 before we could print it. But since everything else (Check: 00,
+  LEGAL) is correct, the test is actually working!
+
+  This confirms single iteration works. The issue must be something specific
+   to multiple iterations. Let me create a test that does exactly 2
+  iterations to see what happens:
+
+● Write(test-debug19.asm)
+  ⎿  Wrote 467 lines to test-debug19.asm                                   
+     ; =====================================================================
+     =========
+     ; Debug Test 19: Two iterations of legal move loop
+     ; Move 1: e1-d1 (should be legal)
+     ; Move 2: e1-e2 (should be illegal - queen attacks e2)
+     ; =====================================================================
+     =========
+         ORG $0000
+         LBR MAIN
+     #include "serial-io.asm"
+     … +457 lines (ctrl+o to expand)
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Wait, I just realized serial I/O clobbers R15.0! From PROGRESS.md:
+  "SERIAL_WRITE_CHAR clobbers: R11.0, R14.0, R15.0"
+
+  So my debug prints inside the loop are corrupting R15. Let me fix that:
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 1 addition                         
+       60    MOVE_LIST   EQU $5200
+       61    MOVE_PIECE  EQU $5090
+       62    CAPT_PIECE  EQU $5091
+       63 +  LOOP_COUNT  EQU $5092   ; Loop counter in memory (serial 
+          + clobbers R15!)
+       64    
+       65    EMPTY       EQU $00
+       66    COLOR_MASK  EQU $08
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 4 additions                        
+       61    MOVE_PIECE  EQU $5090
+       62    CAPT_PIECE  EQU $5091
+       63    LOOP_COUNT  EQU $5092   ; Loop counter in memory (serial 
+            clobbers R15!)
+       64 +  LEGAL_COUNT EQU $5093   ; Legal count in memory
+       65 +  MOVE_PTR_LO EQU $5094   ; Move list pointer low
+       66 +  MOVE_PTR_HI EQU $5095   ; Move list pointer high
+       67 +  CHK_RESULT  EQU $5096   ; Check result storage
+       68    
+       69    EMPTY       EQU $00
+       70    COLOR_MASK  EQU $08
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 92 additions and 61 removals          
+       159        BR HALT
+       160    
+       161    ; =========================================================
+             =====================
+       162 -  ; GEN_LEGAL_MOVES_DEBUG - Same as test-debug16 but with 
+           - logging
+       162 +  ; GEN_LEGAL_MOVES_DEBUG - Uses memory for all state (serial
+           +  clobbers registers!)
+       163    ; =========================================================
+             =====================
+       164    GEN_LEGAL_MOVES_DEBUG:
+       165 -      LDI HIGH(MOVE_LIST)
+       165 +      ; Initialize state in memory
+       166 +      LDI HIGH(LOOP_COUNT)
+       167        PHI 10
+       168 -      LDI LOW(MOVE_LIST)
+       169 -      PLO 10
+       168    
+       169 +      LDI LOW(LOOP_COUNT)
+       170 +      PLO 10
+       171        LDI 2
+       172 -      PLO 15              ; R15.0 = 2 moves
+       172 +      STR 10              ; LOOP_COUNT = 2
+       173    
+       174 +      LDI LOW(LEGAL_COUNT)
+       175 +      PLO 10
+       176        LDI 0
+       177 -      PLO 14              ; R14.0 = legal count
+       177 +      STR 10              ; LEGAL_COUNT = 0
+       178    
+       179 -      LDI WHITE
+       180 -      PLO 12
+       179 +      LDI LOW(MOVE_PTR_LO)
+       180 +      PLO 10
+       181 +      LDI LOW(MOVE_LIST)
+       182 +      STR 10              ; MOVE_PTR_LO
+       183    
+       184 +      LDI LOW(MOVE_PTR_HI)
+       185 +      PLO 10
+       186 +      LDI HIGH(MOVE_LIST)
+       187 +      STR 10              ; MOVE_PTR_HI
+       188 +  
+       189    GLM_LOOP:
+       190 -      GLO 15
+       190 +      ; Check loop count
+       191 +      LDI HIGH(LOOP_COUNT)
+       192 +      PHI 10
+       193 +      LDI LOW(LOOP_COUNT)
+       194 +      PLO 10
+       195 +      LDN 10
+       196        LBZ GLM_DONE
+       197    
+       198        ; Print iteration number
+     ...
+       186        LDI LOW(STR_ITER)
+       187        PLO 8
+       188        CALL SERIAL_PRINT_STRING
+       189 -      GLO 15
+       189 +      LDI HIGH(LOOP_COUNT)
+       190 +      PHI 10
+       191 +      LDI LOW(LOOP_COUNT)
+       192 +      PLO 10
+       193 +      LDN 10
+       194        CALL SERIAL_PRINT_HEX
+       195        CALL PRINT_CRLF
+       196    
+       197 -      ; Reload R10 (serial clobbered it? No, but R15 might be
+           -  wrong)
+       198 -      ; Actually let's save/restore R10 and R15 around prints
+       197 +      ; Load move pointer into R10
+       198 +      LDI HIGH(MOVE_PTR_HI)
+       199 +      PHI 9
+       200 +      LDI LOW(MOVE_PTR_HI)
+       201 +      PLO 9
+       202 +      LDN 9
+       203 +      PHI 10
+       204 +      DEC 9
+       205 +      LDN 9
+       206 +      PLO 10
+       207    
+       208        ; Read move into R11
+       209        LDA 10
+     ...
+       199        LDA 10
+       200        PHI 11              ; to
+       201    
+       202 -      ; Save R10, R14, R12
+       203 -      GLO 12
+       204 -      STXD
+       205 -      GLO 14
+       206 -      STXD
+       207 -      GHI 10
+       208 -      STXD
+       202 +      ; Save updated move pointer
+       203        GLO 10
+       204 -      STXD
+       204 +      STR 9
+       205 +      INC 9
+       206 +      GHI 10
+       207 +      STR 9
+       208    
+       209        ; Make move
+       210        CALL MAKE_MOVE_MEM
+       211    
+       212        ; Check if in check
+       213        LDI WHITE
+       214 -      PLO 12              ; Ensure R12 = WHITE before 
+           - IS_IN_CHECK
+       214 +      PLO 12
+       215        CALL IS_IN_CHECK
+       216 -      PLO 13              ; Save result
+       216    
+       217 -      ; Print check result immediately
+       218 -      GLO 13
+       219 -      STXD                ; Save R13 to stack
+       217 +      ; Save check result to memory
+       218 +      LDI HIGH(CHK_RESULT)
+       219 +      PHI 10
+       220 +      LDI LOW(CHK_RESULT)
+       221 +      PLO 10
+       222 +      STR 10
+       223 +  
+       224 +      ; Print check result
+       225        LDI HIGH(STR_CHK)
+       226        PHI 8
+       227        LDI LOW(STR_CHK)
+       228        PLO 8
+       229        CALL SERIAL_PRINT_STRING
+       230 -      IRX
+       231 -      LDX                 ; Restore R13
+       232 -      PLO 13
+       233 -      GLO 13
+       230 +      LDI HIGH(CHK_RESULT)
+       231 +      PHI 10
+       232 +      LDI LOW(CHK_RESULT)
+       233 +      PLO 10
+       234 +      LDN 10
+       235        CALL SERIAL_PRINT_HEX
+       236        CALL PRINT_CRLF
+       237    
+       238 -      ; Reload R11 from MOVE_LIST using saved R10
+       239 -      IRX
+       240 -      LDXA
+       241 -      PLO 10
+       242 -      LDX
+       238 +      ; Reload move pointer (go back 2 to re-read move for 
+           + unmake)
+       239 +      LDI HIGH(MOVE_PTR_HI)
+       240 +      PHI 9
+       241 +      LDI LOW(MOVE_PTR_HI)
+       242 +      PLO 9
+       243 +      LDN 9
+       244        PHI 10
+       245 +      DEC 9
+       246 +      LDN 9
+       247 +      PLO 10
+       248        DEC 10
+       249        DEC 10
+       250 +  
+       251 +      ; Re-read move into R11
+       252        LDA 10
+       253        PLO 11
+       254        LDA 10
+       255        PHI 11
+       256    
+       257 -      ; Save R10 again
+       258 -      GHI 10
+       259 -      STXD
+       260 -      GLO 10
+       261 -      STXD
+       262 -  
+       257        ; Unmake move
+       258        CALL UNMAKE_MOVE_MEM
+       259    
+       260 -      ; Restore R10
+       261 -      IRX
+       262 -      LDXA
+       263 -      PLO 10
+       264 -      LDX
+       260 +      ; Check result and update legal count if 0
+       261 +      LDI HIGH(CHK_RESULT)
+       262        PHI 10
+       263 -  
+       264 -      ; Restore R14
+       265 -      IRX
+       266 -      LDXA
+       267 -      PLO 14
+       268 -  
+       269 -      ; Restore R12
+       270 -      LDX
+       271 -      PLO 12
+       272 -  
+       273 -      ; Check result
+       274 -      GLO 13
+       263 +      LDI LOW(CHK_RESULT)
+       264 +      PLO 10
+       265 +      LDN 10
+       266        LBNZ GLM_NEXT
+       267    
+       268 -      ; Legal move
+       269 -      INC 14
+       268 +      ; Legal move - increment count
+       269 +      LDI LOW(LEGAL_COUNT)
+       270 +      PLO 10
+       271 +      LDN 10
+       272 +      ADI 1
+       273 +      STR 10
+       274    
+       275    GLM_NEXT:
+       276 -      DEC 15
+       276 +      ; Decrement loop count
+       277 +      LDI LOW(LOOP_COUNT)
+       278 +      PLO 10
+       279 +      LDN 10
+       280 +      SMI 1
+       281 +      STR 10
+       282        LBR GLM_LOOP
+       283    
+       284    GLM_DONE:
+       285 -      GLO 14
+       285 +      ; Return legal count
+       286 +      LDI HIGH(LEGAL_COUNT)
+       287 +      PHI 10
+       288 +      LDI LOW(LEGAL_COUNT)
+       289 +      PLO 10
+       290 +      LDN 10
+       291        RETN
+       292    
+       293    ; =========================================================
+             =====================
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Now using memory for all state. Expected output:
+
+  Debug19: 2-iteration test
+  Iter 02
+  Chk=00
+  Iter 01
+  Chk=01
+  Legal=01
+
+  Run test-debug19.hex and let me know the results!
+
+> I see 02, 96, then 01, 96. Legal=00 
+
+● The check result is $96 - that's the low byte of CHK_RESULT's address! The
+   bug is that after LDI LOW(CHK_RESULT) and PLO 10, D still contains $96,
+  not the check result from IS_IN_CHECK.
+
+  I need to save the check result before setting up the pointer:
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 2 additions                        
+       240        LDI WHITE
+       241        PLO 12
+       242        CALL IS_IN_CHECK
+       243 +      PLO 13              ; Save result in R13 temporarily
+       244    
+       245        ; Save check result to memory
+       246        LDI HIGH(CHK_RESULT)
+       247        PHI 10
+       248        LDI LOW(CHK_RESULT)
+       249        PLO 10
+       250 +      GLO 13              ; Get result back from R13
+       251        STR 10
+       252    
+       253        ; Print check result
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Rebuilt. Now the check result is saved to R13 before the pointer setup,
+  then retrieved with GLO 13.
+
+  Expected:
+  Iter 02
+  Chk=00
+  Iter 01
+  Chk=01
+  Legal=01
+
+  Run test-debug19.hex again!
+
+> 02, 00, 01, 01, 00 
+
+● So IS_IN_CHECK is working correctly now:
+  - Iter 02: Chk=00 (e1-d1, not in check) ✓
+  - Iter 01: Chk=01 (e1-e2, in check) ✓
+
+  But Legal=00 instead of 01. The legal count increment isn't working. Let
+  me add debug output to see if the increment code is reached:
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 6 additions and 1 removal  
+       294        LDN 10
+       295        LBNZ GLM_NEXT
+       296    
+       297 -      ; Legal move - increment count
+       297 +      ; Legal move - print "L" and increment count
+       298 +      LDI 'L'
+       299 +      CALL SERIAL_WRITE_CHAR
+       300 +  
+       301 +      LDI HIGH(LEGAL_COUNT)
+       302 +      PHI 10
+       303        LDI LOW(LEGAL_COUNT)
+       304        PLO 10
+       305        LDN 10
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● If you see "L" printed after "Chk=00", the increment code is being
+  reached. Run test-debug19.hex - what do you see?
+
+> Yes, I see the L 
+
+● So the increment code is reached. Let me add a print right after the
+  increment to verify the value was stored:
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 9 additions 
+       306        ADI 1
+       307        STR 10
+       308    
+       309 +      ; Verify: print the new count
+       310 +      LDI HIGH(LEGAL_COUNT)
+       311 +      PHI 10
+       312 +      LDI LOW(LEGAL_COUNT)
+       313 +      PLO 10
+       314 +      LDN 10
+       315 +      CALL SERIAL_PRINT_HEX
+       316 +      CALL PRINT_CRLF
+       317 +  
+       318    GLM_NEXT:
+       319        ; Decrement loop count
+       320        LDI LOW(LOOP_COUNT)
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Now after "L" you should see the count (should be "01"). What do you see?
+
+> I do see L01 
+
+● So "L01" is printed - the increment works! But the final result is 00.
+  Something is corrupting LEGAL_COUNT between iterations.
+
+  The issue might be that after SERIAL_PRINT_HEX / PRINT_CRLF, R10.1 is
+  corrupted. Then at GLM_NEXT, we only set PLO 10 (low byte) but R10.1 might
+   be wrong, causing us to write to the wrong address.
+
+  Let me fix GLM_NEXT to explicitly set both bytes of R10:
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 3 additions and 1 removal           
+       316        CALL PRINT_CRLF
+       317    
+       318    GLM_NEXT:
+       319 -      ; Decrement loop count
+       319 +      ; Decrement loop count (must set BOTH bytes - serial 
+           + may clobber R10.1!)
+       320 +      LDI HIGH(LOOP_COUNT)
+       321 +      PHI 10
+       322        LDI LOW(LOOP_COUNT)
+       323        PLO 10
+       324        LDN 10
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Run test-debug19.hex - does Legal now show 01?
+
+> It still shows 00 
+
+● Let me add a debug print right before the final read to see what
+  LEGAL_COUNT contains at that point:
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 17 additions                          
+       327        LBR GLM_LOOP
+       328    
+       329    GLM_DONE:
+       330 +      ; Debug: print LEGAL_COUNT before returning
+       331 +      LDI HIGH(STR_FINAL)
+       332 +      PHI 8
+       333 +      LDI LOW(STR_FINAL)
+       334 +      PLO 8
+       335 +      CALL SERIAL_PRINT_STRING
+       336 +      LDI HIGH(LEGAL_COUNT)
+       337 +      PHI 10
+       338 +      LDI LOW(LEGAL_COUNT)
+       339 +      PLO 10
+       340 +      LDN 10
+       341 +      CALL SERIAL_PRINT_HEX
+       342 +      CALL PRINT_CRLF
+       343 +  
+       344        ; Return legal count
+       345        LDI HIGH(LEGAL_COUNT)
+       346        PHI 10
+     ...
+       335        LDN 10
+       336        RETN
+       337    
+       338 +  STR_FINAL:
+       339 +      DB "Final LC=", 0
+       340 +  
+       341    ; =========================================================
+             =====================
+       342    PRINT_CRLF:
+       343        LDI HIGH(STR_CRLF)
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Now we'll see "Final LC=" right before returning. This will tell us if
+  LEGAL_COUNT is being corrupted, or if the return value is getting lost.
+  What do you see?
+
+> Final LC=01, Legal=00 
+
+● The problem is in the caller, not the function! After CALL 
+  GEN_LEGAL_MOVES_DEBUG returns with D=01, we immediately call
+  SERIAL_PRINT_STRING which clobbers D before we can print it:
+
+      CALL GEN_LEGAL_MOVES_DEBUG   ; D = 01
+      ; ... print "Legal=" ...
+      CALL SERIAL_PRINT_STRING     ; <-- Clobbers D!
+      CALL SERIAL_PRINT_HEX        ; <-- D is now garbage
+
+  Let me fix the caller to save D before printing:
+
+● Update(test-debug19.asm)
+  ⎿  Updated test-debug19.asm with 4 additions                     
+       145    
+       146        ; Now run the loop with 2 moves
+       147        CALL GEN_LEGAL_MOVES_DEBUG
+       148 +      STXD                ; Save return value on stack!
+       149    
+       150        ; Print result
+       151        LDI HIGH(STR_RESULT)
+     ...
+       152        LDI LOW(STR_RESULT)
+       153        PLO 8
+       154        CALL SERIAL_PRINT_STRING
+       155 +  
+       156 +      IRX
+       157 +      LDX                 ; Restore return value
+       158        CALL SERIAL_PRINT_HEX
+       159        CALL PRINT_CRLF
+       160    
+
+● Bash(cpp -P test-debug19.asm 2>test-debug19-cpp.err > test-debug19-pp.asm &&
+      a18 test-debug19-pp.asm -o test-debug19.hex -l test-debug19.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Now Legal= should show 01. Try it!
+
+> Now it's correct. Here's a tip: always pass parameters either via 
+registers or via a calling stack, and always return your return values in 
+registers. Never use D itself as a calling parameter or return value. 
+EVERYTHING touches D. 
+
+● Excellent tip! That's a crucial lesson for 1802 programming. Since D is
+  the sole accumulator, every load, store, arithmetic, and logic operation
+  touches it. Using a register (like R13.0 or R14.0) for return values is
+  much safer.
+
+  Now let me apply this fix to test-debug16.asm - it has the same bug:
+
+● Read(test-debug16.asm)
+  ⎿  Read 15 lines
+
+● Update(test-debug16.asm)
+  ⎿  Updated test-debug16.asm with 3 additions                           
+       182    
+       183        ; Now filter for legal moves
+       184        CALL GEN_LEGAL_MOVES
+       185 +      STXD                ; Save return value (D clobbered by
+           +  serial!)
+       186    
+       187        ; Print legal count
+       188        LDI HIGH(STR_LEGAL)
+     ...
+       189        LDI LOW(STR_LEGAL)
+       190        PLO 8
+       191        CALL SERIAL_PRINT_STRING
+       192 +      IRX
+       193 +      LDX                 ; Restore return value
+       194        CALL SERIAL_PRINT_HEX
+       195        CALL PRINT_CRLF
+       196    
+
+● Bash(cpp -P test-debug16.asm 2>test-debug16-cpp.err > test-debug16-pp.asm &&
+      a18 test-debug16-pp.asm -o test-debug16.hex -l test-debug16.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Now test test-debug16.hex. Expected output:
+  - Pseudo-legal: 05
+  - Legal: 04
+
+> Correct. 
+
+● Excellent! The legal move filter is now working! Let me update PROGRESS.md
+   with the key findings from this debugging session:
+
+● Read(PROGRESS.md)
+  ⎿  Read 13 lines
+
+● Update(PROGRESS.md)
+  ⎿  Updated PROGRESS.md with 54 additions and 4 removals                
+       301    
+       302    ### Files Created This Session
+       303    
+       304 -  - test-debug7.asm through test-debug16
+           -  .asm - incremental debugging
+       304 +  - test-debug7.asm through test-debug19
+           +  .asm - incremental debugging
+       305    - Key file: **test-debug16.asm** - working legal move 
+             filter with memory-based make/unmake
+       306    
+       307    ### Current Status
+       308    
+       309 -  - test-debug16.hex ready for testing
+       310 -  - Expected: Pseudo-legal=05, Legal=04 for Ke1 vs BQe8 
+           - position
+       311 -  - If passes, need to integrate into main test-step13.asm 
+           - and movegen-new.asm
+       309 +  - **test-debug16 PASSING**: Pseudo-legal=05, Legal=04 ✓
+       310 +  - Next: Integrate into main test-step13.asm and 
+           + movegen-new.asm
+       311 +  
+       312 +  ---
+       313 +  
+       314 +  ## Session: December 13, 2025 - D Register Clobbering Bug
+       315 +  
+       316 +  ### Critical Bug: Return Values in D Get Clobbered
+       317 +  
+       318 +  **Symptom:** Function returns correct value, but caller 
+           + prints wrong value.
+       319 +  
+       320 +  **Root Cause:** On 1802, D is the sole accumulator. EVERY 
+           + operation touches D:
+       321 +  - LDI, LDN, LDA (loads)
+       322 +  - STR, STXD (stores read D)
+       323 +  - ADD, ADI, SM, SMI (arithmetic)
+       324 +  - AND, OR, XOR, ANI, ORI, XRI (logic)
+       325 +  - GLO, GHI (register reads)
+       326 +  
+       327 +  **Example Bug:**
+       328 +  ```asm
+       329 +      CALL MY_FUNCTION        ; Returns value in D
+       330 +      LDI HIGH(STR_RESULT)    ; <-- CLOBBERS D!
+       331 +      PHI 8
+       332 +      CALL SERIAL_PRINT_STRING
+       333 +      CALL SERIAL_PRINT_HEX   ; Prints garbage, not return 
+           + value
+       334 +  ```
+       335 +  
+       336 +  **Fix:** Save return value to stack or register 
+           + immediately:
+       337 +  ```asm
+       338 +      CALL MY_FUNCTION
+       339 +      STXD                    ; Save D to stack immediately
+       340 +      ; ... print label ...
+       341 +      CALL SERIAL_PRINT_STRING
+       342 +      IRX
+       343 +      LDX                     ; Restore D
+       344 +      CALL SERIAL_PRINT_HEX   ; Now prints correct value
+       345 +  ```
+       346 +  
+       347 +  ### Best Practice for 1802
+       348 +  
+       349 +  **Never use D as a parameter or return value convention.** 
+           + Instead:
+       350 +  - Pass parameters via dedicated registers (R11, R12, etc.)
+       351 +  - Return values via dedicated registers (R13.0, R14.0, 
+           + etc.)
+       352 +  - If you must return in D, caller must save it IMMEDIATELY
+       353 +  
+       354 +  ### Serial I/O Register Clobbering (Complete List)
+       355 +  
+       356 +  SERIAL_WRITE_CHAR and related functions clobber:
+       357 +  - **R11.0** - character storage
+       358 +  - **R14.0** - delay counter
+       359 +  - **R15.0** - bit counter
+       360 +  
+       361 +  Any code calling serial functions must save/restore these 
+           + registers if needed.
+
+● Update(PROGRESS.md)
+  ⎿  Updated PROGRESS.md with 1 addition and 1 removal                   
+       183    
+       184    ### Phase 1: Move Validation (isolated tests)
+       185    - [x] Add check detection (is king in check?) - test-step12
+              passing (00,01,01,01,01)
+       186 -  - [ 
+           -  ] Add legal move filtering (reject moves that leave king in
+           -   check)
+       186 +  - [x
+           +  ] Add legal move filtering (reject moves that leave king in
+           +   check) - test-debug16 passing (05,04)
+       187    
+       188    ### Phase 2: Search & Evaluation (isolated tests)
+       189    - [ ] Add position evaluation function
+
+● Legal move filtering is now complete!
+
+  Summary of what we fixed:
+  1. R7 clobbering by SCRT - Used memory (MOVE_PIECE/CAPT_PIECE) instead of
+  R7 for make/unmake
+  2. R11 clobbering by serial - King square in IS_IN_CHECK must be preserved
+   across any serial calls
+  3. D register clobbering - Return values must be saved immediately before
+  any other operations
+
+  The test-debug16 position (Ke1 vs BQe8, BKa8) correctly identifies:
+  - 5 pseudo-legal king moves
+  - 4 legal moves (Ke2 blocked by queen on e-file)
+
+  Phase 1 (Move Validation) is complete! Next steps are:
+  - Phase 2: Position evaluation and alpha-beta search
+  - Phase 3: Opening book
+  - Phase 4: Main integration
+
+  Would you like to continue with position evaluation, or integrate the
+  working legal move filter into the main chess engine first?
+
+> I think I'll have to stop for today. It's well after midnight, and I must 
+get some sleep. 
+
+● Absolutely! Great progress today - we finally cracked the legal move
+  filter bug that's been plaguing us.
+
+  Today's accomplishments:
+  - Fixed the R7/SCRT clobbering issue with memory-based make/unmake
+  - Discovered the critical D register clobbering pattern
+  - Got test-debug16 passing (Pseudo-legal: 05, Legal: 04) ✓
+  - Phase 1 (Move Validation) is now complete
+
+  PROGRESS.md is updated with all the key findings, so you can pick up right
+   where we left off.
+
+  Get some rest! 🌙
+
+
+

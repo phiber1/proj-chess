@@ -1,0 +1,25 @@
+In file included from test-debug10.asm:9:
+serial-io.asm:3:14: warning: missing terminating ' character
+    3 | ; Chuck Yakym's 9600 baud routines + helper functions
+      |              ^
+serial-io.asm:4:26: warning: missing terminating ' character
+    4 | ; For use with Mark Abene's SCRT implementation
+      |                          ^
+serial-io.asm:154:34: warning: missing terminating ' character
+  154 |     BDF SPN_AF          ; Yes, it's A-F
+      |                                  ^
+serial-io.asm:180:27: warning: missing terminating ' character
+  180 | ; SERIAL_READ_CHAR - Chuck's B96IN (Inverted EF3 logic)
+      |                           ^
+serial-io.asm:223:28: warning: missing terminating ' character
+  223 | ; SERIAL_WRITE_CHAR - Chuck's B96OUT (Inverted Q logic)
+      |                            ^
+test-debug10.asm:178:37: warning: missing terminating ' character
+  178 |     LDI 5               ; We know it's 5
+      |                                     ^
+test-debug10.asm:298:15: warning: missing terminating ' character
+  298 |     ; If 0, we'd incorrectly count it as legal
+      |               ^
+test-debug10.asm:308:10: warning: missing terminating ' character
+  308 |     ; Let's manually set it to be sure
+      |          ^

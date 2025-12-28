@@ -1,0 +1,1063 @@
+
+ * ▐▛███▜▌ *   Claude Code v2.0.70
+* ▝▜█████▛▘ *  Opus 4.5 · Claude Max
+ *  ▘▘ ▝▝  *   ~/proj-chess
+══════════════════ Conversation compacted · ctrl+o for history ═════════════════
+  ⎿  Read test-king-movegen.asm (341 lines)
+  ⎿  Read test-minimal-movegen.hex (19 lines)
+  ⎿  Referenced file test-minimal-movegen.lst
+  ⎿  Read test-minimal-movegen-pp.asm (468 lines)
+  ⎿  Read test-minimal-movegen.asm (193 lines)
+  ⎿  Todo list read (10 items)
+
+● Let me build and test the king-only move generator to continue isolating the bug.
+
+● Bash(cpp -P test-king-movegen.asm 2>/dev/null > test-king-movegen-pp.asm &&
+      a18 test-king-movegen-pp.asm -o test-king-movegen.hex -l
+      test-king-movegen.lst && echo "B…)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +5 lines (ctrl+o to expand)
+
+● Build succeeded. Let me check the generated code looks reasonable.
+
+● Bash(cat /home/phiber/proj-chess/test-king-movegen.hex)
+  ⎿ :20000000C0014589FF01A9F800B9D40081FF0D324BFC0DFF083233FC08FF7F3233FC7F
+    AA98
+    :20002000995289F7320A8A581899FC01B98AD400A2300A99320AFF01B928F808D400A2
+    … +39 lines (ctrl+o to expand)
+
+
+
+● Bash(grep -A 50 "GEN_KING_MOVES" /home/phiber/proj-chess/test-king-movegen.lst
+       | head -60)
+  ⎿     0182   d4 01 9c          CALL GEN_KING_MOVES
+                                 ; Print "Moves:"
+        0185   f8 02             LDI HIGH(STR_MOVES)
+     … +62 lines (ctrl+o to expand)
+
+● Let me also check the PRINT_ALL_MOVES function since that was causing issues before.
+
+● Bash(grep -A 60 "PRINT_ALL_MOVES:"
+      /home/phiber/proj-chess/test-king-movegen.lst | head -70)
+  ⎿    01e2                 PRINT_ALL_MOVES:                               
+                                ; Use memory to track position (avoid regis
+    ter clobber issues)
+    … +59 lines (ctrl+o to expand)
+
+
+● The code looks correct. PRINT_ALL_MOVES uses R10 and R13 to track the move list pointer, saving/restoring R10 to R13 across serial calls. R13 isn't clobbered by the serial routines (only R9, R11, R14, R15 are).
+
+  The hex file is ready at test-king-movegen.hex. This test should:
+  1. Print "King MoveGen Test"
+  2. Print "King at e1 ($04)"
+  3. Generate all 5 valid king moves from e1 (d1, d2, e2, f2, f1)
+  4. Print each move as hex pairs
+  5. Print the count
+  6. Print "Done!"
+
+  Please run it on your hardware and let me know what output you get.
+
+> We've got "King at e1 ($04)", "Moves: 04-05 04-15 04-14 04-13 04-03", 
+"Count: 05", "Done!". By the way Claude, we just compacted, so please 
+re-read PROGRESS.md. 
+
+● Excellent! The king move generator works perfectly - all 5 valid moves from e1 (f1, f2, e2, d2, d1) with correct count. Let me read the progress file.
+
+● Read(PROGRESS.md)
+  ⎿  Read 557 lines
+
+● Good, I have full context now. The king-only move generator works correctly with proper register handling (using R8, R9, R10, R13 which don't conflict with serial I/O).
+
+  The issue before compaction was that test-step18 (depth 3-4 with integrated move generator) had register clobbering problems. Now that we've proven the king move generator works in isolation, the next step is to integrate it with the search.
+
+● Let me look at the current search structure and create an integrated test.
+
+● Search(pattern: "test-step17*.asm")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+● Read(test-step17.asm)
+  ⎿  Read 1652 lines
+
+● Now I understand the structure. The key issue from before was that the move generator used R12 for side-to-move, but the search uses R12 for ply. The king-only generator from test-king-movegen.asm avoids R12 entirely.
+
+  Let me create an integrated test that combines the working king move generator with the search, using a simple position (king + queen vs king).
+
+● Write(test-step19.asm)
+  ⎿  Wrote 1004 lines to test-step19.asm                                   
+     ; ====================================================================
+     ==========
+     ; Step 19: Search with Generated King Moves
+     ; Integrates working king move generator with alpha-beta search
+     ; ====================================================================
+     ==========
+     ;
+     ; Test position: White Ke4 + Qf3 vs Black Kh8
+     ; Simple position where we generate ACTUAL king moves (not hardcoded)
+     ; Expected: King moves that don't lose queen should score best
+     ;
+     ; Key fix: Generate moves to ply-specific move lists ($5100, $5120,
+     etc.)
+     … +994 lines (ctrl+o to expand)
+
+● Bash(cpp -P test-step19.asm 2>/dev/null > test-step19-pp.asm && a18
+      test-step19-pp.asm -o test-step19.hex -l test-step19.lst && echo "Build
+      successful")
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +4 lines (ctrl+o to expand)
+
+● Build successful. The hex file is ready at test-step19.hex.
+
+  This test uses the same king move generator pattern that worked in test-king-movegen, integrated with the search framework. The position is simple: White King at e4 with Queen at f3 vs Black King at h8.
+
+  At depth-1, it should:
+  1. Find the white king at e4
+  2. Generate all 8 king moves
+  3. Evaluate each position (all should score +900 = 0x0384 since queen is still on board)
+  4. Report best move and score
+
+  Please run it and let me know the output.
+
+> Something not right... all the scores come out as "0384". 
+
+● Actually, that's correct! Let me explain:
+
+  Position: WKe4 WQf3 vs BKh8
+
+  Material count:
+  - White: King (0) + Queen (900) = 900
+  - Black: King (0) = 0
+  - Score: 900 = 0x0384
+
+  Since the black king is at h8 (far corner) and the white king is at e4, no captures are possible from any king move. So every move evaluates to the same material score of +900.
+
+  The test is working - it's just not a very interesting position! To see different scores, we need either:
+  1. A position where the king can capture something
+  2. Deeper search where opponent responses matter
+
+  Let me modify the test with a more interesting position where the king can capture a piece:
+
+● Update(test-step19.asm)
+  ⎿  Added 1 line                                                      
+       120    ; Squares
+       121    SQ_E4       EQU $34
+       122    SQ_F3       EQU $25
+       123 +  SQ_D5       EQU $43      ; Black pawn for king to capture
+       124    SQ_H8       EQU $77
+       125    
+       126    ; Direction offsets for king
+
+● Update(test-step19.asm)
+  ⎿  Added 1 line                
+       115    BLACK       EQU $08
+       116    W_QUEEN     EQU $05
+       117    W_KING      EQU $06
+       118 +  B_PAWN      EQU $09
+       119    B_KING      EQU $0E
+       120    
+       121    ; Squares
+
+● Update(test-step19.asm)
+  ⎿  Added 5 lines                                        
+       775        PLO 10
+       776        LDI W_QUEEN
+       777        STR 10
+       778 +      ; Black Pawn at d5 (capturable by king!)
+       779 +      LDI SQ_D5
+       780 +      PLO 10
+       781 +      LDI B_PAWN
+       782 +      STR 10
+       783        ; Black King at h8
+       784        LDI SQ_H8
+       785        PLO 10
+
+● Update(test-step19.asm)
+  ⎿  Added 1 line, removed 1 line                                  
+       987        DB "Step19: Search + King MoveGen", 0DH, 0AH, 0
+       988    
+       989    STR_POS:
+       990 -      DB "WKe4 WQf3 vs BKh8", 0DH, 0AH, 0
+       990 +      DB "WKe4 WQf3 vs BPd5 BKh8", 0DH, 0AH, 0
+       991    
+       992    STR_SEARCH:
+       993        DB "Depth-1 with generated moves...", 0DH, 0AH, 0
+
+● Bash(cpp -P test-step19.asm 2>/dev/null > test-step19-pp.asm && a18
+      test-step19-pp.asm -o test-step19.hex -l test-step19.lst && echo "Build
+      successful")
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +4 lines (ctrl+o to expand)
+
+● Now we have a black pawn at d5 that the king can capture.
+
+  Expected scores:
+  - Most king moves: 800 (0x0320) - queen (900) minus pawn still on board (100)
+  - Kxd5 (34-43): 900 (0x0384) - captures the pawn, only queen value remains
+
+  The best move should be 34-43 (Kxd5) with score 0384.
+
+  Please run the updated test.
+
+> Ah, my mistake! Latest test, we've got the scores: 0320, 0320, 0320, 0320,
+ 0384, 0320, 0320. Best: 34-43 0384. 
+
+● Excellent! The integration is working perfectly:
+
+  - 7 moves generated (8 directions minus 1 blocked by own queen at f3)
+  - 6 moves score 0320 (800) - queen minus pawn still on board
+  - 1 move scores 0384 (900) - Kxd5 captures the pawn
+  - Best: 34-43 (Kxd5) - correct!
+
+  This confirms:
+  1. King move generation works in the search loop
+  2. Captures work correctly (pawn removed from evaluation)
+  3. Make/unmake preserves board state between moves
+  4. Best move selection works
+
+  Now let's extend to depth-2 to test the full negamax with opponent responses. I'll add the recursive search and black's king move generation:
+
+● Update(test-step19.asm)
+  ⎿  Added 2 lines, removed 2 lines                               
+       188        INC 10
+       189        STR 10              ; CUTOFF_COUNT = 0
+       190    
+       191 -      ; Set search depth to 1 (simpler test)
+       191 +      ; Set search depth to 2 (test opponent response)
+       192        LDI HIGH(SEARCH_DEPTH)
+       193        PHI 10
+       194        LDI LOW(SEARCH_DEPTH)
+       195        PLO 10
+       196 -      LDI 1
+       196 +      LDI 2
+       197        STR 10
+       198    
+       199        ; Set side to move = WHITE
+
+● Now I need to update the search to actually recurse. Let me replace the depth-1 evaluation with a call to NEGAMAX_PLY:
+
+● Update(test-step19.asm)
+  ⎿  Added 7 lines, removed 2 lines                  
+       422        ; Increment node count
+       423        CALL INC_NODE_COUNT
+       424    
+       425 -      ; At depth 1, just evaluate
+       426 -      CALL EVALUATE_MATERIAL
+       425 +      ; Call negamax for opponent (ply 1)
+       426 +      LDI 1
+       427 +      PLO 12              ; R12.0 = ply 1
+       428 +      CALL NEGAMAX_PLY
+       429    
+       430 +      ; Negate score (negamax)
+       431 +      CALL NEGATE_SCORE
+       432 +  
+       433        ; Print score
+       434        LDI ' '
+       435        CALL SERIAL_WRITE_CHAR
+
+● Now I need to add the NEGAMAX_PLY function and helpers. Let me add them after NR_DONE:
+
+● Update(test-step19.asm)
+  ⎿  Added 481 lines                                                     
+       510        RETN
+       511    
+       512    ; =========================================================
+             =====================
+       513 +  ; NEGAMAX_PLY - Search at ply level (in R12.0)
+       514 +  ; Returns score in SCORE_LO/HI
+       515 +  ; =========================================================
+           + =====================
+       516 +  NEGAMAX_PLY:
+       517 +      SEX 2
+       518 +  
+       519 +      ; Check if at leaf (depth reached)
+       520 +      LDI HIGH(SEARCH_DEPTH)
+       521 +      PHI 10
+       522 +      LDI LOW(SEARCH_DEPTH)
+       523 +      PLO 10
+       524 +      LDN 10              ; D = search depth
+       525 +      STR 2
+       526 +      GLO 12              ; D = current ply
+       527 +      SD                  ; D = depth - ply
+       528 +      LBNF NP_EVALUATE    ; If ply >= depth, evaluate
+       529 +      LBZ NP_EVALUATE
+       530 +  
+       531 +      ; Not at leaf - set up alpha/beta from parent
+       532 +      CALL SETUP_PLY_BOUNDS
+       533 +  
+       534 +      ; Find appropriate king (even ply = white, odd = black)
+       535 +      GLO 12
+       536 +      ANI $01
+       537 +      LBZ NP_WHITE_KING
+       538 +      CALL FIND_BLACK_KING
+       539 +      LBR NP_GEN_MOVES
+       540 +  NP_WHITE_KING:
+       541 +      CALL FIND_WHITE_KING
+       542 +  
+       543 +  NP_GEN_MOVES:
+       544 +      ; Generate king moves for this ply
+       545 +      CALL GENERATE_KING_MOVES_FOR_PLY
+       546 +  
+       547 +      ; Set move pointer
+       548 +      GLO 12
+       549 +      SHL
+       550 +      SHL
+       551 +      SHL
+       552 +      SHL
+       553 +      SHL                 ; ply * 32
+       554 +      STR 2
+       555 +      LDI LOW(MOVELIST_PLY0)
+       556 +      ADD
+       557 +      PLO 9
+       558 +      LDI HIGH(MOVELIST_PLY0)
+       559 +      ADCI 0
+       560 +      PHI 9
+       561 +  
+       562 +      ; Store in ply's PTR
+       563 +      GLO 12
+       564 +      SHL
+       565 +      SHL
+       566 +      SHL
+       567 +      SHL
+       568 +      STR 2
+       569 +      LDI LOW(PLY_BASE + PLY_PTR_LO)
+       570 +      ADD
+       571 +      PLO 10
+       572 +      LDI HIGH(PLY_BASE)
+       573 +      PHI 10
+       574 +      GLO 9
+       575 +      STR 10
+       576 +      INC 10
+       577 +      GHI 9
+       578 +      STR 10
+       579 +  
+       580 +      ; Initialize best to -infinity (will update with alpha 
+           + later)
+       581 +      GLO 12
+       582 +      SHL
+       583 +      SHL
+       584 +      SHL
+       585 +      SHL
+       586 +      STR 2
+       587 +      LDI LOW(PLY_BASE + PLY_BEST_LO)
+       588 +      ADD
+       589 +      PLO 10
+       590 +      LDI HIGH(PLY_BASE)
+       591 +      PHI 10
+       592 +      LDI NEG_INF_LO
+       593 +      STR 10
+       594 +      INC 10
+       595 +      LDI NEG_INF_HI
+       596 +      STR 10
+       597 +  
+       598 +  NP_LOOP:
+       599 +      ; Get move pointer
+       600 +      GLO 12
+       601 +      SHL
+       602 +      SHL
+       603 +      SHL
+       604 +      SHL
+       605 +      STR 2
+       606 +      LDI LOW(PLY_BASE + PLY_PTR_LO)
+       607 +      ADD
+       608 +      PLO 10
+       609 +      LDI HIGH(PLY_BASE)
+       610 +      PHI 10
+       611 +      LDN 10
+       612 +      PLO 11
+       613 +      INC 10
+       614 +      LDN 10
+       615 +      PHI 11
+       616 +  
+       617 +      ; Check end
+       618 +      LDN 11
+       619 +      XRI $FF
+       620 +      LBZ NP_RETURN_BEST
+       621 +  
+       622 +      ; Load move
+       623 +      LDA 11
+       624 +      PLO 9
+       625 +      LDA 11
+       626 +      PHI 9
+       627 +  
+       628 +      ; Save updated pointer
+       629 +      GLO 12
+       630 +      SHL
+       631 +      SHL
+       632 +      SHL
+       633 +      SHL
+       634 +      STR 2
+       635 +      LDI LOW(PLY_BASE + PLY_PTR_LO)
+       636 +      ADD
+       637 +      PLO 10
+       638 +      LDI HIGH(PLY_BASE)
+       639 +      PHI 10
+       640 +      GLO 11
+       641 +      STR 10
+       642 +      INC 10
+       643 +      GHI 11
+       644 +      STR 10
+       645 +  
+       646 +      ; Save move in ply storage
+       647 +      GLO 12
+       648 +      SHL
+       649 +      SHL
+       650 +      SHL
+       651 +      SHL
+       652 +      STR 2
+       653 +      LDI LOW(PLY_BASE + PLY_MOVE_FROM)
+       654 +      ADD
+       655 +      PLO 10
+       656 +      LDI HIGH(PLY_BASE)
+       657 +      PHI 10
+       658 +      GLO 9
+       659 +      STR 10
+       660 +      INC 10
+       661 +      GHI 9
+       662 +      STR 10
+       663 +  
+       664 +      ; Make move
+       665 +      DEC 10
+       666 +      LDN 10
+       667 +      PLO 11
+       668 +      INC 10
+       669 +      LDN 10
+       670 +      PHI 11
+       671 +      CALL MAKE_MOVE_PLY
+       672 +  
+       673 +      ; Increment node count
+       674 +      CALL INC_NODE_COUNT
+       675 +  
+       676 +      ; Recurse
+       677 +      GLO 12
+       678 +      ADI 1
+       679 +      PLO 12
+       680 +      CALL NEGAMAX_PLY
+       681 +      GLO 12
+       682 +      SMI 1
+       683 +      PLO 12
+       684 +  
+       685 +      ; Negate score
+       686 +      CALL NEGATE_SCORE
+       687 +  
+       688 +      ; Unmake move
+       689 +      GLO 12
+       690 +      SHL
+       691 +      SHL
+       692 +      SHL
+       693 +      SHL
+       694 +      STR 2
+       695 +      LDI LOW(PLY_BASE + PLY_MOVE_FROM)
+       696 +      ADD
+       697 +      PLO 10
+       698 +      LDI HIGH(PLY_BASE)
+       699 +      PHI 10
+       700 +      LDN 10
+       701 +      PLO 11
+       702 +      INC 10
+       703 +      LDN 10
+       704 +      PHI 11
+       705 +      CALL UNMAKE_MOVE_PLY
+       706 +  
+       707 +      ; Update best if score > best
+       708 +      CALL CHECK_SCORE_GT_PLY_BEST
+       709 +      LBZ NP_LOOP
+       710 +  
+       711 +      ; Update PLY_BEST = SCORE
+       712 +      LDI HIGH(SCORE_LO)
+       713 +      PHI 10
+       714 +      LDI LOW(SCORE_LO)
+       715 +      PLO 10
+       716 +      LDN 10
+       717 +      PLO 9
+       718 +      INC 10
+       719 +      LDN 10
+       720 +      PHI 9
+       721 +  
+       722 +      GLO 12
+       723 +      SHL
+       724 +      SHL
+       725 +      SHL
+       726 +      SHL
+       727 +      STR 2
+       728 +      LDI LOW(PLY_BASE + PLY_BEST_LO)
+       729 +      ADD
+       730 +      PLO 10
+       731 +      LDI HIGH(PLY_BASE)
+       732 +      PHI 10
+       733 +      GLO 9
+       734 +      STR 10
+       735 +      INC 10
+       736 +      GHI 9
+       737 +      STR 10
+       738 +  
+       739 +      LBR NP_LOOP
+       740 +  
+       741 +  NP_RETURN_BEST:
+       742 +      ; Return PLY_BEST in SCORE
+       743 +      GLO 12
+       744 +      SHL
+       745 +      SHL
+       746 +      SHL
+       747 +      SHL
+       748 +      STR 2
+       749 +      LDI LOW(PLY_BASE + PLY_BEST_LO)
+       750 +      ADD
+       751 +      PLO 10
+       752 +      LDI HIGH(PLY_BASE)
+       753 +      PHI 10
+       754 +      LDN 10
+       755 +      PLO 9
+       756 +      INC 10
+       757 +      LDN 10
+       758 +      PHI 9
+       759 +  
+       760 +      LDI HIGH(SCORE_LO)
+       761 +      PHI 10
+       762 +      LDI LOW(SCORE_LO)
+       763 +      PLO 10
+       764 +      GLO 9
+       765 +      STR 10
+       766 +      INC 10
+       767 +      GHI 9
+       768 +      STR 10
+       769 +      RETN
+       770 +  
+       771 +  NP_EVALUATE:
+       772 +      ; Leaf node - evaluate
+       773 +      ; Even ply = white's perspective, odd = black's
+       774 +      CALL EVALUATE_MATERIAL
+       775 +      ; If odd ply, negate (we evaluate from white's view)
+       776 +      GLO 12
+       777 +      ANI $01
+       778 +      LBZ NP_EVAL_DONE
+       779 +      CALL NEGATE_SCORE
+       780 +  NP_EVAL_DONE:
+       781 +      RETN
+       782 +  
+       783 +  ; =========================================================
+           + =====================
+       784 +  ; SETUP_PLY_BOUNDS - Set alpha/beta from parent (negated 
+           + and swapped)
+       785 +  ; =========================================================
+           + =====================
+       786 +  SETUP_PLY_BOUNDS:
+       787 +      ; Get parent ply offset
+       788 +      GLO 12
+       789 +      SMI 1
+       790 +      SHL
+       791 +      SHL
+       792 +      SHL
+       793 +      SHL
+       794 +      PLO 14              ; parent offset
+       795 +  
+       796 +      ; Get parent beta -> negate -> child alpha
+       797 +      GLO 14
+       798 +      STR 2
+       799 +      LDI LOW(PLY_BASE + PLY_BETA_LO)
+       800 +      ADD
+       801 +      PLO 10
+       802 +      LDI HIGH(PLY_BASE)
+       803 +      PHI 10
+       804 +      LDN 10
+       805 +      PLO 9
+       806 +      INC 10
+       807 +      LDN 10
+       808 +      PHI 9
+       809 +  
+       810 +      ; Negate
+       811 +      GLO 9
+       812 +      XRI $FF
+       813 +      PLO 9
+       814 +      GHI 9
+       815 +      XRI $FF
+       816 +      PHI 9
+       817 +      GLO 9
+       818 +      ADI 1
+       819 +      PLO 9
+       820 +      GHI 9
+       821 +      ADCI 0
+       822 +      PHI 9
+       823 +  
+       824 +      ; Store as child alpha
+       825 +      GLO 12
+       826 +      SHL
+       827 +      SHL
+       828 +      SHL
+       829 +      SHL
+       830 +      STR 2
+       831 +      LDI LOW(PLY_BASE + PLY_ALPHA_LO)
+       832 +      ADD
+       833 +      PLO 10
+       834 +      LDI HIGH(PLY_BASE)
+       835 +      PHI 10
+       836 +      GLO 9
+       837 +      STR 10
+       838 +      INC 10
+       839 +      GHI 9
+       840 +      STR 10
+       841 +  
+       842 +      ; Get parent alpha -> negate -> child beta
+       843 +      GLO 14
+       844 +      STR 2
+       845 +      LDI LOW(PLY_BASE + PLY_ALPHA_LO)
+       846 +      ADD
+       847 +      PLO 10
+       848 +      LDN 10
+       849 +      PLO 9
+       850 +      INC 10
+       851 +      LDN 10
+       852 +      PHI 9
+       853 +  
+       854 +      ; Negate
+       855 +      GLO 9
+       856 +      XRI $FF
+       857 +      PLO 9
+       858 +      GHI 9
+       859 +      XRI $FF
+       860 +      PHI 9
+       861 +      GLO 9
+       862 +      ADI 1
+       863 +      PLO 9
+       864 +      GHI 9
+       865 +      ADCI 0
+       866 +      PHI 9
+       867 +  
+       868 +      ; Store as child beta
+       869 +      GLO 12
+       870 +      SHL
+       871 +      SHL
+       872 +      SHL
+       873 +      SHL
+       874 +      STR 2
+       875 +      LDI LOW(PLY_BASE + PLY_BETA_LO)
+       876 +      ADD
+       877 +      PLO 10
+       878 +      LDI HIGH(PLY_BASE)
+       879 +      PHI 10
+       880 +      GLO 9
+       881 +      STR 10
+       882 +      INC 10
+       883 +      GHI 9
+       884 +      STR 10
+       885 +  
+       886 +      RETN
+       887 +  
+       888 +  ; =========================================================
+           + =====================
+       889 +  ; NEGATE_SCORE - Negate SCORE_LO/HI in place
+       890 +  ; =========================================================
+           + =====================
+       891 +  NEGATE_SCORE:
+       892 +      LDI HIGH(SCORE_LO)
+       893 +      PHI 10
+       894 +      LDI LOW(SCORE_LO)
+       895 +      PLO 10
+       896 +      LDN 10
+       897 +      XRI $FF
+       898 +      PLO 9
+       899 +      INC 10
+       900 +      LDN 10
+       901 +      XRI $FF
+       902 +      PHI 9
+       903 +      GLO 9
+       904 +      ADI 1
+       905 +      PLO 9
+       906 +      GHI 9
+       907 +      ADCI 0
+       908 +      PHI 9
+       909 +      DEC 10
+       910 +      GLO 9
+       911 +      STR 10
+       912 +      INC 10
+       913 +      GHI 9
+       914 +      STR 10
+       915 +      RETN
+       916 +  
+       917 +  ; =========================================================
+           + =====================
+       918 +  ; CHECK_SCORE_GT_PLY_BEST - Return D=1 if SCORE > PLY_BEST
+       919 +  ; =========================================================
+           + =====================
+       920 +  CHECK_SCORE_GT_PLY_BEST:
+       921 +      ; Get PLY_BEST into R9
+       922 +      GLO 12
+       923 +      SHL
+       924 +      SHL
+       925 +      SHL
+       926 +      SHL
+       927 +      STR 2
+       928 +      LDI LOW(PLY_BASE + PLY_BEST_LO)
+       929 +      ADD
+       930 +      PLO 10
+       931 +      LDI HIGH(PLY_BASE)
+       932 +      PHI 10
+       933 +      LDN 10
+       934 +      PLO 9
+       935 +      INC 10
+       936 +      LDN 10
+       937 +      PHI 9
+       938 +  
+       939 +      ; Get SCORE into R15
+       940 +      LDI HIGH(SCORE_LO)
+       941 +      PHI 10
+       942 +      LDI LOW(SCORE_LO)
+       943 +      PLO 10
+       944 +      LDN 10
+       945 +      PLO 15
+       946 +      INC 10
+       947 +      LDN 10
+       948 +      PHI 15
+       949 +  
+       950 +      ; Compare R15 > R9?
+       951 +      GHI 15
+       952 +      STR 2
+       953 +      GHI 9
+       954 +      XOR
+       955 +      ANI $80
+       956 +      LBNZ CSPB_DIFF
+       957 +  
+       958 +      ; Same sign
+       959 +      GHI 9
+       960 +      STR 2
+       961 +      GHI 15
+       962 +      SD
+       963 +      BNZ CSPB_HI_DIFF
+       964 +      GLO 9
+       965 +      STR 2
+       966 +      GLO 15
+       967 +      SD
+       968 +      BZ CSPB_EQ
+       969 +      BNF CSPB_GT
+       970 +      LDI 0
+       971 +      RETN
+       972 +  
+       973 +  CSPB_HI_DIFF:
+       974 +      BNF CSPB_GT
+       975 +      LDI 0
+       976 +      RETN
+       977 +  
+       978 +  CSPB_EQ:
+       979 +      LDI 0
+       980 +      RETN
+       981 +  
+       982 +  CSPB_GT:
+       983 +      LDI 1
+       984 +      RETN
+       985 +  
+       986 +  CSPB_DIFF:
+       987 +      GHI 15
+       988 +      ANI $80
+       989 +      LBNZ CSPB_EQ
+       990 +      LDI 1
+       991 +      RETN
+       992 +  
+       993 +  ; =========================================================
+           + =====================
+       994    ; FIND_WHITE_KING - Find white king on board, store in 
+             KING_SQUARE
+       995    ; =========================================================
+             =====================
+       996    FIND_WHITE_KING:
+
+● Now I need to add the FIND_BLACK_KING function. Let me find it and add it:
+
+● Read(test-step19.asm)
+  ⎿  Read 100 lines
+
+● Update(test-step19.asm)
+  ⎿  Added 57 lines                                                      
+       1048        RETN
+       1049    
+       1050    ; ========================================================
+              ======================
+       1051 +  ; FIND_BLACK_KING - Find black king on board, store in 
+            + KING_SQUARE
+       1052 +  ; ========================================================
+            + ======================
+       1053 +  FIND_BLACK_KING:
+       1054 +      LDI HIGH(BOARD)
+       1055 +      PHI 10
+       1056 +      LDI 0
+       1057 +      PLO 10
+       1058 +      PLO 13              ; R13 = square counter
+       1059 +  
+       1060 +  FBK_LOOP:
+       1061 +      GLO 13
+       1062 +      ANI $88
+       1063 +      LBNZ FBK_NEXT_RANK
+       1064 +  
+       1065 +      LDN 10
+       1066 +      XRI B_KING
+       1067 +      LBZ FBK_FOUND
+       1068 +  
+       1069 +      INC 10
+       1070 +      INC 13
+       1071 +      GLO 13
+       1072 +      ANI $80
+       1073 +      LBZ FBK_LOOP
+       1074 +      LBR FBK_NOT_FOUND
+       1075 +  
+       1076 +  FBK_NEXT_RANK:
+       1077 +      GLO 13
+       1078 +      ADI 8
+       1079 +      PLO 13
+       1080 +      GLO 10
+       1081 +      ADI 8
+       1082 +      PLO 10
+       1083 +      GHI 10
+       1084 +      ADCI 0
+       1085 +      PHI 10
+       1086 +      GLO 13
+       1087 +      ANI $80
+       1088 +      LBZ FBK_LOOP
+       1089 +  
+       1090 +  FBK_NOT_FOUND:
+       1091 +      LDI $FF             ; No king found
+       1092 +      LBR FBK_STORE
+       1093 +  
+       1094 +  FBK_FOUND:
+       1095 +      GLO 13
+       1096 +  
+       1097 +  FBK_STORE:
+       1098 +      PLO 14
+       1099 +      LDI HIGH(KING_SQUARE)
+       1100 +      PHI 10
+       1101 +      LDI LOW(KING_SQUARE)
+       1102 +      PLO 10
+       1103 +      GLO 14
+       1104 +      STR 10
+       1105 +      RETN
+       1106 +  
+       1107 +  ; ========================================================
+            + ======================
+       1108    ; GENERATE_KING_MOVES_FOR_PLY - Generate king moves to 
+              ply's move list
+       1109    ; Input: R12.0 = ply number (used to select move list)
+       1110    ; Uses KING_SQUARE for source
+
+● I also need to fix GENERATE_KING_MOVES_FOR_PLY to handle both colors correctly. Currently it assumes white is moving:
+
+● Update(test-step19.asm)
+  ⎿  Added 15 lines, removed 4 lines                                     
+       1164        ANI $88
+       1165        LBNZ GKM_NEXT_DIR    ; Off board, skip
+       1166    
+       1167 -      ; Check if target is empty or enemy
+            -   (for now just check not own piece)
+       1167 +      ; Check if target is empty or enemy
+       1168 +      ; Even ply = white (can capture black $08), odd ply = 
+            + black (can capture white $00)
+       1169        LDI HIGH(BOARD)
+       1170        PHI 8               ; R8 = BOARD + target
+       1171        LDN 8               ; Load piece at target
+       1172        LBZ GKM_ADD_MOVE    ; Empty, add move
+       1173 -      ANI $08             ; Check color
+       1174 -      LBNZ GKM_ADD_MOVE   ; Black piece = can capture
+       1175 -      LBR GKM_NEXT_DIR    ; Own piece, skip
+       1173    
+       1174 +      ; Check if enemy piece (can capture)
+       1175 +      PLO 15              ; Save piece in R15.0
+       1176 +      ANI $08             ; Get color bit
+       1177 +      STR 2               ; Store target piece color
+       1178 +      GLO 12              ; Get ply
+       1179 +      ANI $01             ; Odd = black moving, even = white
+            +  moving
+       1180 +      SHL
+       1181 +      SHL
+       1182 +      SHL                 ; Convert to $08 for black, $00 
+            + for white
+       1183 +      XOR                 ; XOR with target color
+       1184 +      LBNZ GKM_ADD_MOVE   ; Different color = enemy, can 
+            + capture
+       1185 +      LBR GKM_NEXT_DIR    ; Same color = own piece, skip
+       1186 +  
+       1187    GKM_ADD_MOVE:
+       1188        ; Add move to list
+       1189        GLO 14              ; from = king square
+
+● Update(test-step19.asm)
+  ⎿  Added 1 line, removed 1 line                                   
+       1544        DB "WKe4 WQf3 vs BPd5 BKh8", 0DH, 0AH, 0
+       1545    
+       1546    STR_SEARCH:
+       1547 -      DB "Depth-1 with generated moves...", 0DH, 0AH, 0
+       1547 +      DB "Depth-2 with generated moves...", 0DH, 0AH, 0
+       1548    
+       1549    STR_TRY:
+       1550        DB "Try ", 0
+
+● Bash(cpp -P test-step19.asm 2>/dev/null > test-step19-pp.asm && a18
+      test-step19-pp.asm -o test-step19.hex -l test-step19.lst && echo "Build
+      successful")
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +4 lines (ctrl+o to expand)
+
+● Build successful. The test hex is ready at test-step19.hex.
+
+  What to expect at depth-2:
+  - White's 7 king moves are tried
+  - For each, Black's king responds from h8 (has 3 moves: g8, g7, h7)
+  - Scores should be similar to depth-1 since Black has no captures available
+
+  Please run it and share the results.
+
+> Scores 0320, 0320, 0320, 0320, 0384, 0320, 0320, Best: 34-43 0384, Nodes: 
+001C. Done! 
+
+● Depth-2 search working correctly!
+
+  Results analysis:
+  - 7 white moves tried
+  - Scores match depth-1 (no black captures available)
+  - Best: 34-43 (Kxd5) with score 0384 ✓
+  - Nodes: 001C (28 decimal) = 7 white moves + 21 black responses (7 × 3 king moves from h8)
+
+  The move generator integration is working. Let me update the progress file and mark this milestone:
+
+● Update(PROGRESS.md)
+  ⎿  Added 41 lines, removed 2 lines                                     
+       545    
+       546    ---
+       547    
+       548 +  ## Session: December 16, 2025 (continued) - Move Generator 
+           + Integration
+       549 +  
+       550 +  ### Step 19: Search with Generated King Moves - PASSING
+       551 +  
+       552 +  Successfully integrated king move generator with alpha-beta
+           +  search framework:
+       553 +  
+       554 +  **Test Position:** WKe4 WQf3 vs BPd5 BKh8
+       555 +  
+       556 +  **Depth-1 Results:**
+       557 +  - 7 moves generated (8 directions - 1 blocked by own queen)
+       558 +  - 6 moves score 0320 (800 = queen - pawn)
+       559 +  - 1 move scores 0384 (900 = Kxd5 captures pawn)
+       560 +  - Best: 34-43 (Kxd5) ✓
+       561 +  
+       562 +  **Depth-2 Results:**
+       563 +  - Same scores (black has no captures)
+       564 +  - Best: 34-43 (Kxd5) with score 0384 ✓
+       565 +  - Nodes: 001C (28) = 7 white + 21 black responses
+       566 +  
+       567 +  **Key Implementation Details:**
+       568 +  
+       569 +  1. **Per-ply move lists** at $5100, $5120, $5140, $5160 (32
+           +  bytes each)
+       570 +  
+       571 +  2. **Color-aware move generation** - uses ply to determine 
+           + friendly color:
+       572 +     ```asm
+       573 +     GLO 12              ; Get ply
+       574 +     ANI $01             ; Odd = black, even = white
+       575 +     SHL
+       576 +     SHL
+       577 +     SHL                 ; Convert to $08 for black, $00 for 
+           + white
+       578 +     ```
+       579 +  
+       580 +  3. **King finder per side** - FIND_WHITE_KING and 
+           + FIND_BLACK_KING
+       581 +  
+       582 +  4. **Register allocation** - King move generator uses R8, 
+           + R9, R10, R13, R14 (avoids R11/R12 conflicts)
+       583 +  
+       584 +  ---
+       585 +  
+       586    ### TODO - Remaining
+       587    
+       588 -  - [ ] Add alpha-beta pruning (essential for depth 3+)
+       588 +  - [x] Integrate with move generator (king moves working!)
+       589 +  - [ ] Add alpha-beta pruning to NEGAMAX_PLY (framework 
+           + ready)
+       590    - [ ] Add quiescence search
+       591    - [ ] Extend to depth 4 with ply-indexed storage
+       592 -  - [ ] Integrate with full move generator (replace hardcoded
+           -  moves)
+       592 +  - [ ] Add full piece move generation (queens, rooks, etc.)
+       593    - [ ] Add piece-square tables (optional enhancement)
+       594    - [ ] Opening book integration
+       595    - [ ] Main chess-engine.asm integration
+
+● King move generator integration complete.
+
+  Next options:
+
+  1. Try deeper search (depth 3-4) with just king moves to validate the ply-indexed storage works at deeper levels
+  2. Add full piece move generation - integrate the working movegen-new.asm with careful register allocation
+  3. Create a more tactical position to test alpha-beta pruning (current position has no cutoffs because all moves lead to similar scores)
+
+  Which would you like to tackle next?
+
+> This is a good stopping point. Let's log progress, and pick up on it fresh
+ next time. 
+
+● Update(PROGRESS.md)
+  ⎿  Added 28 lines, removed 3 lines                                    
+       586    ### TODO - Remaining
+       587    
+       588    - [x] Integrate with move generator (king moves working!)
+       589 -  - [ ] Add alpha-beta pruning to NEGAMAX_PLY (framework 
+           - ready)
+       589 +  - [ ] Add full piece move generation (integrate 
+           + movegen-new.asm)
+       590 +  - [ ] Test depth 3-4 search
+       591 +  - [ ] Add alpha-beta pruning cutoffs to NEGAMAX_PLY
+       592    - [ ] Add quiescence search
+       593 -  - [ ] Extend to depth 4 with ply-indexed storage
+       594 -  - [ ] Add full piece move generation (queens, rooks, etc.)
+       593    - [ ] Add piece-square tables (optional enhancement)
+       594    - [ ] Opening book integration
+       595    - [ ] Main chess-engine.asm integration
+       596 +  
+       597 +  ---
+       598 +  
+       599 +  ### Current State Summary (End of Session)
+       600 +  
+       601 +  **Working Components:**
+       602 +  - Serial I/O (9600 baud)
+       603 +  - Board representation (0x88)
+       604 +  - Full move generation for all pieces (movegen-new.asm)
+       605 +  - Check detection
+       606 +  - Legal move filtering
+       607 +  - Material evaluation
+       608 +  - Alpha-beta search framework with ply-indexed storage
+       609 +  - King move generator integrated with search 
+           + (test-step19.asm)
+       610 +  
+       611 +  **Key Test Files:**
+       612 +  - `test-step17.asm` - Alpha-beta with hardcoded moves 
+           + (depth-2 working)
+       613 +  - `test-step19.asm` - Search with generated king moves 
+           + (depth-2 working)
+       614 +  - `test-king-movegen.asm` - Isolated king move generator 
+           + test
+       615 +  
+       616 +  **Next Session Starting Point:**
+       617 +  Continue from test-step19.asm. Options:
+       618 +  1. Add full piece generation from movegen-new.asm
+       619 +  2. Test deeper search (depth 3-4) with king moves only
+       620 +  3. Create tactical position to verify alpha-beta cutoffs
+
+● Progress logged. Great session!
+
+  Summary of today's work:
+  - Fixed move generator register clobbering issues via isolated testing
+  - test-king-movegen.asm proved king-only generator works (5 moves from e1)
+  - test-step19.asm successfully integrates move generation with search
+  - Depth-1 and depth-2 both working with generated moves
+  - Best move selection correct (Kxd5 captures free pawn)
+
+  Key breakthrough: Using R8, R9, R10, R13, R14 for move generation avoids conflicts with R11 (serial), R12 (ply), and R7 (SCRT).
+
+  See you next time!
+
+
+

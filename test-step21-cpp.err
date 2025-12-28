@@ -1,0 +1,31 @@
+In file included from test-step21.asm:19:
+serial-io.asm:3:14: warning: missing terminating ' character
+    3 | ; Chuck Yakym's 9600 baud routines + helper functions
+      |              ^
+serial-io.asm:4:26: warning: missing terminating ' character
+    4 | ; For use with Mark Abene's SCRT implementation
+      |                          ^
+serial-io.asm:154:34: warning: missing terminating ' character
+  154 |     BDF SPN_AF          ; Yes, it's A-F
+      |                                  ^
+serial-io.asm:180:27: warning: missing terminating ' character
+  180 | ; SERIAL_READ_CHAR - Chuck's B96IN (Inverted EF3 logic)
+      |                           ^
+serial-io.asm:223:28: warning: missing terminating ' character
+  223 | ; SERIAL_WRITE_CHAR - Chuck's B96OUT (Inverted Q logic)
+      |                            ^
+test-step21.asm:82:26: warning: missing terminating ' character
+   82 | ; Offsets within each ply's storage
+      |                          ^
+test-step21.asm:685:19: warning: missing terminating ' character
+  685 |     ; Store in ply's PTR
+      |                   ^
+test-step21.asm:912:49: warning: missing terminating ' character
+  912 |     ; If odd ply, negate (we evaluate from white's view)
+      |                                                 ^
+test-step21.asm:1121:31: warning: missing terminating ' character
+ 1121 | ; Output: Moves written to ply's move list, terminated with $FF
+      |                               ^
+test-step21.asm:1167:41: warning: missing terminating ' character
+ 1167 |     ; D now contains move count - we don't need it, moves are in list
+      |                                         ^

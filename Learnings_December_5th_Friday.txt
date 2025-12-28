@@ -1,0 +1,1626 @@
+
+ ▐▛███▜▌   Claude Code v2.0.58
+▝▜█████▛▘  Opus 4.5 · Claude Max
+  ▘▘ ▝▝    ~/proj-chess
+══════════════════ Conversation compacted · ctrl+o for history ═════════════════
+  ⎿  Read chuck-test.asm (150 lines)
+  ⎿  Read chuck-test-string.asm (156 lines)
+  ⎿  Read test-simple-loop.hex (5 lines)
+  ⎿  Read test-simple-loop.lst (103 lines)
+  ⎿  Read test-simple-loop.asm (100 lines)
+  ⎿  Todo list read (3 items)
+
+● I'll integrate Chuck's working serial output routine into the chess
+  engine. Let me first examine the current chess engine structure to
+  understand how to integrate the serial I/O.
+
+● Search(pattern: "*.asm", path: "~/proj-chess")
+  ⎿  Found 77 files (ctrl+o to expand)
+
+● Search(pattern: "*chess*.asm", path: "~/proj-chess")
+  ⎿  Found 1 file (ctrl+o to expand)
+
+● Read(serial-io-bitbang.asm)
+  ⎿  Read 291 lines
+
+● Read(main.asm)
+  ⎿  Read 226 lines
+
+● Read(config.asm)
+  ⎿  Read 203 lines
+
+● Now let me check the serial-autocal.asm to see what calibration approach
+  is used:
+
+● Read(serial-autocal.asm)
+  ⎿  Read 273 lines
+
+● Now I'll create a new serial I/O module based on Chuck's working code.
+  This will replace the current serial-io-bitbang.asm with the proven timing
+   structure:
+
+● Write(serial-io-9600.asm)
+  ⎿  Wrote 292 lines to serial-io-9600.asm                                 
+     ; =====================================================================
+     =========
+     ; RCA 1802/1806 Chess Engine - Serial I/O (9600 Baud Bit-Bang)
+     ; =====================================================================
+     =========
+     ; Proven working serial I/O based on Chuck's timing-critical routine
+     ; For Membership Card at 1.75 MHz, 9600 baud
+     ;
+     ; Q output: SEQ = space/0, REQ = mark/1
+     ; EF3 input: Idle high, start bit low (inverted)
+     ;
+     ; Register usage for serial output:
+     … +282 lines (ctrl+o to expand)
+
+● Now let me update the config.asm for the Membership Card at 1.75 MHz:
+
+● Update(config.asm)
+  ⎿  Updated config.asm with 2 additions and 2 removals                  
+       27    ; Uncomment ONE: CFG_USE_EF1, CFG_USE_EF2, CFG_USE_EF3, or 
+            CFG_USE_EF4
+       28    /* #define CFG_USE_EF1 */
+       29    /* #define CFG_USE_EF2 */
+       30 -  /* #define CFG_USE_EF3         /* DEFAULT */
+       31 -  #define CFG_USE_EF4
+       30 +  #define CFG_USE_EF3         /* Membership Card uses EF3 for 
+          + serial RX */
+       31 +  /* #define CFG_USE_EF4 */
+       32    
+       33    #ifdef CFG_USE_EF1
+       34    USE_EF1 EQU 1
+
+● Update(config.asm)
+  ⎿  Updated config.asm with 10 additions and 5 removals                 
+       57    ; ==========================================================
+            ====================
+       58    ; SERIAL PARAMETERS
+       59    ; ==========================================================
+            ====================
+       60 +  ; Membership Card: 1.75 MHz clock, 9600 baud
+       61 +  ; Uses Chuck's proven serial I/O routine 
+          + (serial-io-9600.asm)
+       62 +  ; R14.0 delay counter = 2 on entry (decremented to 1 for 
+          + 9600 baud)
+       63    BAUD_RATE   EQU 9600
+       64 -  CPU_CLOCK   EQU 12
+       65 -  ; Corrected: 6 cycles/iteration (DEC+GLO+BNZ), need 1250 
+          - cycles
+       66 -  ; (1250-9)/6 = 207 iterations
+       67 -  BIT_DELAY   EQU 207     ; For 9600 @ 12 MHz - CORRECTED!
+       68 -  HALF_DELAY  EQU 104     ; Half bit time     
+       64 +  CPU_CLOCK   EQU 1.75    ; Membership Card clock speed in MHz
+       65    
+       66 +  ; Note: The serial-io-9600.asm uses inline delays with NOPs 
+          + and the
+       67 +  ; SMI 01H / BNZ loop structure. These values are for 
+          + reference only.
+       68 +  ; The actual timing is built into the proven routine.
+       69 +  BIT_DELAY   EQU 2       ; R14.0 value for 9600 baud (Chuck's
+          +  routine)
+       70 +  HALF_DELAY  EQU 1       ; Not used by Chuck's routine     
+       71 +  
+       72    ; UART ports
+       73    UART_DATA   EQU $01     
+       74    UART_STATUS EQU $02     
+
+> It's arguable whether we should pursue autocalibration right now, and 
+maybe it's better to just assume the known-working fixed delays for 9600 
+baud. 
+
+● Good point. The auto-calibration added complexity without benefit when we
+  have proven working fixed delays. Let me update main.asm to remove the
+  auto-calibration call and use the fixed 9600 baud routine directly:
+
+● Update(main.asm)
+  ⎿  Updated main.asm with 1 addition and 6 removals                     
+       34    
+       35        ; Now CALL/RETN will work!
+       36    
+       37 -      ; Initialize serial I/O FIRST (sets Q high for idle)
+       37 +      ; Initialize serial I/O (sets Q high for idle, R14.0 = 2
+          +  )
+       38        CALL SERIAL_INIT
+       39    
+       40 -      ; AUTO-CALIBRATE baud rate
+       41 -      ; Q will blink - then press SPACE bar
+       42 -      ; Q will blink twice when calibrated
+       43 -      CALL AUTO_CALIBRATE
+       44 -  
+       40        ; Initialize board to starting position
+       41        CALL INIT_BOARD
+       42    
+
+● Now let me check the chess-engine.asm to see how the files are organized
+  and included:
+
+● Read(chess-engine.asm)
+  ⎿  Error: File content (48411 tokens) exceeds maximum allowed tokens (25000). 
+     Please use offset and limit parameters to read specific portions of the 
+     file, or use the GrepTool to search for specific content.
+
+● Search(pattern: "INCLUDE|serial", path: "chess-engine.asm", output_mode:
+        "content")
+  ⎿  Found 33 lines (ctrl+o to expand)
+
+● Read(chess-engine.asm)
+  ⎿  Read 300 lines
+
+● The chess-engine.asm is a combined file. Let me see how it's structured at
+   the beginning:
+
+● Read(chess-engine.asm)
+  ⎿  Read 50 lines
+
+● I see - chess-engine.asm is auto-generated by build.sh. Let me check the
+  build script to see how to update it:
+
+● Search(pattern: "build*.sh", path: "~/proj-chess")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+● Read(build.sh)
+  ⎿  Read 189 lines
+
+● I see the build script includes serial-autocal.asm and
+  serial-io-bitbang.asm when USE_BITBANG is set. I need to update the build
+  script to use the new serial-io-9600.asm instead, and also remove the
+  auto-calibration since we're using fixed delays. Let me update the build
+  script:
+
+● Update(build.sh)
+  ⎿  Updated build.sh with 4 additions and 7 removals                    
+       115    
+       116    # Include serial I/O based on configuration
+       117    if grep -q "^USE_BITBANG.*EQU 1" "$CONFIG_FILE" 
+             2>/dev/null; then
+       118 -      echo "  - serial-autocal.asm (auto-calibrating delays)"
+       119 -      cat serial-autocal.asm >> "$OUTPUT"
+       120 -      echo "  - serial-io-bitbang.asm (bit-bang serial)"
+       121 -      cat serial-io-bitbang.asm >> "$OUTPUT"
+       118 +      echo "  - serial-io-9600.asm (9600 baud fixed timing - 
+           + Chuck's routine)"
+       119 +      cat serial-io-9600.asm >> "$OUTPUT"
+       120    elif grep -q "^USE_UART.*EQU 1" "$CONFIG_FILE" 2>/dev/null;
+              then
+       121        echo "  - serial-io-uart.asm (hardware UART)"
+       122        cat serial-io-uart.asm >> "$OUTPUT"
+       123    else
+       124 -      echo "  WARNING: No serial I/O module selected, using 
+           -  bit-bang as default"
+       125 -      cat serial-autocal.asm >> "$OUTPUT"
+       126 -      cat serial-io-bitbang.asm >> "$OUTPUT"
+       124 +      echo "  WARNING: No serial I/O module selected, using 
+           +  9600 baud bit-bang as default"
+       125 +      cat serial-io-9600.asm >> "$OUTPUT"
+       126    fi
+       127    
+       128    echo "  - uci.asm"
+
+● Now let me create a test file that can be used to verify the integrated
+  serial I/O works before running the full chess engine:
+
+● Write(test-serial-integrated.asm)
+  ⎿  Wrote 375 lines to test-serial-integrated.asm                         
+     ; =====================================================================
+     =========
+     ; Test Serial I/O Integration
+     ; =====================================================================
+     =========
+     ; Minimal test to verify serial-io-9600.asm works correctly
+     ; Outputs "Hello, world!" and then echoes received characters
+     ;
+     ; For Membership Card at 1.75 MHz, 9600 baud
+     ; =====================================================================
+     =========
+         ORG $0000
+     … +365 lines (ctrl+o to expand)
+
+> You're getting an error from chess-engine.asm having too many tokens. Will
+ this be a problem? Would you have to split up the file? 
+
+● No, the large file won't be a problem. That's just a limitation of the
+  Read tool when trying to read the entire file at once. The
+  chess-engine.asm file is auto-generated by build.sh, so I don't need to
+  edit it directly - I edit the individual source modules (like main.asm,
+  config.asm, serial-io-9600.asm) and then the build script concatenates
+  them.
+
+  The assembler handles the full file just fine. I only needed to read
+  sections of it to understand the structure.
+
+  Let me now assemble the test file to verify it works:
+
+● Bash(a18 test-serial-integrated.asm -o test-serial-integrated.hex -l
+      test-serial-integrated.lst 2>&1)
+  ⎿  Error: Exit code 7
+     1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     A18 source_file | -l list_file | -o/-m/-b object_file 
+
+     7 Error(s)
+
+● Read(test-serial-integrated.lst)
+  ⎿  Read 402 lines
+
+● I see the issue - the a18 assembler has problems with the macro
+  definitions and forward references. The errors marked with B are branch
+  targets that went past 256 bytes (DONE96, XDELAY). Let me look at the
+  actual errors and the specific issues:
+
+  1. The MACRO/ENDM syntax isn't recognized properly by a18
+  2. There are forward references beyond 8-bit range
+
+  Let me fix the test file - remove the macro definitions (not needed since
+  CALL/RETN work inline) and check the branch ranges:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 17 removals                 
+       130        SEP 3
+       131    
+       132    ; =========================================================
+             =====================
+       133 -  ; Macros for CALL/RETN
+       134 -  ; =========================================================
+           - =====================
+       135 -  ; CALL addr  = SEP 4 + DB HIGH(addr), LOW(addr)
+       136 -  ; RETN       = SEP 5
+       137 -  
+       138 -  ; CALL macro (assembler-dependent syntax)
+       139 -  MACRO CALL addr
+       140 -      SEP 4
+       141 -      DB HIGH(addr), LOW(addr)
+       142 -  ENDM
+       143 -  
+       144 -  ; RETN macro
+       145 -  MACRO RETN
+       146 -      SEP 5
+       147 -  ENDM
+       148 -  
+       149 -  ; =========================================================
+           - =====================
+       133    ; Serial I/O - Chuck's proven 9600 baud routine
+       134    ; =========================================================
+             =====================
+       135    
+
+● The listing shows the problem - branches like BZ DONE96 at addresses
+  0x00C4 trying to reach 0x0103 are out of range (8-bit branch offsets can
+  only reach ±127 bytes). But this is expected from Chuck's code since it
+  uses long branches (LBNF, LBDF) for those. The short branches that are
+  problematic are:
+  - Line 217: BZ DONE96 at 0x00C4 trying to reach 0x0103
+  - Line 241: BZ DONE96 at 0x00DC trying to reach 0x0103
+  - Line 264: BZ DONE96 at 0x00F4 trying to reach 0x0103
+  - Line 276: BR XDELAY at 0x0101 trying to reach 0x00F7
+
+  These are all within the serial write routine. The issue is a18 assembled
+  these as short branches when they should be long branches. Let me fix the
+  serial routine to use long branches where needed:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 1 addition and 1 removal
+       180    QLO1:
+       181        DEC 15
+       182        GLO 15
+       183 -      BZ DONE96
+       183 +      LBZ DONE96
+       184    
+       185        GLO 14
+       186    LDELAY:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 1 addition and 1 removal
+       204    QHI1:
+       205        DEC 15
+       206        GLO 15
+       207 -      BZ DONE96
+       207 +      LBZ DONE96
+       208    
+       209        GLO 14
+       210    HDELAY:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 3 additions and 2 removals
+       227    
+       228        DEC 15
+       229        GLO 15
+       230 -      BZ DONE96
+       230 +      LBZ DONE96
+       231    
+       232        GLO 14
+       233    XDELAY:
+       234        SMI 01H
+       235 -      BZ QLO
+       235 +      LSNZ
+       236 +      LBR QLO
+       237        NOP
+       238        NOP
+       239        NOP
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 1 addition and 1 removal
+       240        NOP
+       241        NOP
+       242        SEX 2
+       243 -      BR XDELAY
+       243 +      LBR XDELAY
+       244    
+       245    DONE96:
+       246        GLO 14
+
+● Wait, this is changing the timing. Let me revert to a simpler approach -
+  just reorganize the code so the short branches are in range, or reorder
+  the sections. Actually, looking at Chuck's original code more carefully, I
+   see the structure is different. Let me look at his code again:
+
+● Read(chuck-test.asm)
+  ⎿  Read 150 lines
+
+● I see - Chuck's original code is compact enough that all the short
+  branches are in range. The problem in my test file is that the serial code
+   is placed after the SCRT routines and messages, pushing it past the
+  128-byte short branch limit.
+
+  Let me rewrite the test file to put the serial routines at the start of
+  the code (like Chuck's original), before the startup code and messages:
+
+● Write(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 111 additions and 126 removals
+       10        ORG $0000
+       11    
+       12    ; ----------------------------------------------------------
+            --------------------
+       13 -  ; Main entry point
+       13 +  ; Jump past serial routines to main entry point
+       14    ; ----------------------------------------------------------
+            --------------------
+       15 -  START:
+       16 -      ; Set up stack pointer (R2)
+       17 -      LDI $7F
+       18 -      PHI 2
+       19 -      LDI $FF
+       20 -      PLO 2               ; R2 = $7FFF (stack top)
+       21 -      SEX 2               ; Set X register to R2 for stack 
+          - operations
+       15 +      LBR START
+       16    
+       17 -      ; Set up SCRT (Standard Call/Return Technique)
+       18 -      LDI HIGH(SCALL)
+       19 -      PHI 4
+       20 -      LDI LOW(SCALL)
+       21 -      PLO 4               ; R4 points to call handler
+       22 -  
+       23 -      LDI HIGH(SRET)
+       24 -      PHI 5
+       25 -      LDI LOW(SRET)
+       26 -      PLO 5               ; R5 points to return handler
+       27 -  
+       28 -      ; Initialize serial I/O (sets Q high, R14.0 = 2)
+       29 -      CALL SERIAL_INIT
+       30 -  
+       31 -      ; Output startup message
+       32 -      LDI HIGH(MSG_HELLO)
+       33 -      PHI 8
+       34 -      LDI LOW(MSG_HELLO)
+       35 -      PLO 8
+       36 -  
+       37 -  PRINT_LOOP:
+       38 -      LDA 8               ; Get next character
+       39 -      BZ ECHO_MODE        ; If null, switch to echo mode
+       40 -      CALL SERIAL_WRITE_CHAR
+       41 -      BR PRINT_LOOP
+       42 -  
+       43 -  ; Echo received characters back
+       44 -  ECHO_MODE:
+       45 -      ; Output "Echo: " prompt
+       46 -      LDI HIGH(MSG_ECHO)
+       47 -      PHI 8
+       48 -      LDI LOW(MSG_ECHO)
+       49 -      PLO 8
+       50 -  
+       51 -  ECHO_PROMPT:
+       52 -      LDA 8
+       53 -      BZ ECHO_LOOP
+       54 -      CALL SERIAL_WRITE_CHAR
+       55 -      BR ECHO_PROMPT
+       56 -  
+       57 -  ECHO_LOOP:
+       58 -      CALL SERIAL_READ_CHAR
+       59 -      CALL SERIAL_WRITE_CHAR
+       60 -      BR ECHO_LOOP
+       61 -  
+       62 -  ; ----------------------------------------------------------
+          - --------------------
+       63 -  ; Messages
+       64 -  ; ----------------------------------------------------------
+          - --------------------
+       65 -  MSG_HELLO:
+       66 -      DB "Hello, world!", 0DH, 0AH
+       67 -      DB "Serial I/O test successful!", 0DH, 0AH, 0
+       68 -  
+       69 -  MSG_ECHO:
+       70 -      DB "Echo mode - type characters: ", 0
+       71 -  
+       17    ; ==========================================================
+            ====================
+       18 -  ; SCRT - Standard Call/Return Technique
+       18 +  ; Serial I/O - Chuck's proven 9600 baud routine
+       19    ; ==========================================================
+            ====================
+       20 -  ; R4 = Call handler (SEP 4 to call)
+       21 -  ; R5 = Return handler (SEP 5 to return)
+       22 -  ; R6 = Return address (pushed/popped from stack)
+       20 +  ; Place these FIRST to keep short branches in range
+       21    ; ==========================================================
+            ====================
+       22    
+       23 -  SCALL:
+       24 -      ; Save return address (current PC) on stack
+       25 -      ; The calling instruction's address + 3 is in R3
+       26 -      ; We need to save it so we can return
+       27 -  
+       28 -      ; Copy R6.1 (will be overwritten) to D, push to stack
+       29 -      GHI 6
+       30 -      STXD
+       31 -  
+       32 -      ; Copy R6.0 (will be overwritten) to D, push to stack
+       33 -      GLO 6
+       34 -      STXD
+       35 -  
+       36 -      ; Copy R3 to R6 (save return address)
+       37 -      ; PC is now pointing to byte after SEP 4
+       38 -      GHI 3
+       39 -      PHI 6
+       40 -      GLO 3
+       41 -      PLO 6
+       42 -  
+       43 -      ; Fetch subroutine address from bytes after SEP 4
+       44 -      LDA 6               ; Get high byte of subroutine 
+          - address
+       45 -      PHI 3               ; Put in R3.1
+       46 -      LDA 6               ; Get low byte of subroutine address
+       47 -      PLO 3               ; Put in R3.0
+       48 -  
+       49 -      ; Return to R3 (transfer control to subroutine)
+       50 -      SEP 3
+       51 -  
+       52 -  SRET:
+       53 -      ; Restore R3 from R6 (return address)
+       54 -      GHI 6
+       55 -      PHI 3
+       56 -      GLO 6
+       57 -      PLO 3
+       58 -  
+       59 -      ; Pop old R6 from stack
+       60 -      IRX
+       61 -      LDXA                ; Get R6.0
+       62 -      PLO 6
+       63 -      LDX                 ; Get R6.1
+       64 -      PHI 6
+       65 -  
+       66 -      ; Return to caller
+       67 -      SEP 3
+       68 -  
+       69 -  ; ==========================================================
+          - ====================
+       70 -  ; Serial I/O - Chuck's proven 9600 baud routine
+       71 -  ; ==========================================================
+          - ====================
+       72 -  
+       23    ; ----------------------------------------------------------
+            --------------------
+       24    ; SERIAL_INIT - Initialize serial I/O
+       25    ; ----------------------------------------------------------
+            --------------------
+     ...
+       140        SEQ                 ; Set Q high (idle/mark state)
+       141        LDI 02H
+       142        PLO 14              ; R14.0 = 2 for 9600 baud
+       143 -      RETN
+       143 +      SEP 5               ; RETN
+       144    
+       145    ; ---------------------------------------------------------
+             ---------------------
+       146    ; SERIAL_WRITE_CHAR - Output one character at 9600 baud
+     ...
+       180    QLO1:
+       181        DEC 15
+       182        GLO 15
+       183 -      LBZ DONE96
+       183 +      BZ DONE96
+       184    
+       185        GLO 14
+       186    LDELAY:
+     ...
+       204    QHI1:
+       205        DEC 15
+       206        GLO 15
+       207 -      LBZ DONE96
+       207 +      BZ DONE96
+       208    
+       209        GLO 14
+       210    HDELAY:
+     ...
+       227    
+       228        DEC 15
+       229        GLO 15
+       230 -      LBZ DONE96
+       230 +      BZ DONE96
+       231    
+       232        GLO 14
+       233    XDELAY:
+       234        SMI 01H
+       235 -      LSNZ
+       236 -      LBR QLO
+       235 +      BZ QLO
+       236        NOP
+       237        NOP
+       238        NOP
+       239        NOP
+       240        NOP
+       241        SEX 2
+       242 -      LBR XDELAY
+       242 +      BR XDELAY
+       243    
+       244    DONE96:
+       245        GLO 14
+     ...
+       268        LDI 02H
+       269        PLO 14
+       270    
+       271 -      RETN
+       271 +      SEP 5               ; RETN
+       272    
+       273    ; ---------------------------------------------------------
+             ---------------------
+       274    ; SERIAL_READ_CHAR - Input one character at 9600 baud
+     ...
+       353    
+       354    RX_DONE:
+       355        GLO 11
+       356 -      RETN
+       356 +      SEP 5               ; RETN
+       357    
+       358 +  ; =========================================================
+           + =====================
+       359 +  ; SCRT - Standard Call/Return Technique
+       360 +  ; =========================================================
+           + =====================
+       361 +  SCALL:
+       362 +      GHI 6
+       363 +      STXD
+       364 +      GLO 6
+       365 +      STXD
+       366 +      GHI 3
+       367 +      PHI 6
+       368 +      GLO 3
+       369 +      PLO 6
+       370 +      LDA 6
+       371 +      PHI 3
+       372 +      LDA 6
+       373 +      PLO 3
+       374 +      SEP 3
+       375 +  
+       376 +  SRET:
+       377 +      GHI 6
+       378 +      PHI 3
+       379 +      GLO 6
+       380 +      PLO 3
+       381 +      IRX
+       382 +      LDXA
+       383 +      PLO 6
+       384 +      LDX
+       385 +      PHI 6
+       386 +      SEP 3
+       387 +  
+       388 +  ; =========================================================
+           + =====================
+       389 +  ; Main entry point
+       390 +  ; =========================================================
+           + =====================
+       391 +  START:
+       392 +      ; Set up stack pointer (R2)
+       393 +      LDI $7F
+       394 +      PHI 2
+       395 +      LDI $FF
+       396 +      PLO 2               ; R2 = $7FFF (stack top)
+       397 +      SEX 2
+       398 +  
+       399 +      ; Set up SCRT
+       400 +      LDI HIGH(SCALL)
+       401 +      PHI 4
+       402 +      LDI LOW(SCALL)
+       403 +      PLO 4
+       404 +  
+       405 +      LDI HIGH(SRET)
+       406 +      PHI 5
+       407 +      LDI LOW(SRET)
+       408 +      PLO 5
+       409 +  
+       410 +      ; Initialize serial I/O (sets Q high, R14.0 = 2)
+       411 +      SEP 4
+       412 +      DB HIGH(SERIAL_INIT), LOW(SERIAL_INIT)
+       413 +  
+       414 +      ; Output startup message
+       415 +      LDI HIGH(MSG_HELLO)
+       416 +      PHI 8
+       417 +      LDI LOW(MSG_HELLO)
+       418 +      PLO 8
+       419 +  
+       420 +  PRINT_LOOP:
+       421 +      LDA 8
+       422 +      BZ ECHO_MODE
+       423 +      SEP 4
+       424 +      DB HIGH(SERIAL_WRITE_CHAR), LOW(SERIAL_WRITE_CHAR)
+       425 +      BR PRINT_LOOP
+       426 +  
+       427 +  ECHO_MODE:
+       428 +      LDI HIGH(MSG_ECHO)
+       429 +      PHI 8
+       430 +      LDI LOW(MSG_ECHO)
+       431 +      PLO 8
+       432 +  
+       433 +  ECHO_PROMPT:
+       434 +      LDA 8
+       435 +      BZ ECHO_LOOP
+       436 +      SEP 4
+       437 +      DB HIGH(SERIAL_WRITE_CHAR), LOW(SERIAL_WRITE_CHAR)
+       438 +      BR ECHO_PROMPT
+       439 +  
+       440 +  ECHO_LOOP:
+       441 +      SEP 4
+       442 +      DB HIGH(SERIAL_READ_CHAR), LOW(SERIAL_READ_CHAR)
+       443 +      SEP 4
+       444 +      DB HIGH(SERIAL_WRITE_CHAR), LOW(SERIAL_WRITE_CHAR)
+       445 +      BR ECHO_LOOP
+       446 +  
+       447 +  ; ---------------------------------------------------------
+           + ---------------------
+       448 +  ; Messages
+       449 +  ; ---------------------------------------------------------
+           + ---------------------
+       450 +  MSG_HELLO:
+       451 +      DB "Hello, world!", 0DH, 0AH
+       452 +      DB "Serial I/O test OK!", 0DH, 0AH, 0
+       453 +  
+       454 +  MSG_ECHO:
+       455 +      DB "Echo: ", 0
+       456 +  
+       457        END START
+
+● Bash(a18 test-serial-integrated.asm -o test-serial-integrated.hex -l
+      test-serial-integrated.lst 2>&1)
+  ⎿  Error: Exit code 1
+     1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     A18 source_file | -l list_file | -o/-m/-b object_file 
+
+     1 Error(s)
+
+● Search(pattern: "^[UBOP]", path: "test-serial-integrated.lst", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● One error remaining - BZ ECHO_MODE at 0x00F9 trying to reach 0x0101, which
+   is 8 bytes away. That should be in range, but let me check the listing:
+
+● Read(test-serial-integrated.lst)
+  ⎿  Read 50 lines
+
+● I see the issue - BZ ECHO_MODE at 0x00F9 is trying to reach 0x0100, but
+  0x00F9 + 2 + 5 = 0x0100. Actually BZ uses offset from PC+1, so 0x00FA +
+  offset should equal 0x0100. That's an offset of 6, which should work. But
+  the issue is that the address $0100 has the high byte change from $00 to
+  $01, and a18 is treating this as an error. Let me just use LBZ:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 1 addition and 1 removal
+       305    
+       306    PRINT_LOOP:
+       307        LDA 8
+       308 -      BZ ECHO_MODE
+       308 +      LBZ ECHO_MODE
+       309        SEP 4
+       310        DB HIGH(SERIAL_WRITE_CHAR), LOW(SERIAL_WRITE_CHAR)
+       311        BR PRINT_LOOP
+
+● Bash(a18 test-serial-integrated.asm -o test-serial-integrated.hex -l
+      test-serial-integrated.lst 2>&1)
+  ⎿  Error: Exit code 1
+     1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     A18 source_file | -l list_file | -o/-m/-b object_file 
+
+     1 Error(s)
+
+● Search(pattern: "^[UBOP]", path: "test-serial-integrated.lst", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● Now BR PRINT_LOOP at 0x00FF is trying to reach 0x00F8, which should be
+  backwards 7 bytes. Let me check:
+
+● Read(test-serial-integrated.lst)
+  ⎿  Read 15 lines
+
+● Same problem - BR PRINT_LOOP at 0x00FF trying to branch back to 0x00F8 is
+  crossing a page boundary (from page 0x00 to... well it's trying to go
+  backward but the page is already 0x00). Actually the issue is that a18 is
+  writing 30 00 instead of 30 F8. Let me use LBR for the backward branch:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 1 addition and 1 removal
+       308        LBZ ECHO_MODE
+       309        SEP 4
+       310        DB HIGH(SERIAL_WRITE_CHAR), LOW(SERIAL_WRITE_CHAR)
+       311 -      BR PRINT_LOOP
+       311 +      LBR PRINT_LOOP
+       312    
+       313    ECHO_MODE:
+       314        LDI HIGH(MSG_ECHO)
+
+● Bash(a18 test-serial-integrated.asm -o test-serial-integrated.hex -l
+      test-serial-integrated.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● The test file now assembles without errors. Now let me also update the
+  serial-io-9600.asm module to handle the same issue (placing serial
+  routines at start of code to avoid branch range issues):
+
+● Read(serial-io-9600.asm)
+  ⎿  Read 292 lines
+
+● The serial-io-9600.asm looks good - it uses short branches within the
+  serial routines which should be fine since it starts early in the file.
+  The issue was the test file had the serial routines placed after the SCRT
+  code.
+
+  Now let me update the build.sh to ensure the serial module comes early
+  enough to avoid branch range issues:
+
+● Read(build.sh)
+  ⎿  Read 60 lines
+
+● I should move the serial I/O module earlier in the build order - right
+  after SCRT, so the short branches within the serial routines are in range.
+   Let me update the build script:
+
+● Update(build.sh)
+  ⎿  Updated build.sh with 12 additions                                  
+       80    echo "  - scrt.asm (Standard Call/Return Technique)"
+       81    cat scrt.asm >> "$OUTPUT"
+       82    
+       83 +  # Include serial I/O EARLY to keep short branches in range
+       84 +  if grep -q "^USE_BITBANG.*EQU 1" "$CONFIG_FILE" 2>/dev/null;
+          +  then
+       85 +      echo "  - serial-io-9600.asm (9600 baud fixed timing - 
+          + Chuck's routine)"
+       86 +      cat serial-io-9600.asm >> "$OUTPUT"
+       87 +  elif grep -q "^USE_UART.*EQU 1" "$CONFIG_FILE" 2>/dev/null; 
+          + then
+       88 +      echo "  - serial-io-uart.asm (hardware UART)"
+       89 +      cat serial-io-uart.asm >> "$OUTPUT"
+       90 +  else
+       91 +      echo "  WARNING: No serial I/O module selected, using 
+          + 9600 baud bit-bang as default"
+       92 +      cat serial-io-9600.asm >> "$OUTPUT"
+       93 +  fi
+       94 +  
+       95    echo "  - support.asm"
+       96    cat support.asm >> "$OUTPUT"
+       97    
+
+● Now remove the duplicate serial I/O include that was later in the file:
+
+● Update(build.sh)
+  ⎿  Updated build.sh with 12 removals                                   
+       125    echo "  - negamax.asm (fixed - no stubs)"
+       126    cat negamax.asm >> "$OUTPUT"
+       127    
+       128 -  # Include serial I/O based on configuration
+       129 -  if grep -q "^USE_BITBANG.*EQU 1" "$CONFIG_FILE" 
+           - 2>/dev/null; then
+       130 -      echo "  - serial-io-9600.asm (9600 baud fixed timing - 
+           - Chuck's routine)"
+       131 -      cat serial-io-9600.asm >> "$OUTPUT"
+       132 -  elif grep -q "^USE_UART.*EQU 1" "$CONFIG_FILE" 2>/dev/null;
+           -  then
+       133 -      echo "  - serial-io-uart.asm (hardware UART)"
+       134 -      cat serial-io-uart.asm >> "$OUTPUT"
+       135 -  else
+       136 -      echo "  WARNING: No serial I/O module selected, using 
+           - 9600 baud bit-bang as default"
+       137 -      cat serial-io-9600.asm >> "$OUTPUT"
+       138 -  fi
+       139 -  
+       128    echo "  - uci.asm"
+       129    cat uci.asm >> "$OUTPUT"
+       130    
+
+● Now let's try building the full chess engine:
+
+● Bash(./build.sh 2>&1 | tail -50)
+  ⎿  ==========================================
+
+     Step 1: Preprocessing configuration...
+     … +48 lines (ctrl+o to expand)
+
+● The chess engine builds successfully with the new serial I/O module. Let
+  me verify the hex file was created:
+
+● Bash(ls -la chess-engine.hex test-serial-integrated.hex)
+  ⎿ -rw-r--r-- 1 phiber staff 10152 Dec  5 14:58 chess-engine.hex          
+    -rw-r--r-- 1 phiber staff   792 Dec  5 14:57 test-serial-integrated.hex
+
+
+● I've integrated Chuck's working serial I/O routine into the chess engine.
+  Here's a summary of what was done:
+
+  Summary
+
+  Created serial-io-9600.asm - New serial I/O module based on Chuck's proven
+   working routine:
+  - SERIAL_INIT - Initializes Q high (idle/mark), sets R14.0 = 2 for 9600
+  baud
+  - SERIAL_WRITE_CHAR - Outputs one character using Chuck's interleaved
+  timing structure
+  - SERIAL_READ_CHAR - Inputs one character at 9600 baud (using EF3)
+
+  Key characteristics of Chuck's routine:
+  - SEQ = Q OFF = space/0 (start bit)
+  - REQ = Q ON = mark/1 (stop bit)
+  - Interleaved timing: bit is output first, then processing happens during
+  the bit period
+  - Separate paths for 0-bits (QLO/QLO1) and 1-bits (QHI/QHI1) with their
+  own delay loops
+  - Uses R14.0 delay counter (starts at 2, decremented to 1 for 9600 baud)
+  - 2 stop bits
+
+  Updated files:
+  1. config.asm - Changed to use EF3 and 1.75 MHz clock settings
+  2. build.sh - Updated to use serial-io-9600.asm instead of the old
+  serial-autocal.asm + serial-io-bitbang.asm, and moved serial I/O early in
+  build order to avoid branch range issues
+  3. main.asm - Removed AUTO_CALIBRATE call (using fixed timing now)
+
+  Created test-serial-integrated.asm - Standalone test program that:
+  - Outputs "Hello, world! Serial I/O test OK!"
+  - Then enters echo mode to verify receive works
+
+  Build results:
+  - test-serial-integrated.hex - 792 bytes (standalone test)
+  - chess-engine.hex - 10,152 bytes (full chess engine with integrated
+  serial)
+
+  To test, load test-serial-integrated.hex first to verify the serial I/O
+  works correctly on the Membership Card, then proceed with the full chess
+  engine.
+
+> Claude, the changing of the branch instructions to long branches in the 
+serial output code will break it. You're adding an extra cycle with every 
+long branch now. 
+
+● You're absolutely right. The timing in Chuck's routine is carefully
+  balanced - every instruction cycle matters. Changing short branches to
+  long branches would throw off the bit timing and break the serial output.
+
+  The solution is to keep the serial routine exactly as Chuck wrote it (with
+   short branches) and ensure it's placed early enough in the code that all
+  branch targets are within range.
+
+  Let me fix the test file to match Chuck's original code exactly:
+
+● Write(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 8 additions and 13 removals 
+        5    ; Outputs "Hello, world!" and then echoes received 
+            characters
+        6    ;
+        7    ; For Membership Card at 1.75 MHz, 9600 baud
+        8 +  ;
+        9 +  ; IMPORTANT: Serial routines must be at start of code to 
+          + keep short branches
+       10 +  ; in range. The timing is cycle-critical - do not change to 
+          + long branches!
+       11    ; ==========================================================
+            ====================
+       12    
+       13        ORG $0000
+       14    
+       15 -  ; ----------------------------------------------------------
+          - --------------------
+       16 -  ; Jump past serial routines to main entry point
+       17 -  ; ----------------------------------------------------------
+          - --------------------
+       18 -      LBR START
+       19 -  
+       15    ; ==========================================================
+            ====================
+       16 -  ; Serial I/O - Chuck's proven 9600 baud routine
+       16 +  ; Serial I/O - Chuck's proven 9600 baud routine
+          +   (MUST BE FIRST)
+       17    ; ==========================================================
+            ====================
+       18 -  ; Place these FIRST to keep short branches in range
+       19 -  ; ==========================================================
+          - ====================
+       18    
+       19    ; ----------------------------------------------------------
+            --------------------
+       20    ; SERIAL_INIT - Initialize serial I/O
+     ...
+       305    
+       306    PRINT_LOOP:
+       307        LDA 8
+       308 -      LBZ ECHO_MODE
+       308 +      BZ ECHO_MODE
+       309        SEP 4
+       310        DB HIGH(SERIAL_WRITE_CHAR), LOW(SERIAL_WRITE_CHAR)
+       311 -      LBR PRINT_LOOP
+       311 +      BR PRINT_LOOP
+       312    
+       313    ECHO_MODE:
+       314        LDI HIGH(MSG_ECHO)
+     ...
+       334    ; Messages
+       335    ; ---------------------------------------------------------
+             ---------------------
+       336    MSG_HELLO:
+       337 -      DB "Hello, world!", 0DH, 0AH
+       338 -      DB "Serial I/O test OK!", 0DH, 0AH, 0
+       337 +      DB "Hello!", 0DH, 0AH, 0
+       338    
+       339    MSG_ECHO:
+       340 -      DB "Echo: ", 0
+       340 +      DB ">", 0
+       341    
+       342        END START
+
+● Bash(a18 test-serial-integrated.asm -o test-serial-integrated.hex -l
+      test-serial-integrated.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Now let me verify the serial routine addresses are compact enough for all
+  short branches:
+
+● Bash(grep -E "^[0-9a-f ]+DONE96|^[0-9a-f ]+QLO[^1]|^[0-9a-f ]+QHI[^1]|^[0-9a-f
+       ]+XDELAY|^[0-9a-f ]+LDELAY|^[0-9a-f ]+HDELAY" test-serial-integrated.lst)
+  ⎿     0023                 LDELAY:
+        002f                 QLO:
+        003b                 HDELAY:
+     … +3 lines (ctrl+o to expand)
+
+● All the critical labels are within the first 0x60 (96) bytes, well within
+  short branch range. The serial write routine spans from 0x00 to about
+  0x70, keeping all branches in range.
+
+  Now let me also check and rebuild the main chess-engine to make sure it
+  has the same structure:
+
+● Bash(./build.sh 2>&1 | grep -E "Error|SUCCESS|serial")
+  ⎿    - serial-io-9600.asm (9600 baud fixed timing - Chuck's routine)
+       ✓ SUCCESS: chess-engine.hex created
+
+● Both files assemble without errors. The test file
+  (test-serial-integrated.hex) is ready for testing on the Membership Card.
+  It will:
+
+  1. Output "Hello!" followed by CR/LF
+  2. Output ">" prompt
+  3. Enter echo mode - every character you type will be echoed back
+
+  This will verify both transmit and receive are working correctly with
+  Chuck's timing-critical routine.
+
+> Q is stuck low, and I have no output. 
+
+● Q stuck low means the serial routine isn't being reached, or SERIAL_INIT
+  isn't running. Let me check the code flow - the issue is likely that START
+   isn't at address 0, so the CPU isn't reaching the initialization code.
+
+● Read(test-serial-integrated.lst)
+  ⎿  Read 30 lines
+
+● There's the problem. The CPU starts executing at address 0x0000, which is
+  SERIAL_INIT. The first instruction is SEQ (Q high), but then it does LDI 
+  02H, PLO 14, and then SEP 5 - which tries to jump to R5, but R5 hasn't
+  been initialized yet! So it crashes.
+
+  We need a jump at address 0 to skip to START:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 6 additions and 1 removal   
+       12    
+       13        ORG $0000
+       14    
+       15 +  ; ----------------------------------------------------------
+          + --------------------
+       16 +  ; Entry point - jump to START (CPU begins execution here)
+       17 +  ; ----------------------------------------------------------
+          + --------------------
+       18 +      LBR START
+       19 +  
+       20    ; ==========================================================
+            ====================
+       21 -  ; Serial I/O - Chuck's proven 9600 baud routine (MUST BE 
+          -  FIRST)
+       21 +  ; Serial I/O - Chuck's proven 9600 baud routine (MUST BE 
+          +  EARLY)
+       22    ; ==========================================================
+            ====================
+       23    
+       24    ; ----------------------------------------------------------
+            --------------------
+
+● Bash(a18 test-serial-integrated.asm -o test-serial-integrated.hex -l
+      test-serial-integrated.lst 2>&1)
+  ⎿  Error: Exit code 1
+     1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     A18 source_file | -l list_file | -o/-m/-b object_file 
+
+     1 Error(s)
+
+● Search(pattern: "^[UBOP]", path: "test-serial-integrated.lst", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+● The branch at PRINT_LOOP to ECHO_MODE is now across a page boundary again.
+   Let me check the addresses and use LBZ there:
+
+● Update(test-serial-integrated.asm)
+  ⎿  Updated test-serial-integrated.asm with 2 additions and 2 removals
+       306    
+       307    PRINT_LOOP:
+       308        LDA 8
+       309 -      BZ ECHO_MODE
+       309 +      LBZ ECHO_MODE
+       310        SEP 4
+       311        DB HIGH(SERIAL_WRITE_CHAR), LOW(SERIAL_WRITE_CHAR)
+       312 -      BR PRINT_LOOP
+       312 +      LBR PRINT_LOOP
+       313    
+       314    ECHO_MODE:
+       315        LDI HIGH(MSG_ECHO)
+
+● Bash(a18 test-serial-integrated.asm -o test-serial-integrated.hex -l
+      test-serial-integrated.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Now let me verify the structure is correct:
+
+● Bash(head -30 test-serial-integrated.lst)
+  ⎿                         ; =============================================
+    =================================
+                            ; Test Serial I/O Integration
+    … +44 lines (ctrl+o to expand)
+
+
+● Now address 0x0000 has LBR START which jumps to 0x00DC (START). The serial
+   routines start at 0x0003.
+
+  Let me also verify the serial routine branch targets are still in range:
+
+● Bash(grep -E "^   00[0-9a-f]{2}
+      .*(DONE96|QLO[^1]|QHI[^1]|XDELAY|LDELAY|HDELAY|QLO1|QHI1):"
+      test-serial-integrated.lst)
+  ⎿     0021                 QLO1:  
+        0026                 LDELAY:
+        0039                 QHI1:
+     … +3 lines (ctrl+o to expand)
+
+● All serial routine labels are within range (0x03 to 0x62, about 95 bytes).
+   The LBR START added 3 bytes at the start but that's fine.
+
+  The test file is ready. Load test-serial-integrated.hex and it should now:
+  1. Jump to START at power-on
+  2. Initialize stack and SCRT
+  3. Call SERIAL_INIT (sets Q high)
+  4. Output "Hello!"
+  5. Enter echo mode
+
+> No output, no Q activity. 
+
+● The CPU isn't reaching the code at all, or is crashing before SERIAL_INIT.
+   Let me check what START does - the issue might be with SCRT setup or the
+  SEP 4 call.
+
+● Read(test-serial-integrated.lst)
+  ⎿  Read 50 lines
+
+● The SCRT setup looks fine. Let me create a minimal test that doesn't use
+  SCRT at all - just directly tests if we can blink Q:
+
+● Write(test-q-blink.asm)
+  ⎿  Wrote 33 lines to test-q-blink.asm                                    
+     ; =====================================================================
+     =========
+     ; Minimal Q blink test - no SCRT, no serial
+     ; =====================================================================
+     =========
+     ; Just blinks Q to verify basic execution
+     ; =====================================================================
+     =========
+         ORG $0000
+     START:
+         SEQ                 ; Q high
+     … +23 lines (ctrl+o to expand)
+
+● Bash(a18 test-q-blink.asm -o test-q-blink.hex -l test-q-blink.lst 2>&1 && cat
+      test-q-blink.lst)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +39 lines (ctrl+o to expand)
+
+● Try loading test-q-blink.hex first. This is the absolute minimum - if Q
+  doesn't blink with this, there's a hardware or loading issue.
+
+> Yes, this works correctly. 
+
+● Good, so basic execution works. The problem is with the SCRT setup or call
+   mechanism. Let me create a test that adds one thing at a time:
+
+● Write(test-serial-noscrt.asm)
+  ⎿  Wrote 156 lines to test-serial-noscrt.asm                             
+     ; =====================================================================
+     =========
+     ; Serial test WITHOUT SCRT - direct calls to Chuck's routine
+     ; =====================================================================
+     =========
+         ORG $0000
+     START:
+         ; Set up stack pointer (R2)
+         LDI $7F
+         PHI 2
+     … +146 lines (ctrl+o to expand)
+
+● Bash(a18 test-serial-noscrt.asm -o test-serial-noscrt.hex -l
+      test-serial-noscrt.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-noscrt.hex - this is essentially the same as your working
+  chuck-test.asm but with stack initialization added. It should output a
+  stream of 'H' characters.
+
+> Yes, this works. 
+
+● Good, so Chuck's serial routine works. The problem is the SCRT call
+  mechanism. Let me add SCRT and see if that breaks it:
+
+● Write(test-serial-scrt.asm)
+  ⎿  Wrote 204 lines to test-serial-scrt.asm                               
+     ; =====================================================================
+     =========
+     ; Serial test WITH SCRT
+     ; =====================================================================
+     =========
+         ORG $0000
+         LBR START
+     ; =====================================================================
+     =========
+     ; Chuck's serial output routine
+     … +194 lines (ctrl+o to expand)
+
+● Bash(a18 test-serial-scrt.asm -o test-serial-scrt.hex -l test-serial-scrt.lst
+      2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-scrt.hex - this adds SCRT call/return to the working
+  serial routine. If this fails, we know SCRT is the problem.
+
+> Unfortunately, this just hangs. 
+
+● The SCRT implementation is broken. Let me check the SCRT code - there may
+  be an issue with how it handles the registers:
+
+● Read(test-serial-scrt.lst)
+  ⎿  Read 50 lines
+
+● Read(test-serial-scrt.lst)
+  ⎿  Read 50 lines
+
+● I see an issue. After SEP 4 the program counter switches to R4, but then
+  SCALL reads the address bytes from where R3 was pointing. But R3 is no
+  longer advancing since we SEP'd to R4. Let me look at the call site:
+
+● Read(test-serial-scrt.lst)
+  ⎿  Read 25 lines
+
+● The issue is that SCALL uses LDA 6 to fetch the address bytes, but R6 is
+  pointing to where R3 was at SEP 4 time. This should work... but wait -
+  when SCALL does GHI 3 and GLO 3, R3 is pointing to address 0x00A6 (the
+  byte after SEP 4). Then it copies that to R6, and uses LDA 6 to fetch 0x00
+   and 0x03. That looks correct.
+
+  The problem might be that after the subroutine returns via SEP 5, SRET
+  restores R3 from R6, but R6 was advanced by 2 (from the two LDA
+  instructions). So R3 should now point to 0x00A8 (BR LOOP). That also looks
+   correct.
+
+  Let me check the scrt.asm file that the chess engine uses - maybe there's
+  a known-working version:
+
+● Read(scrt.asm)
+  ⎿  Read 114 lines
+
+● This is a different SCRT implementation! The one in scrt.asm uses LDA 3 to
+   read the address bytes, while my test used LDA 6. Let me also check - the
+   SRET does LDXA twice but the second one should be LDX (no auto-increment
+  after the last byte):
+
+  Looking at scrt.asm line 73: LDXA for high byte will increment R2 again,
+  leaving it pointing one past where it should be. This could cause stack
+  corruption over multiple calls.
+
+  Let me create a test with the correct SCRT from scrt.asm:
+
+● Write(test-serial-scrt2.asm)
+  ⎿  Wrote 212 lines to test-serial-scrt2.asm                              
+     ; =====================================================================
+     =========
+     ; Serial test WITH correct SCRT from scrt.asm
+     ; =====================================================================
+     =========
+         ORG $0000
+         LBR START
+     ; =====================================================================
+     =========
+     ; Chuck's serial output routine
+     … +202 lines (ctrl+o to expand)
+
+● Bash(a18 test-serial-scrt2.asm -o test-serial-scrt2.hex -l
+      test-serial-scrt2.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-scrt2.hex - this uses the SCRT implementation from
+  scrt.asm which reads the address with LDA 3 instead of LDA 6, and fixes
+  the stack pointer issue in SRET.
+
+> Still hanging. 
+
+● Let me add a Q blink right at START to see if we even get there:
+
+● Write(test-serial-scrt3.asm)
+  ⎿  Wrote 255 lines to test-serial-scrt3.asm                              
+     ; =====================================================================
+     =========
+     ; Serial test - debug with Q blink before SCRT call
+     ; =====================================================================
+     =========
+         ORG $0000
+         LBR START
+     ; =====================================================================
+     =========
+     ; Chuck's serial output routine
+     … +245 lines (ctrl+o to expand)
+
+● Bash(a18 test-serial-scrt3.asm -o test-serial-scrt3.hex -l
+      test-serial-scrt3.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-scrt3.hex. You should see:
+  - 1 blink = got to START
+  - 2 blinks = stack setup done
+  - 3 blinks = SCRT setup done
+  - Rapid blinking = returned from serial call successfully
+
+  How many blinks do you see before it hangs?
+
+> One moment Claude. I myself implemented RCA SCRT for the author of the 
+IDIOT Monitor, in 2019, with demonstration code. Can you read zip files? 
+
+● I can't read zip files directly, but if you extract the files, I can read
+  them. Or if they're available somewhere online, I could fetch them.
+
+  Alternatively, if you have working SCRT code in a .asm or .lst file from
+  that project, just point me to it and I'll read it.
+
+> I'll unzip my files into a subdirectory here. One moment. 
+
+● Sounds good, let me know when they're ready and I'll take a look at your
+  working SCRT implementation.
+
+> Please consume the files here in the abene_idiot_scrt subdirectory. 
+abene_idiot.asm has my SCRT code appended to a standard, unmodified IDIOT 
+monitor source. abene_idiot_doc.txt is a plain English explanation of how it
+ all works. "hello.asm" demonstrates how to use the SCRT interface in order 
+to call into IDIOT's serial console input and output routines from an 
+external program, just so its usage is understood. We don't need to access 
+IDIOT's serial routines for our purposes. 
+
+● Read(abene_idiot_scrt/abene_idiot_doc.txt)
+  ⎿  Read 37 lines
+
+● Read(abene_idiot_scrt/hello.asm)
+  ⎿  Read 28 lines
+
+● Read(abene_idiot_scrt/abene_idiot.asm)
+  ⎿  Read 249 lines
+
+● Now I see the correct SCRT implementation. Key differences from what I
+  wrote:
+
+  1. CALL saves D first (PLO RE) before doing anything else
+  2. There's a SEP R3 instruction BEFORE the CALL label - the routine jumps
+  back to it at the end with BR CALL-1
+  3. Same pattern for RET - SEP R3 before the RET label, and BR RET-1 at the
+   end
+  4. INITCALL ends with SEP R5 to transfer control to the user's code via R6
+
+  The critical insight is the SEP R3 / BR label-1 pattern - this is how
+  control transfers back to the main program after setting up R3.
+
+  Let me create a test using your exact SCRT implementation:
+
+● Write(test-serial-abene.asm)
+  ⎿  Wrote 223 lines to test-serial-abene.asm                              
+     ; =====================================================================
+     =========
+     ; Serial test using Mark Abene's SCRT implementation
+     ; =====================================================================
+     =========
+         ORG $0000
+     ; =====================================================================
+     =========
+     ; Entry point - set R6 to main, then jump to INITCALL
+     ; =====================================================================
+     =========
+         LDI HIGH(MAIN)
+     … +213 lines (ctrl+o to expand)
+
+● Bash(a18 test-serial-abene.asm -o test-serial-abene.hex -l
+      test-serial-abene.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-abene.hex - this uses your exact SCRT implementation from
+  abene_idiot.asm.
+
+> You're closer, no longer crashing now. However, no output. Let me explain 
+something you may be missing. The initial SEQ instruction serves as marking 
+the start bit of the character to send. At offset b3, you're executing an 
+SEQ, thinking it is idling the line. It is not. You're actually marking the 
+start bit of a character that will never be sent. 
+
+● You're right. The SEQ at MAIN is being interpreted as a start bit, but
+  then we load the character and call the routine which sends another start
+  bit. The line needs to already be idle (high/REQ) before we enter the
+  serial routine.
+
+  Looking at Chuck's original code - SEQ means Q=OFF (low/space), and REQ
+  means Q=ON (high/mark). The idle state should be Q=ON (mark), which is
+  REQ:
+
+● Update(test-serial-abene.asm)
+  ⎿  Updated test-serial-abene.asm with 2 additions and 2 removals
+       208        LDI 02H
+       209        PLO 14
+       210    
+       211 -      ; Set Q high (idle)
+       212 -      SEQ
+       211 +      ; Set Q high (idle) - REQ = Q ON = mark = idle
+       212 +      REQ
+       213    
+       214    LOOP:
+       215        ; Output 'H' using SCRT call
+
+● Bash(a18 test-serial-abene.asm -o test-serial-abene.hex -l
+      test-serial-abene.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-abene.hex now.
+
+> I see Q activity, and cursor flashing, but no output. 
+
+● Q activity and cursor flashing means we're getting close - the serial
+  routine is running but the timing or data is wrong.
+
+  Let me check - your SCRT uses R14.0 (RE.0) as a temp to save D. But
+  Chuck's serial routine also uses R14.0 as the delay counter! The SCRT is
+  clobbering R14.0:
+
+● Read(test-serial-abene.lst)
+  ⎿  Read 40 lines
+
+● Yes - CALL does PLO 14 to save D, clobbering the delay counter. I need to
+  use a different register for SCRT temp. Let me use R7 instead:
+
+● Update(test-serial-abene.asm)
+  ⎿  Updated test-serial-abene.asm with 4 additions and 4 removals       
+       159    ; SCRT CALL
+       160        SEP 3               ; JUMP TO CALLED ROUTINE
+       161    CALL:
+       162 -      PLO 14              ; SAVE D (using R14.0 as temp)
+       162 +      PLO 7               ; SAVE D (using R7.0 as temp - R14 
+           + used by serial)
+       163        GHI 6               ; SAVE LAST R6 TO STACK
+       164        SEX 2
+       165        STXD
+     ...
+       173        PHI 3               ; AND PUT INTO R3
+       174        LDA 6
+       175        PLO 3
+       176 -      GLO 14              ; RECOVER D
+       176 +      GLO 7               ; RECOVER D
+       177        BR CALL-1           ; TRANSFER CONTROL TO SUBROUTINE
+       178    
+       179    ; SCRT RET
+       180        SEP 3               ; TRANSFER CONTROL BACK TO CALLER
+       181    RET:
+       182 -      PLO 14              ; SAVE D
+       182 +      PLO 7               ; SAVE D
+       183        GHI 6               ; COPY R6 TO R3
+       184        PHI 3
+       185        GLO 6
+     ...
+       190        PLO 6
+       191        LDX
+       192        PHI 6
+       193 -      GLO 14
+       193 +      GLO 7
+       194        BR RET-1            ; AND PERFORM RETURN TO CALLER
+       195    
+       196    ; =========================================================
+             =====================
+
+● Bash(a18 test-serial-abene.asm -o test-serial-abene.hex -l
+      test-serial-abene.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-abene.hex - now SCRT uses R7.0 as temp instead of R14.0,
+  so it won't clobber the baud rate delay counter.
+
+> Right, I should have mentioned, feel free to change out the registers used
+ to save the CALL and RETURN to unused ones. 
+
+● Good to know. Let me also check - does R14.0 need to be reinitialized to 2
+   before each character? Looking at Chuck's code, after the serial routine
+  finishes it does LDI 02H / PLO 14 to restore it. But SCRT's CALL runs
+  before the serial routine and clobbers R14.0 with D (the character).
+
+  So even with R7 for SCRT temp, there's still an issue: R14.0 needs to be 2
+   when we enter B96OUT, but we're setting it in MAIN before the CALL, and
+  the serial routine expects it on entry.
+
+  Did the last test work, or still no output?
+
+> Since we're deciding to hardcode to 9600 baud, you can feel free to 
+hardcode register 14 to a 2 inside of the Chuck routine, so we don't have to
+ worry about passing it in. 
+
+● Good idea. Let me modify the serial routine to initialize R14.0 = 2 at the
+   start:
+
+● Update(test-serial-abene.asm)
+  ⎿  Updated test-serial-abene.asm with 3 additions            
+       20        PLO 11
+       21    
+       22    B96OUT:
+       23 +      LDI 02H
+       24 +      PLO 14              ; R14.0 = 2 for 9600 baud 
+          + (hardcoded)
+       25 +  
+       26        LDI 08H
+       27        PLO 15
+       28    
+
+● And remove the now-unnecessary initialization in MAIN:
+
+● Update(test-serial-abene.asm)
+  ⎿  Updated test-serial-abene.asm with 4 removals              
+       207        PLO 2
+       208        SEX 2
+       209    
+       210 -      ; Initialize R14.0 = 2 for 9600 baud
+       211 -      LDI 02H
+       212 -      PLO 14
+       213 -  
+       210        ; Set Q high (idle) - REQ = Q ON = mark = idle
+       211        REQ
+       212    
+
+● Bash(a18 test-serial-abene.asm -o test-serial-abene.hex -l
+      test-serial-abene.lst 2>&1)
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+
+     Copyright (c) 1985 William C. Colley, III
+     fixes for LCC/Windows by HRJ update Jan 2022
+     … +3 lines (ctrl+o to expand)
+
+● Try test-serial-abene.hex - now R14.0 is set to 2 inside the serial
+  routine itself, so SCRT can't interfere with it.
+
+> Perfect, Claude. A stream of "H". Let me ask you a question. If I come 
+back to this session, or if you otherwise "compact" your context, would you 
+lose everything you've learned from me today up to this point? Because if 
+so, that would be a shame, and we should save this whole conversation for 
+you to load back, if possible. Is this so? 
+
+● Yes, you're right to be concerned. When context gets compacted or a
+  session ends, I lose the specific details we worked through. The key
+  lessons learned today that would be lost:
+
+  1. Q polarity: SEQ = Q OFF = space/0 (start bit), REQ = Q ON = mark/1
+  (idle/stop)
+  2. Your working SCRT implementation from abene_idiot.asm - the SEP 3
+  before CALL/RET labels with BR CALL-1 / BR RET-1 pattern
+  3. Register conflicts: SCRT can't use R14 for temp storage because Chuck's
+   serial routine uses R14.0 as the baud delay counter
+  4. R14.0 must be 2 on entry to B96OUT for 9600 baud - now hardcoded inside
+   the routine
+  5. Idle state must be REQ (not SEQ) before calling serial output
+  6. Entry point issue: Code at address 0 executes first - need LBR START if
+   serial routines are placed there
+  7. Short branch ranges: Serial routine must be placed early in code to
+  keep timing-critical short branches in range - no long branches allowed in
+   the serial routine as they add cycles and break timing
+
+  The conversation history is valuable. You could save this chat, or I could
+   create a documentation file summarizing these findings that could be read
+   back in a future session. Would you like me to create such a file?
+
+> Can we do both, to be safe? 
+
+● Absolutely. Let me create a documentation file first:
+
+● Write(SERIAL-IO-NOTES.md)
+  ⎿  Wrote 230 lines to SERIAL-IO-NOTES.md                                 
+     # RCA 1802 Serial I/O and SCRT Implementation Notes
+     ## Session: December 5, 2025
+     ## Hardware: Membership Card, 1.75 MHz clock, 9600 baud
+     This document captures critical lessons learned while implementing
+     serial I/O
+     for the chess engine on the Membership Card.
+     ---
+     … +220 lines (ctrl+o to expand)
+
+● Created SERIAL-IO-NOTES.md with all the key lessons.
+
+  For saving the conversation itself - that's on your end. You can:
+  1. Use /export in Claude Code to export the conversation
+  2. Copy/save the terminal output
+  3. Some Claude interfaces have a "share" or "download" option
+
+  The documentation file I created can be read back in future sessions with
+  a prompt like "Read SERIAL-IO-NOTES.md first to understand the serial I/O
+  implementation details."
+
+  Would you like to continue and get the serial receive working, or
+  integrate this into the chess engine now?
+
+
+

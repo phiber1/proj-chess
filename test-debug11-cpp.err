@@ -1,0 +1,22 @@
+In file included from test-debug11.asm:9:
+serial-io.asm:3:14: warning: missing terminating ' character
+    3 | ; Chuck Yakym's 9600 baud routines + helper functions
+      |              ^
+serial-io.asm:4:26: warning: missing terminating ' character
+    4 | ; For use with Mark Abene's SCRT implementation
+      |                          ^
+serial-io.asm:154:34: warning: missing terminating ' character
+  154 |     BDF SPN_AF          ; Yes, it's A-F
+      |                                  ^
+serial-io.asm:180:27: warning: missing terminating ' character
+  180 | ; SERIAL_READ_CHAR - Chuck's B96IN (Inverted EF3 logic)
+      |                           ^
+serial-io.asm:223:28: warning: missing terminating ' character
+  223 | ; SERIAL_WRITE_CHAR - Chuck's B96OUT (Inverted Q logic)
+      |                            ^
+test-debug11.asm:184:39: warning: missing terminating ' character
+  184 |     ; Use R8 for CHECK_LOG pointer (we'll restore R8 in IS_IN_CHECK anyway)
+      |                                       ^
+test-debug11.asm:305:48: warning: missing terminating ' character
+  305 |     ; Now print results (after loop, serial won't affect anything)
+      |                                                ^

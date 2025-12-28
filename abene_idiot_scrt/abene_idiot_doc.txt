@@ -1,0 +1,36 @@
+Documentation for IDIOT additional code from Mark Abene
+Code & commentary by Mark Abene Jan 2019, edited by Herb Johnson
+Last edits Jan 22 2019
+
+Mark Abene provides his additions to the IDIOT ROM monitor program, as
+described in these notes and in code provided. The code provides 
+serial character I/O for IDIOT from calling programs; and provides COSMAC 1802 SCRT support.   
+
+Code only calls IDIOT READ and TYPE routines in operation; so when assembled
+those addresses must match those IDIOT routines where IDIOT resides in the target
+1802 system. These routines requires IDIOT to run first, then a call to Mark's routine
+"INITCALL", before use of his serial-character routines or his SCRT routines.
+ 
+The code follows the SCALL=R4  SRET=R5 LINK=R6 X=R2 conventions among others,
+and provides Standard Call and Return (SCRT) support. As Mark describes:
+
+"As is typical, R6 is used as a linkage register between CALL and RET. As a preamble, you must first load R6 with the real starting address of your code, then you long branch to INITCALL. You'll then have R4 and R5 setup for SCRT, R6 reserved for linkage, X set to R2 (the main stack), and P set to R3 (the main PC)." (He provides an example user program.)
+
+"There's a list of register assignments at the head of the IDIOT source.
+The only thing I would add to that list, is that R6 is now reserved for SCRT linkage.
+Anywhere a register would otherwise need to be preserved, I save it on the stack and then restore it. For example, RD in F_READ, and registers R8, R9, and RB in F_INPUT. I use RE.0 as a temp variable in F_TYPE and F_READ, and RA as the incoming pointer to a text string for F_MSG.
+
+Mark provided a "hello.asm" user program to initialize and demonstrate his code. He used
+his appended IDIOT, as a monitor program to test operation of Mike Riley's RC/FORTH 
+without use of Riley's ElfOS; changing a couple of glocal registers in RC/FORTH to do so.
+
+Another useful facility in IDIOT is the DELAY function, which provides a timed delay. I
+(Herb) asked Mark about that. He said: "DELAY1 is in fact triggered by READ and TYPE, since I temporarily store D in RE.0 (D is the character either read or to be typed). RE.0 is greater than zero, so the delay is invoked. I figured I gain a temporary variable, and enable a harmless inter-character delay in the process. May even be helpful on older hardware. I make no assumptions about what people run IDIOT on."
+
+- Herb Johnson, quotes and edits with permission from Mark Abene.
+
+
+
+
+
+

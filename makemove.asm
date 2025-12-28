@@ -1,0 +1,292 @@
+; ==============================================================================
+; MAKE/UNMAKE MOVE MODULE
+; ==============================================================================
+
+; ------------------------------------------------------------------------------
+; Undo information - saved before each move for unmake
+; ------------------------------------------------------------------------------
+UNDO_CAPTURED:
+    DS 1                ; Captured piece (or EMPTY)
+UNDO_FROM:
+    DS 1                ; From square
+UNDO_TO:
+    DS 1                ; To square
+UNDO_CASTLING:
+    DS 1                ; Previous castling rights
+UNDO_EP:
+    DS 1                ; Previous en passant square
+UNDO_HALFMOVE:
+    DS 1                ; Previous halfmove clock
+
+; ==============================================================================
+; MAKE_MOVE - Apply move to the board
+; Input: MOVE_FROM, MOVE_TO contain the move
+; Output: Board updated, undo info saved
+;         D = 0 if success
+; ==============================================================================
+MAKE_MOVE:
+    ; Save undo information
+    LDI HIGH(UNDO_FROM)
+    PHI 8
+    LDI LOW(UNDO_FROM)
+    PLO 8
+
+    ; Save from square
+    LDI HIGH(MOVE_FROM)
+    PHI 9
+    LDI LOW(MOVE_FROM)
+    PLO 9
+    LDN 9
+    STR 8
+    INC 8
+    
+    ; Save to square
+    INC 9
+    LDN 9               ; MOVE_TO
+    STR 8
+    INC 8
+    
+    ; Save castling rights
+    LDI HIGH(CASTLING)
+    PHI 9
+    LDI LOW(CASTLING)
+    PLO 9
+    LDN 9
+    STR 8
+    INC 8
+    
+    ; Save en passant square
+    INC 9               ; EP_SQUARE
+    LDN 9
+    STR 8
+    INC 8
+    
+    ; Save halfmove clock
+    INC 9               ; HALFMOVE
+    LDN 9
+    STR 8
+
+    ; Get the piece being moved
+    LDI HIGH(BOARD)
+    PHI 8
+    LDI LOW(BOARD)
+    PLO 8
+    LDI HIGH(MOVE_FROM)
+    PHI 9
+    LDI LOW(MOVE_FROM)
+    PLO 9
+    LDN 9               ; Get from square index
+    SEX 2
+    STR 2
+    GLO 8
+    ADD
+    PLO 8
+    GHI 8
+    ADCI 0
+    PHI 8
+    LDN 8               ; D = piece at from square
+    PLO 10              ; Save moving piece in R10.0
+
+    ; Get captured piece at destination
+    LDI HIGH(BOARD)
+    PHI 8
+    LDI LOW(BOARD)
+    PLO 8
+    LDI HIGH(MOVE_TO)
+    PHI 9
+    LDI LOW(MOVE_TO)
+    PLO 9
+    LDN 9               ; Get to square index
+    STR 2
+    GLO 8
+    ADD
+    PLO 8
+    GHI 8
+    ADCI 0
+    PHI 8
+    LDN 8               ; D = piece at to square (captured)
+    
+    ; Save captured piece
+    PHI 10              ; Save in R10.1
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 9
+    LDI LOW(UNDO_CAPTURED)
+    PLO 9
+    GHI 10
+    STR 9
+
+    ; Place moving piece at destination
+    GLO 10              ; Get moving piece
+    STR 8               ; Store at to square (R8 still points there)
+
+    ; Clear the from square
+    LDI HIGH(BOARD)
+    PHI 8
+    LDI LOW(BOARD)
+    PLO 8
+    LDI HIGH(MOVE_FROM)
+    PHI 9
+    LDI LOW(MOVE_FROM)
+    PLO 9
+    LDN 9               ; Get from square
+    STR 2
+    GLO 8
+    ADD
+    PLO 8
+    GHI 8
+    ADCI 0
+    PHI 8
+    LDI EMPTY
+    STR 8               ; Clear from square
+
+    ; Toggle side to move
+    LDI HIGH(SIDE)
+    PHI 8
+    LDI LOW(SIDE)
+    PLO 8
+    LDN 8
+    XRI BLACK           ; Toggle between 0 and 8
+    STR 8
+
+    ; Clear en passant square (simplified - proper handling later)
+    INC 8               ; Point to CASTLING
+    INC 8               ; Point to EP_SQUARE
+    LDI NO_EP
+    STR 8
+
+    ; ===========================================
+    ; FIFTY-MOVE RULE: Update halfmove clock
+    ; ===========================================
+    ; Reset to 0 if: capture or pawn move
+    ; Otherwise: increment
+    ; R10.0 = moving piece, R10.1 = captured piece
+
+    INC 8               ; Point to HALFMOVE
+
+    ; Check if capture occurred (R10.1 != EMPTY)
+    GHI 10              ; Get captured piece
+    BNZ MM_RESET_HALFMOVE
+
+    ; Check if pawn moved (piece type == PAWN_TYPE)
+    GLO 10              ; Get moving piece
+    ANI PIECE_MASK      ; Get piece type
+    XRI PAWN_TYPE       ; Is it a pawn?
+    BZ MM_RESET_HALFMOVE
+
+    ; No capture, not pawn move - increment halfmove clock
+    LDN 8               ; Get current halfmove
+    ADI 1               ; Increment
+    STR 8               ; Store back
+    BR MM_DONE
+
+MM_RESET_HALFMOVE:
+    ; Reset halfmove clock to 0
+    LDI 0
+    STR 8
+
+MM_DONE:
+    LDI 0               ; Return success
+    SEP 5
+
+; ==============================================================================
+; UNMAKE_MOVE - Reverse the last move
+; Input: Undo info from previous MAKE_MOVE
+; Output: Board restored to previous state
+; ==============================================================================
+UNMAKE_MOVE:
+    ; Get moving piece from to square
+    LDI HIGH(BOARD)
+    PHI 8
+    LDI LOW(BOARD)
+    PLO 8
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; Get to square
+    SEX 2
+    STR 2
+    GLO 8
+    ADD
+    PLO 8
+    GHI 8
+    ADCI 0
+    PHI 8
+    LDN 8               ; D = piece at to square
+    PLO 10              ; Save in R10.0
+
+    ; Restore captured piece at to square
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 9
+    LDI LOW(UNDO_CAPTURED)
+    PLO 9
+    LDN 9               ; Get captured piece
+    STR 8               ; Put back at to square
+
+    ; Put moving piece back at from square
+    LDI HIGH(BOARD)
+    PHI 8
+    LDI LOW(BOARD)
+    PLO 8
+    LDI HIGH(UNDO_FROM)
+    PHI 9
+    LDI LOW(UNDO_FROM)
+    PLO 9
+    LDN 9               ; Get from square
+    STR 2
+    GLO 8
+    ADD
+    PLO 8
+    GHI 8
+    ADCI 0
+    PHI 8
+    GLO 10              ; Get moving piece
+    STR 8               ; Put back at from square
+
+    ; Restore castling rights
+    LDI HIGH(UNDO_CASTLING)
+    PHI 9
+    LDI LOW(UNDO_CASTLING)
+    PLO 9
+    LDN 9
+    PHI 10              ; Save in R10.1
+    
+    LDI HIGH(CASTLING)
+    PHI 8
+    LDI LOW(CASTLING)
+    PLO 8
+    GHI 10
+    STR 8
+
+    ; Restore en passant square
+    LDI HIGH(UNDO_EP)
+    PHI 9
+    LDI LOW(UNDO_EP)
+    PLO 9
+    LDN 9
+    INC 8               ; Point to EP_SQUARE
+    STR 8
+
+    ; Restore halfmove clock
+    LDI HIGH(UNDO_HALFMOVE)
+    PHI 9
+    LDI LOW(UNDO_HALFMOVE)
+    PLO 9
+    LDN 9
+    INC 8               ; Point to HALFMOVE
+    STR 8
+
+    ; Toggle side to move back
+    LDI HIGH(SIDE)
+    PHI 8
+    LDI LOW(SIDE)
+    PLO 8
+    LDN 8
+    XRI BLACK           ; Toggle between 0 and 8
+    STR 8
+
+    SEP 5
+
+; ==============================================================================
+; END OF MAKE/UNMAKE MODULE
+; ==============================================================================

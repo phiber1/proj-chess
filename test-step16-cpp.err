@@ -1,0 +1,82 @@
+test-step16.asm:9:38: warning: missing terminating ' character
+    9 | ;   Qxd6: +480 (captures queen, doesn't see Nxd6 recapture)
+      |                                      ^
+In file included from test-step16.asm:25:
+serial-io.asm:3:14: warning: missing terminating ' character
+    3 | ; Chuck Yakym's 9600 baud routines + helper functions
+      |              ^
+serial-io.asm:4:26: warning: missing terminating ' character
+    4 | ; For use with Mark Abene's SCRT implementation
+      |                          ^
+serial-io.asm:154:34: warning: missing terminating ' character
+  154 |     BDF SPN_AF          ; Yes, it's A-F
+      |                                  ^
+serial-io.asm:180:27: warning: missing terminating ' character
+  180 | ; SERIAL_READ_CHAR - Chuck's B96IN (Inverted EF3 logic)
+      |                           ^
+serial-io.asm:223:28: warning: missing terminating ' character
+  223 | ; SERIAL_WRITE_CHAR - Chuck's B96OUT (Inverted Q logic)
+      |                            ^
+test-step16.asm:81:40: warning: missing terminating ' character
+   81 | MOVE_PIECE  EQU $5090       ; For Black's move (inner ply)
+      |                                        ^
+test-step16.asm:83:40: warning: missing terminating ' character
+   83 | WHITE_MOVE_PIECE EQU $5092  ; For White's move (outer ply)
+      |                                        ^
+test-step16.asm:97:36: warning: missing terminating ' character
+   97 | BLACK_BEST_LO   EQU $50AA   ; Black's best score (for current White move)
+      |                                    ^
+test-step16.asm:103:36: warning: missing terminating ' character
+  103 | WHITE_MOVES     EQU $5100   ; White's candidate moves
+      |                                    ^
+test-step16.asm:247:34: warning: missing terminating ' character
+  247 | ; For each White move, find Black's best response, then pick best for White
+      |                                  ^
+test-step16.asm:362:59: warning: missing terminating ' character
+  362 |     CALL MAKE_MOVE_WHITE  ; Use separate storage for White's move
+      |                                                           ^
+test-step16.asm:364:27: warning: missing terminating ' character
+  364 |     ; === Now search Black's responses ===
+      |                           ^
+test-step16.asm:405:37: warning: missing terminating ' character
+  405 |     ; (Black wants to minimize White's score)
+      |                                     ^
+test-step16.asm:461:17: warning: missing terminating ' character
+  461 |     ; Make Black's move
+      |                 ^
+test-step16.asm:468:27: warning: missing terminating ' character
+  468 |     ; Evaluate (from White's perspective)
+      |                           ^
+test-step16.asm:513:68: warning: missing terminating ' character
+  513 |     ; Compare: if SCORE < BLACK_BEST, update (Black minimizes White's score)
+      |                                                                    ^
+test-step16.asm:517:19: warning: missing terminating ' character
+  517 |     ; Update Black's best
+      |                   ^
+test-step16.asm:540:19: warning: missing terminating ' character
+  540 |     ; Unmake Black's move - reload from dedicated storage
+      |                   ^
+test-step16.asm:555:12: warning: missing terminating ' character
+  555 |     ; Black's best response is in BLACK_BEST
+      |            ^
+test-step16.asm:579:56: warning: missing terminating ' character
+  579 |     ; Compare: if BLACK_BEST > BEST_SCORE, update White's best
+      |                                                        ^
+test-step16.asm:583:19: warning: missing terminating ' character
+  583 |     ; Update White's best move and score
+      |                   ^
+test-step16.asm:625:19: warning: missing terminating ' character
+  625 |     ; Unmake White's move
+      |                   ^
+test-step16.asm:635:61: warning: missing terminating ' character
+  635 |     CALL UNMAKE_MOVE_WHITE  ; Use separate storage for White's move
+      |                                                             ^
+test-step16.asm:1016:61: warning: missing terminating ' character
+ 1016 | ; MAKE_MOVE_WHITE / UNMAKE_MOVE_WHITE - For outer ply (White's move)
+      |                                                             ^
+test-step16.asm:1073:57: warning: missing terminating ' character
+ 1073 | ; MAKE_MOVE_MEM / UNMAKE_MOVE_MEM - For inner ply (Black's move)
+      |                                                         ^
+test-step16.asm:1130:39: warning: missing terminating ' character
+ 1130 | ; EVALUATE_MATERIAL - Score from White's perspective
+      |                                       ^

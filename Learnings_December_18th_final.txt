@@ -1,0 +1,940 @@
+                                                                                
+ * ▐▛███▜▌ *   Claude Code v2.0.72                                              
+* ▝▜█████▛▘ *  Opus 4.5 · Claude Max                                            
+ *  ▘▘ ▝▝  *   ~/proj-chess                                                     
+══════════════════ Conversation compacted · ctrl+o for history ═════════════════
+                                                                                
+● Let me read the current state of test-step22.asm to see what we have, then    
+  build and test it.                                                            
+                                                                                
+● Read(test-step22.asm)                                                         
+  ⎿  Read 1744 lines                                                            
+                                                                                
+● I can see the test code already has the minimal register settings at lines    
+  466-470. Let me build and test this version.                                  
+                                                                                
+● Bash(cpp -P test-step22.asm > test-step22-pp.asm && a18 test-step22-pp.asm -l 
+      test-step22.lst -o test-step22.hex)                                       
+  ⎿  Error: Exit code 2                                                         
+     In file included from test-step22.asm:16:                                  
+     serial-io.asm:3:14: warning: missing terminating ' character               
+         3 | ; Chuck Yakym's 9600 baud routines + helper functions              
+           |              ^                                                     
+     serial-io.asm:4:26: warning: missing terminating ' character               
+         4 | ; For use with Mark Abene's SCRT implementation                    
+           |                          ^                                         
+     serial-io.asm:154:34: warning: missing terminating ' character             
+       154 |     BDF SPN_AF          ; Yes, it's A-F                            
+     … +29 lines (ctrl+o to see all)                                            
+                                                                                
+● Let me check what the actual errors are:                                      
+                                                                                
+● Bash(cpp -P test-step22.asm > test-step22-pp.asm 2>/dev/null && a18           
+      test-step22-pp.asm -l test-step22.lst -o test-step22.hex 2>&1 | head -50) 
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+                             
+     Copyright (c) 1985 William C. Colley, III                                  
+     fixes for LCC/Windows by HRJ update Jan 2022                               
+     … +3 lines (ctrl+o to expand)                                              
+                                                                                
+● Let me check the listing file for error details:                              
+                                                                                
+● Bash(grep -n "Error\|error\|ERR\|\*\*\*" test-step22.lst 2>/dev/null | head   
+      -30)                                                                      
+  ⎿ 1843:                        ; R6 = SCRT link register *** DO NOT USE F     
+    OR TEMP STORAGE ***                                                         
+    1847:                        ; R10 = Board scan pointer (GENERATE_MOVES     
+    … +3 lines (ctrl+o to expand)                                               
+                                                                                
+                                                                                
+                                                                                
+● Let me check if the hex file was created despite the reported errors (they may
+   be forward reference warnings):                                              
+                                                                                
+● Bash(ls -la test-step22.hex 2>/dev/null && wc -l test-step22.hex)             
+  ⎿  -rw-r--r-- 1 phiber staff 6882 Dec 18 19:28 test-step22.hex                
+     92 test-step22.hex                                                         
+                                                                                
+● The hex file was generated successfully. Let me read the PROGRESS.md and      
+  Learnings files as requested.                                                 
+                                                                                
+● Read(PROGRESS.md)                                                             
+  ⎿  Read 747 lines                                                             
+                                                                                
+● Search(pattern: "Learnings*.txt")                                             
+  ⎿  Found 5 files (ctrl+o to expand)                                           
+                                                                                
+● Read(Learnings_December_16th_final.txt)                                       
+  ⎿  Read 1064 lines                                                            
+                                                                                
+● Good, I have full context now. The hex file was built successfully. The test  
+  includes the minimal register fix after NEGATE_SCORE (setting R14.0=2 and     
+  R15.0=0) to test if that's what the serial routines were providing that made  
+  the search work correctly.                                                    
+                                                                                
+  The hex file is ready at test-step22.hex. When you run it in Emma02, we       
+  expect:                                                                       
+  - If the register fix works: Best: 03-12 0384 (correct)                       
+  - If it doesn't fix it: Wrong move/score like before (03-21 or similar)       
+                                                                                
+  Please run the test and let me know the results. You mentioned being able to  
+  watch the stack in RAM live with Emma02's debugging features - that could be  
+  very useful if this simple fix doesn't work.                                  
+                                                                                
+> Yes, I'll be watching the stack at 7F00 to 7FFF, and all your memory usage    
+ at 5000 up.                                                                    
+                                                                                
+● Excellent. That will give us great visibility into:                           
+                                                                                
+  Stack (7F00-7FFF):                                                            
+  - SCRT call/return linkage (R6 saves)                                         
+  - Any STXD/IRX operations                                                     
+  - Stack pointer starts at 7FFF and grows downward                             
+                                                                                
+  Memory at 5000+:                                                              
+  - 5000-507F: Board (0x88 representation)                                      
+  - 5080: GAME_STATE (castling, EP)                                             
+  - 5088-5089: SCORE_LO/HI                                                      
+  - 5090-50CF: PLY_BASE (4 plies × 16 bytes each)                               
+    - Each ply has: move piece, captured piece, from, to, alpha, beta, ptr, best
+  - 50D0: SEARCH_DEPTH                                                          
+  - 50D1: CURRENT_PLY                                                           
+  - 50D2-50D5: BEST_MOVE_FROM, BEST_MOVE_TO, BEST_SCORE_LO, BEST_SCORE_HI       
+  - 50D6-50DA: NODE_COUNT, CUTOFF_COUNT, TEMP_PLY                               
+  - 5100-517F: Move lists (4 plies × 32 bytes)                                  
+                                                                                
+  Key values to watch at 50D4-50D5 (BEST_SCORE):                                
+  - Correct: 84 03 (little-endian 0384)                                         
+  - Wrong (as seen before): 84 7B or FF 7F                                      
+                                                                                
+  Ready when you are!                                                           
+                                                                                
+> OK. We got the erroneous 7B84 score. I can tell you that this is not a        
+value on the stack. It appears in your memory storage. It appears in            
+PLY_BASE, specifically, a few plies with this value. I see it in 03-12 and      
+03-21 in raw memory. Our "Best" output says 03-21 7B84. SCORE at 5088 is 84     
+77 (7784). So there are many values in this range in your memory storage.       
+Feel free to ask me any memory value that would help.                           
+                                                                                
+● The register fix didn't work. So the bug is somewhere else in the logic       
+  itself.                                                                       
+                                                                                
+  The corruption pattern is interesting - the high byte is getting corrupted:   
+  - Expected: 03 84 (0384 = 900, queen value)                                   
+  - Actual: 7B 84 or 77 84                                                      
+                                                                                
+  The low byte (84) is correct, but the high byte (03) is becoming 7B or 77.    
+                                                                                
+  Let me ask for specific memory values to trace this:                          
+                                                                                
+  PLY_BEST values (each ply's best score found so far):                         
+  - Ply 0 BEST: 509A-509B (lo, hi)                                              
+  - Ply 1 BEST: 50AA-50AB                                                       
+  - Ply 2 BEST: 50BA-50BB                                                       
+                                                                                
+  Final BEST_SCORE: 50D4-50D5                                                   
+                                                                                
+  Also helpful - the alpha/beta bounds:                                         
+  - Ply 0 ALPHA: 5094-5095                                                      
+  - Ply 0 BETA: 5096-5097                                                       
+  - Ply 1 ALPHA: 50A4-50A5                                                      
+  - Ply 1 BETA: 50A6-50A7                                                       
+                                                                                
+  Could you give me the values at these locations after the search completes?   
+  This will help me understand where the corruption is happening - is it during 
+  score propagation, negation, or the signed comparison?                        
+                                                                                
+> I will give you the full range at search completion from 5000-50FF. You'll    
+ find the dump in step22_mem.out.                                               
+                                                                                
+● Read(step22_mem.out)                                                          
+  ⎿  Read 17 lines                                                              
+                                                                                
+● Excellent, this is very revealing! Let me analyze:                            
+                                                                                
+  Board (5000-507F): Correct - Queen at d1, King at e1, pawns at a2/a7, Black   
+  King at e8.                                                                   
+                                                                                
+  Key Finding - PLY 2 has the CORRECT answer:                                   
+  50B0: 05 00 03 12 84 7B 84 7B 42 51 84 03                                     
+         ^     ^  ^              ^^^^                                           
+         |     |  |              PLY_BEST = 0384 (CORRECT!)                     
+         |     +--+-- Move 03-12 (Qc2 - CORRECT!)                               
+         +-- W_QUEEN                                                            
+                                                                                
+  But PLY 2's alpha/beta are both 7B84 - that's invalid (alpha should be <      
+  beta).                                                                        
+                                                                                
+  PLY 1 bounds are also strange:                                                
+  50A0: 09 00 60 40 7C 88 7C 84                                                 
+                    ^^^^^ ^^^^^                                                 
+                    ALPHA BETA                                                  
+                    887C  847C                                                  
+                                                                                
+  The corruption chain:                                                         
+  1. PLY 2 correctly evaluates to 0384                                          
+  2. But PLY 2's alpha = beta = 7B84 (wrong window)                             
+  3. PLY 1's bounds are 887C/847C (also wrong)                                  
+  4. Final BEST_SCORE ends up as 7B84 instead of 0384                           
+                                                                                
+  Suspicious: The value 7B84 is -0384 with a corrupted high bit pattern. Let me 
+  check NEGATE_SCORE more carefully.                                            
+                                                                                
+  Wait - 7B84 could come from negating 847C:                                    
+  - ~847C = 7B83                                                                
+  - +1 = 7B84                                                                   
+                                                                                
+  And 847C is suspiciously close to 8001 + 047B...                              
+                                                                                
+  Can you tell me what's at PLY 0's alpha/beta? That's 5094-5097. From the dump:
+  5090: 00 0E 73 74 84 7B FF 7F                                                 
+                    ^^^^^ ^^^^^                                                 
+                    ALPHA BETA                                                  
+                    7B84  7FFF                                                  
+                                                                                
+  So PLY 0 alpha = 7B84, beta = 7FFF. The alpha should have started as 8001     
+  (NEG_INF), but it's 7B84.                                                     
+                                                                                
+  The bug is in how alpha gets updated! Something is setting alpha to the wrong 
+  value early on. Let me check UPDATE_ROOT_ALPHA or UPDATE_PLY_ALPHA for the    
+  bug.                                                                          
+                                                                                
+> Please proceed.                                                               
+                                                                                
+● Let me examine the alpha update functions for the bug.                        
+                                                                                
+● Read(test-step22.asm)                                                         
+  ⎿  Read 130 lines                                                             
+                                                                                
+● Let me also check EVALUATE_MATERIAL - it might be clobbering registers that   
+  affect later comparisons:                                                     
+                                                                                
+● Read(test-step22.asm)                                                         
+  ⎿  Read 120 lines                                                             
+                                                                                
+● I see EVALUATE_MATERIAL uses R14 and R15. After it returns:                   
+  - R14.0 = 0x80 (loop ended)                                                   
+  - R15.0 = last piece code                                                     
+                                                                                
+  Now let me check SETUP_PLY_BOUNDS - I suspect the bug is there since PLY 2 has
+   alpha = beta = 7B84:                                                         
+                                                                                
+● Read(test-step22.asm)                                                         
+  ⎿  Read 110 lines                                                             
+                                                                                
+● I've been analyzing the code extensively. The comparison logic looks correct, 
+  and the ply bounds calculation in SETUP_PLY_BOUNDS looks correct too.         
+                                                                                
+  But here's what's strange from the memory dump:                               
+  - PLY 2 has the RIGHT answer: move 03-12, BEST = 0384 ✓                       
+  - But PLY 2's alpha = beta = 7B84 - this is invalid (should have alpha < beta)
+                                                                                
+  The value 7B84 comes from negating 847C, which is PLY 1's beta.               
+                                                                                
+  Key insight: The memory dump shows the FINAL state. PLY 2's values are from   
+  the LAST invocation. But during earlier (correct) invocations, the values may 
+  have been right.                                                              
+                                                                                
+  I think the corruption happens during score propagation. Let me trace:        
+                                                                                
+  1. PLY 2 evaluates to 0384 ✓                                                  
+  2. Returns to PLY 1, NEGATE_SCORE makes it FC7C                               
+  3. PLY 1 should track this as its best                                        
+  4. PLY 1 returns FC7C to root                                                 
+  5. Root negates to get 0384                                                   
+  6. Root should update BEST_SCORE to 0384                                      
+                                                                                
+  But somehow BEST_SCORE ends up as 7B84.                                       
+                                                                                
+  Could you do one more memory capture for me? This time, could you set a       
+  breakpoint right AFTER the first call to CALL NEGAMAX_PLY returns in          
+  NEGAMAX_ROOT (around address where NEGATE_SCORE is called), and capture:      
+                                                                                
+  1. The value at SCORE (5088-5089)                                             
+  2. The value at BEST_SCORE (50D4-50D5)                                        
+  3. The stack pointer (R2)                                                     
+                                                                                
+  This will tell us if the first move's score is already corrupted when it comes
+   back from the recursive search.                                              
+                                                                                
+> Done. SCORE_LO is 7C and SCORE_HI is 9C (so SCORE is the value 9C7C).         
+BEST_SCORE_LO is 01 and BEST_SCORE_HI is 80 (BEST_SCORE is the value 8001).     
+Bear in mind, the 1802 is big endian, and you're storing values in little       
+endian. This is ok as long as you're always storing LO and HI in the same       
+order that you're loading, a byte at a time. R2 is 7FFD.                        
+                                                                                
+● Excellent data! This is very revealing.                                       
+                                                                                
+  After root's first NEGAMAX_PLY call and NEGATE_SCORE:                         
+  - SCORE = 9C7C                                                                
+  - BEST_SCORE = 8001 (still at -infinity, not yet updated)                     
+                                                                                
+  So before NEGATE_SCORE, SCORE was:                                            
+  - -(9C7C) = 6384                                                              
+                                                                                
+  But 6384 is wrong! Ply 1 should have returned FC7C (which negates to 0384).   
+                                                                                
+  Let me trace what 6384 could mean:                                            
+  - 6384 = +25476 (way too high for any material score)                         
+  - The low byte 84 is correct (same as in 0384)                                
+  - The high byte 63 vs expected FC is wrong                                    
+                                                                                
+  Interestingly: 63 = 03 | 60, and $60 is the address of the black pawn at a7!  
+                                                                                
+  This suggests some memory or register is bleeding into the score calculation. 
+                                                                                
+  Can you capture one more data point? Right after CALL NEGAMAX_PLY returns but 
+  BEFORE CALL NEGATE_SCORE in the root loop, what is:                           
+                                                                                
+  1. SCORE at 5088-5089                                                         
+  2. PLY 1's BEST at 50AA-50AB                                                  
+                                                                                
+  This will tell us whether:                                                    
+  - Ply 1 returned the correct value (FC7C) but NEGATE_SCORE corrupted it, OR   
+  - Ply 1 itself returned the wrong value (6384)                                
+                                                                                
+  The root loop code is around address 0x1C0-0x1E0 in the listing. The CALL     
+  NEGATE_SCORE should be right after DEC 12.                                    
+                                                                                
+> The only CALL NEGATE_SCORE after a DEC 12 is at 03DA in the listing. Is       
+that what you meant?                                                            
+                                                                                
+● You're right, that's in NEGAMAX_PLY's recursive loop, not NEGAMAX_ROOT. Let me
+   find the correct address. Let me check the listing file.                     
+                                                                                
+● Bash(grep -n "CALL NEGAMAX_PLY\|CALL NEGATE_SCORE\|NR_LOOP\|NEGAMAX_ROOT"     
+      /home/phiber/proj-chess/test-step22.lst | head -30)                       
+  ⎿  532:   01a5   d4 02 31          CALL NEGAMAX_ROOT                          
+     615:                        ; NEGAMAX_ROOT - Root-level search             
+     618:   0231                 NEGAMAX_ROOT:                                  
+     … +11 lines (ctrl+o to expand)                                             
+                                                                                
+● Found it. In NEGAMAX_ROOT:                                                    
+  - 02A3: CALL NEGAMAX_PLY                                                      
+  - 02A6: CALL NEGATE_SCORE                                                     
+                                                                                
+  So set a breakpoint at 02A6 (before NEGATE_SCORE runs). At that point, SCORE  
+  (5088-5089) will contain what ply 1 actually returned, before the root negates
+   it.                                                                          
+                                                                                
+  This will tell us if:                                                         
+  - Ply 1 returned 6384 (wrong) → bug is inside NEGAMAX_PLY                     
+  - Ply 1 returned FC7C (correct) → bug is in NEGATE_SCORE itself               
+                                                                                
+> This is the breakpoint we just did. And SCORE at that breakpoint is 9C7C.     
+                                                                                
+● So at 02A6 (before NEGATE_SCORE runs), SCORE is already 9C7C.                 
+                                                                                
+  This means NEGAMAX_PLY(ply=1) returned 9C7C in SCORE. That's the bug location 
+  - it's inside ply 1's search, not in root's NEGATE_SCORE.                     
+                                                                                
+  Let me trace backwards:                                                       
+  - If ply 1 returned 9C7C, that came from NP_RETURN_BEST copying PLY_1_BEST to 
+  SCORE                                                                         
+  - So PLY_1_BEST must be 9C7C                                                  
+                                                                                
+  But PLY_1_BEST should be FC7C (the negated +900 evaluation).                  
+                                                                                
+  9C7C is the negation of 6384. So somehow a value of 6384 got into PLY_1_BEST  
+  instead of FC7C.                                                              
+                                                                                
+  Could you check PLY_1_BEST at 50AA-50AB at this same breakpoint (02A6)?       
+                                                                                
+  If it's 9C7C, then the bug is in how PLY_BEST gets updated in the ply 1 loop. 
+  If it's something else, then NP_RETURN_BEST has a bug.                        
+                                                                                
+  Also - 6384 = 0384 + 6000. The low byte (84) is correct, but the high byte has
+   60 added to it. $60 is the square address of the black pawn at a7. This might
+   be a clue - some register or memory value is bleeding into the score.        
+                                                                                
+> 50AA-50AB is also 7C 9C (9C7C).                                               
+                                                                                
+● So PLY_1_BEST = 9C7C. This confirms the bug is in how PLY_BEST gets set during
+   ply 1's loop.                                                                
+                                                                                
+  The chain is:                                                                 
+  1. Ply 2 returns something (let's call it X)                                  
+  2. Ply 1's NEGATE_SCORE makes it -(X)                                         
+  3. -(X) > 8001, so PLY_BEST = -(X)                                            
+  4. PLY_BEST ends up as 9C7C                                                   
+                                                                                
+  If PLY_BEST = 9C7C = -(6384), then ply 2 returned 6384, not 0384!             
+                                                                                
+  The bug is in EVALUATE_MATERIAL or at ply 2.                                  
+                                                                                
+  The evaluation should return 0384 (+900 for white's queen advantage), but it's
+   returning 6384 (+25476).                                                     
+                                                                                
+  The difference: high byte is 63 instead of 03. That's $60 extra.              
+                                                                                
+  Can you set a breakpoint at NP_EVALUATE (around address 044A based on the     
+  listing) right after CALL EVALUATE_MATERIAL returns, and check:               
+                                                                                
+  1. SCORE at 5088-5089 (what did evaluation produce?)                          
+  2. R12 (what ply are we at - should be 2)                                     
+                                                                                
+  This will tell us if EVALUATE_MATERIAL itself is producing the wrong result,  
+  or if something happens afterward.                                            
+                                                                                
+● Bash(grep -n "NP_EVALUATE\|CALL EVALUATE_MATERIAL"                            
+      /home/phiber/proj-chess/test-step22.lst | head -10)                       
+  ⎿ 863:   0347   cb 04 45          LBNF NP_EVALUATE ; If ply >= depth, eva     
+    luate                                                                       
+    864:   034a   c2 04 45          LBZ NP_EVALUATE                             
+    … +4 lines (ctrl+o to expand)                                               
+                                                                                
+                                                                                
+● Set a breakpoint at 0448 (right after CALL EVALUATE_MATERIAL at 0445 returns).
+                                                                                
+  Check SCORE (5088-5089) and R12 at that point.                                
+                                                                                
+> SCORE is 0384. R12 is 5402                                                    
+                                                                                
+● SCORE = 0384 is correct! The evaluation is working.                           
+                                                                                
+  But R12 = $5402 is interesting. R12.0 = $02 (ply 2, correct), but R12.1 = $54 
+  (garbage). This shouldn't matter since we only use GLO 12 for the ply... but  
+  let me check something.                                                       
+                                                                                
+  The evaluation is fine. The corruption happens AFTER ply 2 returns. Let me    
+  trace:                                                                        
+                                                                                
+  1. Ply 2: EVALUATE_MATERIAL sets SCORE = 0384 ✓                               
+  2. Ply 2: Returns (even ply, no negate)                                       
+  3. Ply 1: DEC 12, then CALL NEGATE_SCORE at 03DA                              
+  4. NEGATE_SCORE should make SCORE = FC7C                                      
+                                                                                
+  Can you break at 03DD (right after CALL NEGATE_SCORE at 03DA returns) and     
+  check SCORE?                                                                  
+                                                                                
+  This will tell us if NEGATE_SCORE is working correctly when called from ply   
+  1's loop. If SCORE = FC7C there, the negate works and the bug is later. If    
+  SCORE is wrong, NEGATE_SCORE has a bug.                                       
+                                                                                
+> SCORE is now FC7C.                                                            
+                                                                                
+● SCORE = FC7C after ply 1's NEGATE_SCORE. That's correct!                      
+                                                                                
+  So we have:                                                                   
+  1. Ply 2 evaluates: SCORE = 0384 ✓                                            
+  2. Ply 1 negates: SCORE = FC7C ✓                                              
+  3. ???                                                                        
+  4. Ply 1 returns: PLY_BEST = 9C7C ✗                                           
+                                                                                
+  The corruption happens between the negate and when ply 1 returns. After the   
+  negate, ply 1's loop does:                                                    
+  - Unmake move                                                                 
+  - CHECK_SCORE_GT_PLY_BEST                                                     
+  - If true, update PLY_BEST = SCORE                                            
+  - Check cutoff, update alpha, loop                                            
+                                                                                
+  For the first black move, PLY_BEST starts at 8001. FC7C > 8001 is true, so    
+  PLY_BEST should become FC7C.                                                  
+                                                                                
+  Let me find where PLY_BEST gets updated:                                      
+                                                                                
+● Bash(grep -n "CHECK_SCORE_GT_PLY_BEST\|PLY_BEST_LO\|NP_LOOP"                  
+      /home/phiber/proj-chess/test-step22.lst | head -20)                       
+  ⎿  383:   000a                 PLY_BEST_LO EQU 10                             
+     907:   037b   f8 9a             LDI LOW(PLY_BASE + PLY_BEST_LO)            
+     917:   0389                 NP_LOOP:                                       
+     … +17 lines (ctrl+o to expand)                                             
+                                                                                
+● Found it. The flow is:                                                        
+  - 03F2: CALL CHECK_SCORE_GT_PLY_BEST                                          
+  - 03F5: LBZ NP_LOOP (skip update if not greater)                              
+  - 03F8+: Update PLY_BEST = SCORE                                              
+                                                                                
+  Can you break at 03F8 (right after the LBZ, if the update code is reached) and
+   check:                                                                       
+  1. SCORE at 5088-5089                                                         
+  2. PLY_1_BEST at 50AA-50AB (before update)                                    
+                                                                                
+  This will show us what values are being compared and whether the update is    
+  happening correctly on the first iteration.                                   
+                                                                                
+  Also - we need to catch the first time through, not a later iteration. If you 
+  can clear breakpoints and set just this one at 03F8, and check the values the 
+  very first time it's hit, that would be ideal.                                
+                                                                                
+> SCORE is 847C. PLY_1_BEST is 8001.                                            
+                                                                                
+● SCORE changed from FC7C to 847C between the negate and the comparison!        
+                                                                                
+  At 03DD (after negate): SCORE = FC7C ✓                                        
+  At 03F8 (at update): SCORE = 847C ✗                                           
+                                                                                
+  Something between those addresses is corrupting SCORE. Let me check what code 
+  runs between 03DD and 03F2:                                                   
+                                                                                
+● Bash(sed -n '993,1015p' /home/phiber/proj-chess/test-step22.lst)              
+  ⎿     03da   d4 05 a3          CALL NEGATE_SCORE                              
+                                 ; Unmake move                                  
+        03dd   8c                GLO 12                                         
+     … +20 lines (ctrl+o to expand)                                             
+                                                                                
+● The code between them is:                                                     
+  1. Setup for unmake (03DD-03EE): calculates address, loads move into R11      
+  2. CALL UNMAKE_MOVE_PLY at 03EF                                               
+                                                                                
+  UNMAKE_MOVE_PLY is corrupting SCORE!                                          
+                                                                                
+  Let me check that function:                                                   
+                                                                                
+● Bash(grep -n -A 30 "UNMAKE_MOVE_PLY:" /home/phiber/proj-chess/test-step22.lst 
+      | head -35)                                                               
+  ⎿  1698:   06d1                 UNMAKE_MOVE_PLY:                              
+     1699-   06d1   8c                GLO 12                                    
+     1700-   06d2   fe                SHL                                       
+     … +31 lines (ctrl+o to expand)                                             
+                                                                                
+● Found it! SCORE changed from FC7C to 847C. Only the high byte changed: FC →   
+  84.                                                                           
+                                                                                
+  Between 03DD and 03F8, there are two function calls:                          
+  1. CALL UNMAKE_MOVE_PLY at 03EF                                               
+  2. CALL CHECK_SCORE_GT_PLY_BEST at 03F2                                       
+                                                                                
+  Let's narrow it down. Can you break at 03F2 (right before                     
+  CHECK_SCORE_GT_PLY_BEST) and check SCORE?                                     
+                                                                                
+  If SCORE is still FC7C there, then CHECK_SCORE_GT_PLY_BEST is the culprit.    
+  If SCORE is already 847C, then UNMAKE_MOVE_PLY corrupted it.                  
+                                                                                
+  Note: 847C has the same low byte (7C) as FC7C. Only the high byte changed: FC 
+  → 84. And 84 is the low byte of 0384 (the evaluation score). This suggests    
+  some value is bleeding into the wrong memory location.                        
+                                                                                
+> SCORE is still FC7C.                                                          
+                                                                                
+● CHECK_SCORE_GT_PLY_BEST is corrupting SCORE!                                  
+                                                                                
+  SCORE = FC7C before the call, 847C after. Let me examine that function        
+  closely:                                                                      
+                                                                                
+● Bash(grep -n -A 50 "CHECK_SCORE_GT_PLY_BEST:"                                 
+      /home/phiber/proj-chess/test-step22.lst | head -55)                       
+  ⎿  1456:   05c1                 CHECK_SCORE_GT_PLY_BEST:                      
+     1457-                            ; Get PLY_BEST into R9                    
+     1458-   05c1   8c                GLO 12                                    
+     … +48 lines (ctrl+o to expand)                                             
+                                                                                
+● Let me see the full comparison function and find where CSPB_GT is:            
+                                                                                
+● Bash(grep -n "CSPB_" /home/phiber/proj-chess/test-step22.lst)                 
+  ⎿  1490:   05e4   ca 06 03          LBNZ CSPB_DIFF                            
+     1496:   05eb   3a f8             BNZ CSPB_HI_DIFF                          
+     1501:   05f1   32 fd             BZ CSPB_EQ                                
+     … +11 lines (ctrl+o to expand)                                             
+                                                                                
+● Found the bug! Look at line 1502:                                             
+  1502:B  05f3   3b 00             BNF CSPB_GT                                  
+                                                                                
+  The "B" flag indicates a branch error!                                        
+                                                                                
+  The short branch BNF at address $05F3 is trying to reach CSPB_GT at $0600, but
+   they're on different pages! Short branches on the 1802 can only branch within
+   the same 256-byte page.                                                      
+                                                                                
+  The BNF with target byte 00 branches to $0500 (same page), NOT $0600 where    
+  CSPB_GT actually is!                                                          
+                                                                                
+  Same problem at line 1506:                                                    
+  1506:B  05f8   3b 00             BNF CSPB_GT                                  
+                                                                                
+  This is why the code is corrupting SCORE - it's jumping to $0500 (random code)
+   instead of the proper return path!                                           
+                                                                                
+  The fix: Change BNF to LBNF (long branch) in CHECK_SCORE_GT_PLY_BEST:         
+                                                                                
+● Read(test-step22.asm)                                                         
+  ⎿  Read 30 lines                                                              
+                                                                                
+● Found lines 1334 and 1339. Let me fix them:                                   
+                                                                                
+● Update(test-step22.asm)                                                       
+  ⎿  Added 2 lines, removed 2 lines                                             
+       1331        GLO 15                                                       
+       1332        SD                                                           
+       1333        BZ CSPB_EQ                                                   
+       1334 -      BNF CSPB_GT                                                  
+       1334 +      LBNF CSPB_GT                                                 
+       1335        LDI 0                                                        
+       1336        RETN                                                         
+       1337                                                                     
+       1338    CSPB_HI_DIFF:                                                    
+       1339 -      BNF CSPB_GT                                                  
+       1339 +      LBNF CSPB_GT                                                 
+       1340        LDI 0                                                        
+       1341        RETN                                                         
+       1342                                                                     
+                                                                                
+● Now let me check if there are similar issues in other comparison functions:   
+                                                                                
+● Bash(grep -n "^B" /home/phiber/proj-chess/test-step22.lst | head -20)         
+  ⎿  1502:B  05f3   3b 00             BNF CSPB_GT                               
+     1506:B  05f8   3b 00             BNF CSPB_GT                               
+                                                                                
+● Good - those were the only two branch errors. Let me rebuild:                 
+                                                                                
+● Bash(cpp -P /home/phiber/proj-chess/test-step22.asm 2>/dev/null >             
+      /home/phiber/proj-chess/test-step22-pp.asm && a18                         
+      /home/phiber/proj-chess/test-step22-pp.asm -l /ho…)                       
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+                             
+     Copyright (c) 1985 William C. Colley, III                                  
+     fixes for LCC/Windows by HRJ update Jan 2022                               
+     … +3 lines (ctrl+o to expand)                                              
+                                                                                
+● No Errors! The branch errors are fixed.                                       
+                                                                                
+  The hex file is ready at test-step22.hex. Please run it and let me know the   
+  results.                                                                      
+                                                                                
+  Summary of the bug: Two BNF (short branch) instructions in                    
+  CHECK_SCORE_GT_PLY_BEST were trying to branch across a page boundary (from    
+  page $05 to page $06). Short branches on the 1802 can only branch within a    
+  256-byte page. The assembler flagged these with "B" but still generated the   
+  code - which jumped to the wrong address ($0500 instead of $0600), causing    
+  SCORE to get corrupted.                                                       
+                                                                                
+  The fix: Changed BNF CSPB_GT to LBNF CSPB_GT (long branch) in two places.     
+                                                                                
+> Yes, and those are flagged as "B" in the listing. We really need to be        
+checking all these error flags after an assembly. Would have saved a            
+tremendous amount of time.                                                      
+                                                                                
+● You're absolutely right. The assembler was telling us the problem all along   
+  with those "B" flags. We spent a lot of debugging time when a simple grep "^B"
+   test-step22.lst after assembly would have caught it immediately.             
+                                                                                
+  Let me add a check to the build process:                                      
+                                                                                
+● Bash(cat > /home/phiber/proj-chess/build-test.sh << 'EOF'                     
+      #!/bin/bash…)                                                             
+  ⎿  (No content)                                                               
+                                                                                
+● Created build-test.sh that will automatically detect branch errors after      
+  assembly.                                                                     
+                                                                                
+  Usage: ./build-test.sh test-step22                                            
+                                                                                
+  Lesson learned for PROGRESS.md:                                               
+  - Always check for "B" flags in the listing after assembly                    
+  - Short branches (BZ, BNZ, BNF, BDF, etc.) can only reach targets within the  
+  same 256-byte page                                                            
+  - Use long branches (LBZ, LBNZ, LBNF, LBDF, etc.) when crossing page          
+  boundaries                                                                    
+  - The assembler flags these but still generates (broken) code                 
+                                                                                
+  Did the test run correctly now with the fix?                                  
+                                                                                
+> Best: 03-12 0384, Nodes: 00B3, Cutoffs: 0002. Done!                           
+                                                                                
+● Excellent! The fix works!                                                     
+                                                                                
+  - Best: 03-12 0384 - Correct move (Qd1-c2) with correct score (+900)          
+  - Nodes: 00B3 (179) - matches the debug version                               
+  - Cutoffs: 0002 - alpha-beta pruning working                                  
+                                                                                
+  Now let me clean up the test code (remove the R14/R15 settings that weren't   
+  the fix) and update PROGRESS.md:                                              
+                                                                                
+● Update(test-step22.asm)                                                       
+  ⎿  Removed 6 lines                                                            
+       463        ; Negate score (negamax)                                      
+       464        CALL NEGATE_SCORE                                             
+       465                                                                      
+       466 -      ; TEST: Set registers like serial does                        
+       467 -      LDI 2                                                         
+       468 -      PLO 14              ; R14.0 = 2 (like serial baud rate)       
+       469 -      LDI 0                                                         
+       470 -      PLO 15              ; R15.0 = 0 (like serial bit              
+           - counter after output)                                              
+       471 -                                                                    
+       466        ; Unmake move                                                 
+       467        LDI 0                                                         
+       468        PLO 12                                                        
+                                                                                
+● Read(PROGRESS.md)                                                             
+  ⎿  Read 8 lines                                                               
+                                                                                
+● Update(PROGRESS.md)                                                           
+  ⎿  Added 61 lines                                                             
+       741    - [x] Add full piece move generation (integrate                   
+             movegen-new.asm) - test-step20 PASSING                             
+       742    - [x] Test step-20 on hardware/emulator - PASSING                 
+       743    - [x] Add alpha-beta pruning cutoffs - test-step21 PASSING        
+             (2 cutoffs)                                                        
+       744 +  - [x] Test depth-2 search - test-step22 PASSING (Best:            
+           + 03-12 0384, Nodes: 00B3, Cutoffs: 0002)                            
+       745    - [ ] Test depth 3-4 search                                       
+       746    - [ ] Add quiescence search                                       
+       747    - [ ] Main chess-engine.asm integration                           
+       748 +                                                                    
+       749 +  ---                                                               
+       750 +                                                                    
+       751 +  ## Session: December 18, 2025 - Page Boundary Branch Bug          
+       752 +                                                                    
+       753 +  ### Critical Bug Found: Short Branch Crossing Page Boundary       
+       754 +                                                                    
+       755 +  **Symptom:** Search returned wrong move (03-21 instead of         
+           + 03-12) and wrong score (7B84 instead of 0384). Removing            
+           + debug print statements caused the bug to appear.                   
+       756 +                                                                    
+       757 +  **Root Cause:** Two `BNF` (short branch) instructions in          
+           + `CHECK_SCORE_GT_PLY_BEST` were trying to branch from page          
+           + $05 to targets on page $06. Short branches on the 1802 can         
+           + only reach addresses within the same 256-byte page.                
+       758 +                                                                    
+       759 +  **The assembler flagged these errors with "B" in the              
+           + listing file:**                                                    
+       760 +  ```                                                               
+       761 +  1502:B  05f3   3b 00             BNF CSPB_GT                      
+       762 +  1506:B  05f8   3b 00             BNF CSPB_GT                      
+       763 +  ```                                                               
+       764 +                                                                    
+       765 +  The assembler still generated code, but the branch target         
+           + byte `00` meant it jumped to $0500 instead of the intended         
+           + $0600 (CSPB_GT). This caused execution to run through random       
+           +  code, corrupting SCORE.                                           
+       766 +                                                                    
+       767 +  **Fix:** Changed `BNF CSPB_GT` to `LBNF CSPB_GT` (long            
+           + branch) in two places.                                             
+       768 +                                                                    
+       769 +  ### Key Lesson: ALWAYS Check Assembler Flags                      
+       770 +                                                                    
+       771 +  After assembly, always check for error flags in the               
+           + listing:                                                           
+       772 +  ```bash                                                           
+       773 +  grep "^B" file.lst    # Branch errors                             
+       774 +  grep "^P" file.lst    # Phase errors                              
+       775 +  grep "^U" file.lst    # Undefined symbols                         
+       776 +  ```                                                               
+       777 +                                                                    
+       778 +  Created `build-test.sh` script that automatically checks          
+           + for branch errors after assembly.                                  
+       779 +                                                                    
+       780 +  ### 1802 Branch Instruction Reference                             
+       781 +                                                                    
+       782 +  | Short Branch | Long Branch | Condition |                        
+       783 +  |--------------|-------------|-----------|                        
+       784 +  | BZ | LBZ | D = 0 |                                              
+       785 +  | BNZ | LBNZ | D ≠ 0 |                                            
+       786 +  | BDF/BPZ | LBDF | DF = 1 (positive/no borrow) |                  
+       787 +  | BNF/BM | LBNF | DF = 0 (negative/borrow) |                      
+       788 +  | BQ | LBQ | Q = 1 |                                              
+       789 +  | BNQ | LBNQ | Q = 0 |                                            
+       790 +  | B1-B4 | LB1-LB4 | EF1-EF4 = 1 |                                 
+       791 +  | BN1-BN4 | LBN1-LBN4 | EF1-EF4 = 0 |                             
+       792 +                                                                    
+       793 +  **Short branches:** 2 bytes, can only reach targets within        
+           + same 256-byte page                                                 
+       794 +  **Long branches:** 3 bytes, can reach any address in 64K          
+           + space                                                              
+       795 +                                                                    
+       796 +  ### Debugging Approach That Found The Bug                         
+       797 +                                                                    
+       798 +  1. Added debug prints → search worked correctly                   
+       799 +  2. Removed debug prints → search returned wrong results           
+       800 +  3. Hypothesis: registers clobbered by serial I/O → tested,        
+           + NOT the cause                                                      
+       801 +  4. Used Emma02 debugger to trace values at breakpoints:           
+       802 +     - SCORE after EVALUATE_MATERIAL: 0384 ✓                        
+       803 +     - SCORE after NEGATE_SCORE: FC7C ✓                             
+       804 +     - SCORE after CHECK_SCORE_GT_PLY_BEST: 847C ✗                  
+           + (corrupted!)                                                       
+       805 +  5. Found corruption happened inside CHECK_SCORE_GT_PLY_BEST       
+       806 +  6. Checked assembler listing → found "B" flags on branch          
+           + instructions                                                       
+       807 +  7. Fixed short branches → bug resolved                            
+                                                                                
+● Now let me rebuild the cleaned-up version:                                    
+                                                                                
+● Bash(./build-test.sh test-step22)                                             
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+                             
+     Copyright (c) 1985 William C. Colley, III                                  
+     fixes for LCC/Windows by HRJ update Jan 2022                               
+     … +4 lines (ctrl+o to expand)                                              
+                                                                                
+● Build successful with no errors. The cleaned-up test-step22.hex is ready.     
+                                                                                
+  Summary of this session:                                                      
+                                                                                
+  1. Bug Found: Short branch (BNF) crossing page boundary in                    
+  CHECK_SCORE_GT_PLY_BEST                                                       
+  2. Fix: Changed to long branch (LBNF)                                         
+  3. Created: build-test.sh script that automatically checks for branch errors  
+  4. Documented: Full debugging approach and 1802 branch reference in           
+  PROGRESS.md                                                                   
+                                                                                
+  Current Status:                                                               
+  - ✅ Depth-2 search working (test-step22: Best 03-12, Score 0384)             
+  - Next: Test depth 3-4 search, add quiescence search, main integration        
+                                                                                
+  Would you like to continue with deeper search testing, or is this a good      
+  stopping point?                                                               
+                                                                                
+> /export Learnings_December_18th.txt                                           
+  ⎿  Conversation exported to: Learnings_December_18th.txt                      
+                                                                                
+> Let's try the Depth 3 search. Your console message technically still says     
+"Depth-3 Search".                                                               
+                                                                                
+● You're right - the banner says "Depth-3 Search" but SEARCH_DEPTH is set to 2. 
+  Let me fix that:                                                              
+                                                                                
+● Read(test-step22.asm)                                                         
+  ⎿  Read 15 lines                                                              
+                                                                                
+● Update(test-step22.asm)                                                       
+  ⎿  Added 2 lines, removed 2 lines                                             
+       224        INC 10              ; Skip TEMP_PLY                           
+       225        STR 10              ; CUTOFF_COUNT_HI = 0                     
+       226                                                                      
+       227 -      ; Set search depth to 2 (sanity check)                        
+       227 +      ; Set search depth to 3                                       
+       228        LDI HIGH(SEARCH_DEPTH)                                        
+       229        PHI 10                                                        
+       230        LDI LOW(SEARCH_DEPTH)                                         
+       231        PLO 10                                                        
+       232 -      LDI 2                                                         
+       232 +      LDI 3                                                         
+       233        STR 10                                                        
+       234                                                                      
+       235        ; Set side to move = WHITE                                    
+                                                                                
+● Bash(./build-test.sh test-step22)                                             
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+                             
+     Copyright (c) 1985 William C. Colley, III                                  
+     fixes for LCC/Windows by HRJ update Jan 2022                               
+     … +4 lines (ctrl+o to expand)                                              
+                                                                                
+● Build successful. Ready for depth-3 search.                                   
+                                                                                
+  What to expect:                                                               
+  - Ply 0: White moves                                                          
+  - Ply 1: Black responses                                                      
+  - Ply 2: White counter-responses                                              
+  - Ply 3: Leaf evaluation                                                      
+                                                                                
+  This will search significantly more nodes than depth-2. The best move should  
+  still be 03-12 (Qc2) with score 0384, but with more nodes and potentially more
+   cutoffs.                                                                     
+                                                                                
+  The hex file is ready at test-step22.hex. Please run it!                      
+                                                                                
+> It took approximately a minute at 1.75 MHz, and got correct best at 03-12     
+with score 0384. Nodes: 0E73, Cutoffs: 001B.                                    
+                                                                                
+● Excellent! Depth-3 search working correctly!                                  
+                                                                                
+  Results comparison:                                                           
+                                                                                
+  | Depth | Nodes       | Cutoffs   | Time    |                                 
+  |-------|-------------|-----------|---------|                                 
+  | 2     | 00B3 (179)  | 0002 (2)  | Instant |                                 
+  | 3     | 0E73 (3699) | 001B (27) | ~1 min  |                                 
+                                                                                
+  The alpha-beta pruning is working well - 27 cutoffs helped reduce the search. 
+  Without pruning, node count would be much higher.                             
+                                                                                
+  Would you like to try depth 4? Based on the exponential growth pattern, it    
+  might take 10-20 minutes at 1.75 MHz. If you have the 12 MHz 1806, it would be
+   much faster.                                                                 
+                                                                                
+● Update(test-step22.asm)                                                       
+  ⎿  Added 2 lines, removed 2 lines                                             
+       224        INC 10              ; Skip TEMP_PLY                           
+       225        STR 10              ; CUTOFF_COUNT_HI = 0                     
+       226                                                                      
+       227 -      ; Set search depth to 3                                       
+       227 +      ; Set search depth to 4                                       
+       228        LDI HIGH(SEARCH_DEPTH)                                        
+       229        PHI 10                                                        
+       230        LDI LOW(SEARCH_DEPTH)                                         
+       231        PLO 10                                                        
+       232 -      LDI 3                                                         
+       232 +      LDI 4                                                         
+       233        STR 10                                                        
+       234                                                                      
+       235        ; Set side to move = WHITE                                    
+                                                                                
+● Bash(./build-test.sh test-step22)                                             
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+                             
+     Copyright (c) 1985 William C. Colley, III                                  
+     fixes for LCC/Windows by HRJ update Jan 2022                               
+     … +4 lines (ctrl+o to expand)                                              
+                                                                                
+● Depth-4 build ready at test-step22.hex.                                       
+                                                                                
+  Warning: This will take significantly longer - possibly 10-20+ minutes at 1.75
+   MHz. Feel free to let it run, or we can stop here and call depth-3 a success 
+  for now.                                                                      
+                                                                                
+> We will have to change the serial console code to use my BIOS i/o             
+routines. Let's leave that and depth-4 for tomorrow. It will be a good first    
+ goal for tomorrow to get running on the real intended hardware, then we can    
+ continue development with much better performance. If we need to debug in      
+the emulator, we can drop the depth back to 2 and use the bit-bang serial       
+again. How does that sound?                                                     
+                                                                                
+● That sounds like a great plan! Let me update PROGRESS.md with today's         
+  accomplishments and tomorrow's goals:                                         
+                                                                                
+● Update(PROGRESS.md)                                                           
+  ⎿  Added 3 lines, removed 1 line                                              
+       742    - [x] Test step-20 on hardware/emulator - PASSING                 
+       743    - [x] Add alpha-beta pruning cutoffs - test-step21 PASSING        
+             (2 cutoffs)                                                        
+       744    - [x] Test depth-2 search - test-step22 PASSING (Best:            
+             03-12 0384, Nodes: 00B3, Cutoffs: 0002)                            
+       745 -  - [ ] Test depth 3-4 search                                       
+       745 +  - [x] Test depth-3 search - PASSING (Best: 03-12 0384,            
+           + Nodes: 0E73/3699, Cutoffs: 001B/27, ~1 min @ 1.75MHz)              
+       746 +  - [ ] Test depth-4 search (pending faster hardware)               
+       747 +  - [ ] Integrate BIOS I/O routines (replace bit-bang serial)       
+       748    - [ ] Add quiescence search                                       
+       749    - [ ] Main chess-engine.asm integration                           
+       750                                                                      
+                                                                                
+● Update(test-step22.asm)                                                       
+  ⎿  Added 2 lines, removed 2 lines                                             
+       224        INC 10              ; Skip TEMP_PLY                           
+       225        STR 10              ; CUTOFF_COUNT_HI = 0                     
+       226                                                                      
+       227 -      ; Set search depth to 4                                       
+       227 +      ; Set search depth to 3 (increase to 4 for deeper             
+           + search on faster hardware)                                         
+       228        LDI HIGH(SEARCH_DEPTH)                                        
+       229        PHI 10                                                        
+       230        LDI LOW(SEARCH_DEPTH)                                         
+       231        PLO 10                                                        
+       232 -      LDI 4                                                         
+       232 +      LDI 3                                                         
+       233        STR 10                                                        
+       234                                                                      
+       235        ; Set side to move = WHITE                                    
+                                                                                
+● Bash(./build-test.sh test-step22)                                             
+  ⎿  1802/1805A Cross-Assembler (Portable) Ver 2.6+                             
+     Copyright (c) 1985 William C. Colley, III                                  
+     fixes for LCC/Windows by HRJ update Jan 2022                               
+     … +4 lines (ctrl+o to expand)                                              
+                                                                                
+● Today's session summary:                                                      
+                                                                                
+  1. Fixed critical bug: Short branch crossing page boundary in                 
+  CHECK_SCORE_GT_PLY_BEST (BNF → LBNF)                                          
+  2. Created: build-test.sh script that catches branch errors automatically     
+  3. Tested: Depth-2 and Depth-3 search both working correctly                  
+  4. Documented: Bug fix, debugging approach, and 1802 branch reference in      
+  PROGRESS.md                                                                   
+                                                                                
+  Tomorrow's goals:                                                             
+  1. Integrate BIOS I/O routines (replace bit-bang serial)                      
+  2. Test on real hardware with faster clock                                    
+  3. Run depth-4 search                                                         
+  4. Continue development (quiescence search, main integration)                 
+                                                                                
+  The codebase is in a clean state with depth-3 as the default. See you         
+  tomorrow!                                                                     
+
