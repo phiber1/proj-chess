@@ -815,21 +815,13 @@ NEGAMAX_NEXT_MOVE:
     CALL SERIAL_WRITE_CHAR
     IRX                ; Point to move_count
     LDN 2              ; Get move count
-    PLO 15             ; Save to R15.0 - survives CALL (PLO doesn't change D)
+    PLO 15             ; Save to R15.0 - SERIAL_PRINT_HEX preserves R15
     CALL SERIAL_PRINT_HEX   ; Show count as hex (D still has count)
-    ; CRITICAL: M(R2) was corrupted by CALL pushing R6 linkage!
-    ; Use saved value from R15.0 instead of reloading from stack
-    GLO 15             ; Get saved move count
+    ; M(R2) was corrupted by CALL, but R15 is preserved
+    GLO 15             ; Get saved move count from R15
     SMI 1              ; Decrement
-    PLO 15             ; Save decremented value
-    ; Debug: show count AFTER decrement
-    LDI '-'
-    CALL SERIAL_WRITE_CHAR
-    GLO 15
-    CALL SERIAL_PRINT_HEX
-    GLO 15             ; Reload decremented count
     BZ NEGAMAX_LOOP_DONE  ; If count == 0, exit loop
-    STR 2              ; Store decremented count back (restores correct value)
+    STR 2              ; Store decremented count back (fixes corrupted M(R2))
     DEC 2              ; Re-decrement stack pointer
     LBR NEGAMAX_MOVE_LOOP
 
@@ -1311,7 +1303,7 @@ SEARCH_POSITION:
     ; Debug: VERSION MARKER - change this to verify new build is loaded
     LDI 'V'
     CALL SERIAL_WRITE_CHAR
-    LDI 'L'
+    LDI 'M'
     CALL SERIAL_WRITE_CHAR
 
     ; Debug: entered SEARCH_POSITION
