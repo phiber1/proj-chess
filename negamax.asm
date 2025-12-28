@@ -827,6 +827,10 @@ NEGAMAX_NEXT_MOVE:
     LBR NEGAMAX_MOVE_LOOP
 
 NEGAMAX_LOOP_DONE:
+    ; Debug: loop done - count reached 0
+    LDI '@'
+    CALL SERIAL_WRITE_CHAR
+
     ; Count reached 0 - R2 is AT move_count, need to put it BELOW
     DEC 2              ; Now R2 is below move_count, matching Path A
     ; Fall through to NEGAMAX_RETURN
@@ -1300,7 +1304,7 @@ SEARCH_POSITION:
     ; Debug: VERSION MARKER - change this to verify new build is loaded
     LDI 'V'
     CALL SERIAL_WRITE_CHAR
-    LDI 'J'
+    LDI 'K'
     CALL SERIAL_WRITE_CHAR
 
     ; Debug: entered SEARCH_POSITION
