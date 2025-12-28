@@ -821,6 +821,13 @@ NEGAMAX_NEXT_MOVE:
     ; Use saved value from R15.0 instead of reloading from stack
     GLO 15             ; Get saved move count
     SMI 1              ; Decrement
+    PLO 15             ; Save decremented value
+    ; Debug: show count AFTER decrement
+    LDI '-'
+    CALL SERIAL_WRITE_CHAR
+    GLO 15
+    CALL SERIAL_PRINT_HEX
+    GLO 15             ; Reload decremented count
     BZ NEGAMAX_LOOP_DONE  ; If count == 0, exit loop
     STR 2              ; Store decremented count back (restores correct value)
     DEC 2              ; Re-decrement stack pointer
@@ -1304,7 +1311,7 @@ SEARCH_POSITION:
     ; Debug: VERSION MARKER - change this to verify new build is loaded
     LDI 'V'
     CALL SERIAL_WRITE_CHAR
-    LDI 'K'
+    LDI 'L'
     CALL SERIAL_WRITE_CHAR
 
     ; Debug: entered SEARCH_POSITION
