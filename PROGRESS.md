@@ -3,6 +3,61 @@
 > **CLAUDE: If context was compacted, re-read this entire file before continuing work.**
 > This file contains critical bug fixes, architectural notes, and TODO items that may have been lost during summarization.
 
+---
+
+## PLATFORM DOCUMENTATION
+
+### Hardware Platforms
+
+This project has been developed on TWO different platforms:
+
+#### Platform 1: Membership Card (Emulator) - Dec 11-20, 2025
+- **CPU:** 1802 at 1.75 MHz (emulated)
+- **Mode:** STANDALONE - our own SCRT and Chuck Yakym's bit-bang serial routines
+- **Serial:** Software bit-bang at 9600 baud using EF3/Q
+- **Register constraints (standalone mode):**
+  - R11.0: Serial shift register
+  - R14.0: Baud rate delay counter
+  - R15.0: Bit counter
+  - These are ONLY relevant to standalone mode!
+
+#### Platform 2: ELPH (Real Hardware) - Dec 21 onwards
+- **CPU:** CDP1806 at 12 MHz
+- **Mode:** BIOS - hardware provides SCRT and serial I/O via BIOS entry points
+- **Serial:** Hardware UART via BIOS calls
+- **BIOS Entry Points:**
+  - F_TYPE ($FF03): Output character from D
+  - F_READ ($FF06): Read character into D (with echo)
+  - F_MSG ($FF09): Output null-terminated string at R15
+- **Register constraints (BIOS mode):**
+  - R14.1: Baud constant - NEVER TOUCH!
+  - R14.0: Clobbered by every BIOS call
+  - R0-R6: Reserved for SCRT (provided by BIOS)
+
+### Current Build Mode
+
+**We are now using BIOS mode exclusively.** The standalone mode code still exists in serial-io.asm for reference but is not compiled.
+
+Build configuration: `#define CFG_USE_BIOS` in config.asm
+
+### Key Differences
+
+| Aspect | Standalone (Membership Card) | BIOS (ELPH) |
+|--------|------------------------------|-------------|
+| Clock | 1.75 MHz | 12 MHz (6.7x faster) |
+| Serial | Bit-bang (R11, R14, R15) | BIOS F_TYPE (clobbers R14.0 only) |
+| SCRT | Our own implementation | BIOS provides it |
+| R14 | Used for bit timing | OFF LIMITS (baud constant) |
+| R15 | Used for bit counter | Safe, but F_MSG uses it |
+
+### IMPORTANT: Register Clobbering Notes in Earlier Sessions
+
+Some earlier debug sessions (Dec 11-20) mention "SERIAL_WRITE_CHAR clobbers R11.0, R14.0, R15.0" - this refers to **standalone mode only**. In BIOS mode, F_TYPE only clobbers R14.0.
+
+See `REGISTER-ALLOCATION.md` for the current definitive register usage.
+
+---
+
 ## Session: December 11, 2025
 
 ### Summary
@@ -1682,3 +1737,171 @@ Repository initialized with commits:
 2. Check if the issue is in the FIRST read (LDN 2 after IRX) vs the save/restore
 3. Consider removing all debug CALL statements temporarily to isolate the issue
 4. Trace through one complete loop iteration manually
+
+---
+
+## Session: December 28, 2025 - Register Audit & SERIAL_PRINT_HEX Bug
+
+### Problem
+
+VK version was reported working yesterday but now fails with same symptoms (move count jumping around). Investigation revealed the root cause was not in NEGAMAX but in SERIAL_PRINT_HEX.
+
+### Root Cause Found
+
+**SERIAL_PRINT_HEX was clobbering R9.0!**
+
+```asm
+; BUGGY CODE in serial-io.asm:
+SERIAL_PRINT_HEX:
+    PLO 9               ; Save byte in R9.0 - CORRUPTS MOVE LIST PTR!
+    ...
+    GLO 9               ; Get original byte
+```
+
+But R9 is the move list pointer in NEGAMAX! Every debug print corrupted R9.0, causing `LDA 9` to read moves from wrong addresses.
+
+### Fix Applied
+
+Changed SERIAL_PRINT_HEX to use R14.0 instead of R9.0. Since F_TYPE already clobbers R14.0, using it causes no additional damage:
+
+```asm
+; FIXED CODE:
+SERIAL_PRINT_HEX:
+    PLO 14              ; Save byte in R14.0 (F_TYPE clobbers this anyway)
+    ...
+    GLO 14              ; Get original byte
+```
+
+### Comprehensive Register Audit
+
+Created `REGISTER-ALLOCATION.md` documenting:
+- System reserved registers (R0-R6)
+- Engine global registers (R10, R12)
+- Function-local registers with clobber notes
+- BIOS vs standalone mode differences
+- Calling conventions
+
+### Platform Documentation Added
+
+Added clear documentation to PROGRESS.md explaining the TWO platforms:
+
+1. **Membership Card (Emulator) - Dec 11-20:** Standalone mode with Chuck Yakym's bit-bang serial. R11, R14, R15 used for serial timing.
+
+2. **ELPH (Real Hardware) - Dec 21 onwards:** BIOS mode with F_TYPE/F_READ/F_MSG. Only R14.0 clobbered by BIOS.
+
+Previous debug notes mentioning "SERIAL_WRITE_CHAR clobbers R11.0, R14.0, R15.0" were from standalone mode and don't apply to BIOS mode.
+
+### Files Modified
+
+- **serial-io.asm:** Fixed SERIAL_PRINT_HEX to use R14.0 instead of R9.0
+- **REGISTER-ALLOCATION.md:** Created comprehensive register usage docs
+- **PROGRESS.md:** Added platform documentation section
+- **integration-test.asm:** Fixed for BIOS mode (removed INITCALL, SERIAL_INIT, fixed long branches)
+
+### Build Status
+
+Clean build, no errors. Ready for hardware testing.
+
+### Key Lesson
+
+**Always audit register usage across ALL functions before assuming a local fix is correct.** The bug wasn't in NEGAMAX's move count handling - it was in a utility function (SERIAL_PRINT_HEX) that happened to use a register (R9) that NEGAMAX depends on.
+
+---
+
+## Session: December 28, 2025 (continued) - SAVE/RESTORE Context Bugs
+
+### Problem
+
+VN build showed only "GSVO" then nothing. VP build showed hundreds of 'N's (NEGAMAX entry) followed by a single 'S' (after SAVE returned). SAVE_SEARCH_CONTEXT was not returning correctly.
+
+### Root Cause: Modifying R3 While P=3
+
+**CRITICAL 1802 BUG:** When P=3, R3 is the active program counter. The SAVE_SEARCH_CONTEXT manual return code did:
+
+```asm
+    ; Set R3 = our return address
+    GHI 6
+    PHI 3       ; <-- DANGER! This changes R3.1 immediately!
+    GLO 6       ;     CPU is now fetching from wrong address!
+    PLO 3
+    SEP 3
+```
+
+The moment `PHI 3` executes, the high byte of the PC changes! The CPU immediately starts fetching instructions from a garbage address, causing the endless 'N's as execution randomly landed back at NEGAMAX.
+
+### Fix: Trampoline Pattern
+
+Use a different register (R15) as temporary PC to safely modify R3:
+
+```asm
+    ; Save return address to R7 (caller-save, OK to use)
+    GHI 6
+    PHI 7
+    GLO 6
+    PLO 7
+
+    ; Point R15 to trampoline code
+    LDI HIGH(SAVE_TRAMPOLINE)
+    PHI 15
+    LDI LOW(SAVE_TRAMPOLINE)
+    PLO 15
+
+    ; Restore R6 from R13 (old linkage)
+    GHI 13
+    PHI 6
+    GLO 13
+    PLO 6
+
+    ; Jump to trampoline (P becomes 15)
+    SEP 15
+
+SAVE_TRAMPOLINE:
+    ; Now P=15, can safely modify R3
+    GHI 7
+    PHI 3
+    GLO 7
+    PLO 3
+    ; Switch to R3 and return
+    SEP 3
+```
+
+Applied same fix to RESTORE_SEARCH_CONTEXT.
+
+### Architectural Decision: Ply-Indexed State Arrays
+
+**User insight:** Using the system stack for recursive NEGAMAX state is fighting against SCRT conventions. Every CALL/RETN touches the stack, and manual stack manipulation risks interference.
+
+**Better approach:** Use dedicated memory arrays indexed by ply number:
+
+```
+NEGAMAX_STATE = $6500   ; Base address
+FRAME_SIZE = 10         ; 5 registers × 2 bytes
+MAX_PLY = 8             ; 80 bytes total
+
+; Ply N state at: NEGAMAX_STATE + (N × 10)
+; Ply 0: $6500-$6509
+; Ply 1: $650A-$6513
+; Ply 2: $6514-$651D
+; etc.
+```
+
+**Benefits:**
+- No SCRT interference - system stack only for CALL/RETN linkage
+- Simpler code - direct indexed addressing
+- Deterministic - each ply has fixed memory location
+- Easier debugging - can inspect state at any ply
+
+**Status:** VQ build created with trampoline fix. Next step is refactoring to ply-indexed arrays.
+
+### Files Modified
+
+- **stack.asm:** Added trampoline pattern to SAVE_SEARCH_CONTEXT and RESTORE_SEARCH_CONTEXT
+- **negamax.asm:** Version markers VP→VQ, debug markers for NEGAMAX entry/exit
+- **REGISTER-ALLOCATION.md:** Added bugs 3, 4, 5 documentation
+- **DEBUG-SESSION-DEC28.md:** Created session notes
+
+### Build: VQ
+
+- Size: 15,552 bytes
+- Trampoline fix in place
+- Ready for testing OR refactor to ply-indexed arrays

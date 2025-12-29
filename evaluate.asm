@@ -142,7 +142,7 @@ EVAL_NEXT_SQUARE:
     ADI 1
     STR 13
     SMI 128
-    LBDF EVAL_SCAN      ; Continue if < 128 (DF=1 means negative/borrow)
+    LBNF EVAL_SCAN      ; Continue if < 128 (DF=0 means borrow, i.e., D was < 128)
 
 EVAL_DONE:
     ; Debug: material scan done

@@ -20,23 +20,16 @@
 ; ==============================================================================
 RUN_TESTS:
     ; =========================================================================
-    ; CRITICAL: Initialize SCRT using Mark Abene's INITCALL pattern
-    ; Set R6 to continue at TEST_MAIN, then jump to INITCALL
+    ; BIOS mode: SCRT already initialized by BIOS
+    ; R4=CALL, R5=RET, R2=stack are ready
     ; =========================================================================
 
-    ; First, toggle Q to show we're alive (debugging aid)
+    ; Toggle Q to show we're alive (debugging aid)
     SEQ                     ; Q = high
-
-    ; Set R6 to continue at TEST_MAIN after INITCALL
-    LDI HIGH(TEST_MAIN)
-    PHI 6
-    LDI LOW(TEST_MAIN)
-    PLO 6
-    LBR INITCALL            ; Initialize SCRT and transfer to TEST_MAIN
 
 TEST_MAIN:
     ; =========================================================================
-    ; Stack setup - AFTER INITCALL (critical!)
+    ; Stack setup for test code
     ; =========================================================================
     LDI $7F
     PHI 2
@@ -48,11 +41,8 @@ TEST_MAIN:
 
     REQ                     ; Q idle state
     ; =========================================================================
-    ; NOW we can use CALL/RETN (R3 is PC, R4/R5 are set up)
+    ; BIOS mode: Serial already initialized, CALL/RETN ready
     ; =========================================================================
-
-    ; Initialize serial I/O
-    CALL SERIAL_INIT
 
     ; Print banner
     LDI HIGH(MSG_BANNER)
@@ -457,14 +447,14 @@ TEST5_CHECK_LO_POS:
     GLO 6
     SMI 51
     BDF TEST5_FAIL
-    BR TEST5_PASS
+    LBR TEST5_PASS
 
 TEST5_CHECK_LO_NEG:
     ; Negative - check if > -50 (i.e., low byte > 206)
     GLO 6
     SMI 206
     BNF TEST5_FAIL
-    BR TEST5_PASS
+    LBR TEST5_PASS
 
 TEST5_FAIL:
     ; Print actual score for debugging
@@ -565,7 +555,7 @@ TEST5_DONE:
     CALL PRINT_STRING
 
     ; =========================================================================
-    ; TEST 7: Stack Balance Verification
+    ; TEST 7: Stack Balance Verification (manual push/pop)
     ; =========================================================================
     LDI HIGH(MSG_TEST7)
     PHI 15
@@ -579,29 +569,24 @@ TEST5_DONE:
     GLO 2
     PLO 8                   ; Save SP low
 
-    ; Do some push/pop operations
+    ; Do manual push/pop operations (PUSH16_R6/POP16_R6 removed - R6 is SCRT)
+    ; Push $AA55
     LDI $AA
-    PHI 6
+    STXD
     LDI $55
-    PLO 6
-    CALL PUSH16_R6
+    STXD
 
+    ; Push $1234
     LDI $12
-    PHI 6
+    STXD
     LDI $34
-    PLO 6
-    CALL PUSH16_R6
+    STXD
 
-    CALL POP16_R6
-    CALL POP16_R6
-
-    ; Verify R6 restored correctly ($AA55)
-    GHI 6
-    XRI $AA
-    BNZ TEST7_FAIL
-    GLO 6
-    XRI $55
-    BNZ TEST7_FAIL
+    ; Pop both (4 bytes total)
+    IRX
+    IRX
+    IRX
+    IRX
 
     ; Verify stack pointer restored
     GHI 2

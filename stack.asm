@@ -140,11 +140,29 @@ POP16_RC:
 ; Saves 7-9, B, C to stack (NOT R5/R6 - they're SCRT registers!)
 ; Call at entry to NEGAMAX
 ; Uses: 10 bytes of stack (5 registers × 2 bytes)
-; WARNING: R6 is SCRT linkage register - NEVER touch it!
+;
+; CRITICAL FIX (Dec 28, 2025): SCRT pushes R6 linkage onto stack when this
+; function is called. If we push context then do RETN, RETN will pop context
+; bytes (thinking they're linkage) and corrupt R6! We must handle this like
+; RESTORE: pop SCRT linkage first, do our work, then manually return.
 ; ------------------------------------------------------------------------------
 SAVE_SEARCH_CONTEXT:
+    ; Pop SCRT's R6 linkage first and save to R13 (temp)
+    IRX                 ; R2 at old R6.lo
+    LDXA                ; D = old R6.lo, R2 at old R6.hi
+    PLO 13              ; R13.0 = old R6.lo
+    LDXA                ; D = old R6.hi, R2 past linkage
+    PHI 13              ; R13 = old R6 (saved for later)
+
+    ; R2 is now 3 bytes higher than entry (IRX + 2*LDXA).
+    ; Restore R2 to entry position so context is stored at same locations
+    ; that RESTORE expects (just above where SCRT linkage was).
+    DEC 2
+    DEC 2
+    DEC 2               ; R2 back to entry position
+
+    ; Push context (same positions as original design)
     ; Save in reverse order so POP restores in correct order
-    ; NOTE: R4, R5, R6 are SCRT registers - NEVER touch them!
     GLO 12
     STXD
     GHI 12
@@ -170,26 +188,66 @@ SAVE_SEARCH_CONTEXT:
     GHI 7
     STXD
 
-    ; R6 is SCRT linkage - DO NOT save/restore it!
+    ; Manually return using R7/R15 trampoline (can't modify R3 while P=3!)
+    ; R6 = our return address (set by SCRT CALL)
+    ; R13 = old R6 (caller's linkage that was pushed)
+    ; R7 is caller-save, OK to use as temp
 
-    RETN
+    ; Save return address to R7
+    GHI 6
+    PHI 7
+    GLO 6
+    PLO 7
+
+    ; Point R15 to trampoline
+    LDI HIGH(SAVE_TRAMPOLINE)
+    PHI 15
+    LDI LOW(SAVE_TRAMPOLINE)
+    PLO 15
+
+    ; Restore R6 from R13
+    GHI 13
+    PHI 6
+    GLO 13
+    PLO 6
+
+    ; Jump to trampoline (switches to P=15)
+    SEP 15
+
+SAVE_TRAMPOLINE:
+    ; Now P=15, can safely modify R3
+    GHI 7
+    PHI 3
+    GLO 7
+    PLO 3
+    ; Switch to R3 and jump to return address
+    SEP 3
 
 ; ------------------------------------------------------------------------------
 ; RESTORE_SEARCH_CONTEXT - Restore all registers used in search
 ; ------------------------------------------------------------------------------
 ; Restores 7-9, B, C from stack (NOT R5/R6 - they're SCRT registers!)
 ; Call before return from NEGAMAX
-; WARNING: R6 is SCRT linkage register - NEVER touch it!
+;
+; CRITICAL FIX (Dec 28, 2025): SCRT pushes R6 linkage onto stack when this
+; function is called. We must skip past it to get to the saved context, then
+; manually restore R6 and return (bypassing SRET to avoid stack mismatch).
 ; ------------------------------------------------------------------------------
 RESTORE_SEARCH_CONTEXT:
-    ; Restore in forward order
-    ; First IRX to point to first saved byte, then LDXA pairs
-    ; NO extra IRX between registers - LDXA already advances R2!
-    ; NOTE: R4, R5, R6 are SCRT registers - NEVER touch them!
+    ; When called via SCRT, the stack has:
+    ;   [saved R12..R7 context] (10 bytes)
+    ;   [old R6.hi]
+    ;   [old R6.lo]  <-- SCRT pushed this during CALL
+    ;   R2 points below here
+    ;
+    ; Pop SCRT's R6 linkage first and save to R13 (temp)
+    IRX                 ; R2 at old R6.lo
+    LDXA                ; D = old R6.lo, R2 at old R6.hi
+    PLO 13              ; R13.0 = old R6.lo
+    LDXA                ; D = old R6.hi, R2 at R7.1
+    PHI 13              ; R13 = old R6 (saved for later)
 
-    ; R6 is SCRT linkage - DO NOT save/restore it!
-
-    IRX                 ; Point to 7.1
+    ; Now R2 is at R7.1 (first saved byte), read context normally
     LDXA
     PHI 7
     LDXA
@@ -212,10 +270,37 @@ RESTORE_SEARCH_CONTEXT:
 
     LDXA
     PHI 12
-    LDX                 ; Last byte: use LDX (no increment) to balance
+    LDX                 ; R2 at R12.0
     PLO 12
 
-    RETN
+    ; All registers restored. Now manually return using trampoline
+    ; (can't modify R3 while P=3!)
+    ; Current R6 = our return address (set by SCRT CALL)
+    ; R13 = old R6 (caller's linkage that was pushed)
+
+    ; Point R15 to trampoline
+    LDI HIGH(RESTORE_TRAMPOLINE)
+    PHI 15
+    LDI LOW(RESTORE_TRAMPOLINE)
+    PLO 15
+
+    ; Jump to trampoline (switches to P=15)
+    SEP 15
+
+RESTORE_TRAMPOLINE:
+    ; Now P=15, can safely modify R3
+    ; R6 = return address, R13 = old linkage
+    GHI 6
+    PHI 3
+    GLO 6
+    PLO 3
+    ; Restore R6 from R13
+    GHI 13
+    PHI 6
+    GLO 13
+    PLO 6
+    ; Switch to R3 and jump to return address
+    SEP 3
 
 ; ------------------------------------------------------------------------------
 ; SAVE_PARTIAL - REMOVED: R6 is SCRT linkage, alpha/beta now memory-based

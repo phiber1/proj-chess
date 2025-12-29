@@ -46,27 +46,19 @@
 ; NOTE:   R6 is SCRT linkage register - never used for data!
 ; ------------------------------------------------------------------------------
 NEGAMAX:
-    ; Debug: show we entered NEGAMAX
-    LDI '.'
-    CALL SERIAL_WRITE_CHAR
-
-    ; Debug A - before SAVE_SEARCH_CONTEXT
-    LDI 'A'
+    ; Debug: N for NEGAMAX entry (before SAVE)
+    LDI 'N'
     CALL SERIAL_WRITE_CHAR
 
     ; Save context to stack
     CALL SAVE_SEARCH_CONTEXT
 
-    ; Debug B - after SAVE_SEARCH_CONTEXT
-    LDI 'B'
+    ; Debug: S for after SAVE returned
+    LDI 'S'
     CALL SERIAL_WRITE_CHAR
 
     ; Increment node counter (for statistics)
     CALL INC_NODE_COUNT
-
-    ; Debug C - after INC_NODE_COUNT
-    LDI 'C'
-    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; FIFTY-MOVE RULE: Check for draw
@@ -88,10 +80,6 @@ NEGAMAX:
     RETN
 
 NEGAMAX_NOT_FIFTY:
-    ; Debug D - passed fifty-move check
-    LDI 'D'
-    CALL SERIAL_WRITE_CHAR
-
     ; -----------------------------------------------
     ; Check if we're at a leaf node (depth == 0)
     ; -----------------------------------------------
@@ -101,45 +89,13 @@ NEGAMAX_NOT_FIFTY:
     LDI LOW(SEARCH_DEPTH)
     PLO 13
     LDA 13              ; D = depth high byte
-
-    ; Debug: show depth high byte as hex digit
-    STXD                ; Save depth high
-    SHR
-    SHR
-    SHR
-    SHR                 ; High nibble
-    ADI '0'
-    CALL SERIAL_WRITE_CHAR
-    IRX
-    LDX                 ; Restore depth high to D
-
     LBNZ NEGAMAX_CONTINUE
     LDN 13              ; D = depth low byte
-
-    ; Debug: show depth low byte as hex digit
-    STXD                ; Save depth low
-    SHR
-    SHR
-    SHR
-    SHR                 ; High nibble
-    ADI '0'
-    CALL SERIAL_WRITE_CHAR
-    IRX
-    LDX                 ; Restore depth low to D
-
     LBNZ NEGAMAX_CONTINUE
     ; Depth is 0, evaluate leaf node
-
-    ; Debug: entering leaf
-    LDI 'X'
-    CALL SERIAL_WRITE_CHAR
-
     LBR NEGAMAX_LEAF
 
 NEGAMAX_CONTINUE:
-    ; Debug E - depth > 0, continuing
-    LDI 'E'
-    CALL SERIAL_WRITE_CHAR
     ; -----------------------------------------------
     ; Initialize best score to -INFINITY
     ; -----------------------------------------------
@@ -158,28 +114,12 @@ NEGAMAX_CONTINUE:
     LDI LOW(MOVE_LIST)
     PLO 9              ; 9 = move list pointer
 
-    ; Debug F - before GENERATE_MOVES
-    LDI 'F'
-    CALL SERIAL_WRITE_CHAR
-
     CALL GENERATE_MOVES
     ; Returns: D = move count
     ; Move list at 9 (MOVE_LIST)
 
-    ; Debug G - after GENERATE_MOVES, show count
-    PLO 15              ; Save move count
-    LDI 'G'
-    CALL SERIAL_WRITE_CHAR
-    GLO 15              ; Restore move count
-    CALL SERIAL_PRINT_HEX   ; Show initial move count
-    GLO 15              ; Reload move count
-
     ; Save move count to stack
     STXD
-
-    ; Debug H - move count saved
-    LDI 'H'
-    CALL SERIAL_WRITE_CHAR
 
     ; Check if there are any legal moves
     IRX
@@ -187,24 +127,13 @@ NEGAMAX_CONTINUE:
     DEC 2               ; Restore stack pointer
     BNZ NEGAMAX_HAS_MOVES
     ; No legal moves - checkmate or stalemate
-    LDI '0'             ; Debug: no moves
-    CALL SERIAL_WRITE_CHAR
     LBR NEGAMAX_NO_MOVES
 
 NEGAMAX_HAS_MOVES:
-    ; Debug I - has moves, entering loop
-    LDI 'I'
-    CALL SERIAL_WRITE_CHAR
-
 NEGAMAX_MOVE_LOOP:
     ; -----------------------------------------------
     ; Loop through all moves
     ; -----------------------------------------------
-
-    ; Debug J - entering move loop iteration
-    LDI 'J'
-    CALL SERIAL_WRITE_CHAR
-
     ; Restore move count
     IRX
     LDN 2              ; Peek at move count (don't pop)
@@ -216,10 +145,6 @@ NEGAMAX_MOVE_LOOP:
     PHI 11
     LDA 9              ; Load low byte of move
     PLO 11              ; B = current move (16-bit encoded)
-
-    ; Debug K - got move from list
-    LDI 'K'
-    CALL SERIAL_WRITE_CHAR
 
     ; Save current state before making move
     ; (9 = move list pointer, 8 = best score so far)
@@ -261,17 +186,9 @@ NEGAMAX_MOVE_LOOP:
     ; -----------------------------------------------
     ; Make the move on the board
     ; -----------------------------------------------
-    ; Debug L - before MAKE_MOVE
-    LDI 'L'
-    CALL SERIAL_WRITE_CHAR
-
     CALL MAKE_MOVE
     ; MOVE_FROM/MOVE_TO set above
     ; Board is now updated with move made
-
-    ; Debug M - after MAKE_MOVE
-    LDI 'M'
-    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; Save depth to stack and decrement for recursive call
@@ -299,10 +216,6 @@ NEGAMAX_MOVE_LOOP:
     LDN 13              ; D = depth high
     SMBI 0              ; Subtract borrow
     STR 13              ; Store decremented high byte
-
-    ; Debug N - depth decremented
-    LDI 'N'
-    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; Negate and swap alpha/beta (memory-based - R6 is SCRT linkage!)
@@ -366,10 +279,6 @@ NEGAMAX_MOVE_LOOP:
     SDBI 0              ; D = -beta_hi (with borrow)
     PHI 7               ; R7 = -beta (negated beta)
 
-    ; Debug: after negate beta
-    LDI 'a'
-    CALL SERIAL_WRITE_CHAR
-
     ; Load alpha from memory, negate
     LDI HIGH(ALPHA_LO)
     PHI 13
@@ -381,10 +290,6 @@ NEGAMAX_MOVE_LOOP:
     LDN 13              ; D = alpha_hi
     SDBI 0              ; D = -alpha_hi (with borrow)
     PHI 8               ; R8 = -alpha (negated alpha)
-
-    ; Debug: after negate alpha
-    LDI 'b'
-    CALL SERIAL_WRITE_CHAR
 
     ; Now swap: new_alpha = -beta (in R7), new_beta = -alpha (in R8)
     ; Store to memory
@@ -408,18 +313,10 @@ NEGAMAX_MOVE_LOOP:
     GHI 8
     STR 13              ; BETA_HI = -alpha high
 
-    ; Debug: after swap
-    LDI 'c'
-    CALL SERIAL_WRITE_CHAR
-
     ; Toggle color (C): 0=white, 8=black (matches COLOR_MASK)
     GLO 12
     XRI $08             ; Toggle between 0 and 8
     PLO 12
-
-    ; Debug O - before recursive call
-    LDI 'O'
-    CALL SERIAL_WRITE_CHAR
 
     ; Increment ply counter before recursion
     LDI HIGH(CURRENT_PLY)
@@ -444,10 +341,6 @@ NEGAMAX_MOVE_LOOP:
     LDN 10
     SMI 1
     STR 10              ; CURRENT_PLY--
-
-    ; Debug P - after recursive call
-    LDI 'P'
-    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; Negate the returned score (R6 is SCRT linkage - off limits!)
@@ -499,10 +392,6 @@ NEGAMAX_MOVE_LOOP:
     ; -----------------------------------------------
     ; Unmake the move
     ; -----------------------------------------------
-    ; Debug Q - before UNMAKE_MOVE
-    LDI 'Q'
-    CALL SERIAL_WRITE_CHAR
-
     CALL UNMAKE_MOVE
     ; Board restored to previous state
 
@@ -589,11 +478,6 @@ NEGAMAX_MOVE_LOOP:
     ; -----------------------------------------------
     ; Beta Cutoff Check: if (score >= beta) return beta
     ; -----------------------------------------------
-    ; Debug: show score high byte
-    LDI 's'
-    CALL SERIAL_WRITE_CHAR
-    GHI 13
-    CALL SERIAL_PRINT_HEX
     ; Compare score (R9) with beta (from BETA memory)
     ; Score is already saved to SCORE_LO/HI, can reload if needed
 
@@ -606,12 +490,6 @@ NEGAMAX_MOVE_LOOP:
     PLO 7
     LDN 10              ; D = beta_hi
     PHI 7               ; R7 = beta (loaded from memory)
-
-    ; Debug: show beta high byte
-    LDI 'b'
-    CALL SERIAL_WRITE_CHAR
-    GHI 7
-    CALL SERIAL_PRINT_HEX
 
     ; SIGNED comparison: score (R13) vs beta (R7)
     ; Use COMPARE_TEMP for scratch (NEVER use STR 2 for scratch!)
@@ -656,11 +534,6 @@ NEGAMAX_BETA_DIFF_SIGN:
     ; Score positive, beta negative: score > beta, CUTOFF (fall through)
 
 NEGAMAX_DO_BETA_CUTOFF:
-
-    ; Debug: beta cutoff taken!
-    LDI 'X'
-    CALL SERIAL_WRITE_CHAR
-
     ; Beta cutoff! Return beta (already in R7)
     ; Put beta in R8 (best) - NEGAMAX_RETURN will move R8 to R9
 
@@ -689,10 +562,6 @@ NEGAMAX_NO_BETA_CUTOFF:
     ; -----------------------------------------------
     ; Update best score: if (score > maxScore) maxScore = score
     ; -----------------------------------------------
-    ; Debug: show we reached comparison
-    LDI '>'
-    CALL SERIAL_WRITE_CHAR
-
     ; SIGNED comparison of score (R13) vs best (R8)
     ; Use COMPARE_TEMP for scratch (NEVER use STR 2 for scratch!)
     LDI HIGH(COMPARE_TEMP)
@@ -734,29 +603,13 @@ NEGAMAX_HI_DIFF:
     LBR NEGAMAX_NEXT_MOVE       ; DF=1: score < best
 
 NEGAMAX_DIFF_SIGN:
-    ; Debug: different signs path
-    LDI 'd'
-    CALL SERIAL_WRITE_CHAR
     ; Different signs - positive number is greater
     GHI 13
     ANI $80
     LBNZ NEGAMAX_NEXT_MOVE      ; Score negative, best positive - skip
     ; Score positive/zero, best negative - update (fall through)
-    LDI '+'
-    CALL SERIAL_WRITE_CHAR
 
 NEGAMAX_SCORE_BETTER:
-    ; Debug: reached score better, print PLY as '0'-'9'
-    LDI '!'
-    CALL SERIAL_WRITE_CHAR
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
-    LDN 10              ; Get PLY (should be 0-3 for depth 3)
-    ADI '0'             ; Convert to ASCII '0'-'9'
-    CALL SERIAL_WRITE_CHAR
-
     ; Score is better, update best score (R13 -> R8)
     GLO 13
     PLO 8
@@ -772,10 +625,6 @@ NEGAMAX_SCORE_BETTER:
     PLO 10
     LDN 10              ; Get current ply
     LBNZ NEGAMAX_NEXT_MOVE  ; Not at root, skip BEST_MOVE update
-
-    ; Debug: at root, saving best move
-    LDI '@'
-    CALL SERIAL_WRITE_CHAR
 
     ; At root - save move to BEST_MOVE
     ; Move is in UNDO_FROM/UNDO_TO (restored after unmake)
@@ -810,36 +659,14 @@ NEGAMAX_NEXT_MOVE:
     ; -----------------------------------------------
     ; Decrement move counter and continue loop
     ; -----------------------------------------------
-    ; Debug: show move count before decrement
-    LDI '#'
-    CALL SERIAL_WRITE_CHAR
     IRX                ; Point to move_count
-    LDN 2              ; Get move count
-    ; Save to MOVECOUNT_TEMP memory (R15 might be corrupted by CALLs)
-    LDI HIGH(MOVECOUNT_TEMP)
-    PHI 10
-    LDI LOW(MOVECOUNT_TEMP)
-    PLO 10
-    LDN 2              ; Re-load move count (D was clobbered by LDI)
-    STR 10             ; Save to memory
-    CALL SERIAL_PRINT_HEX   ; Show count as hex
-    ; Reload from memory (M(R2) was corrupted by CALL, R15 might be too)
-    LDI HIGH(MOVECOUNT_TEMP)
-    PHI 10
-    LDI LOW(MOVECOUNT_TEMP)
-    PLO 10
-    LDN 10             ; Get saved move count from memory
+    LDX                ; Pop move count (R2 at now-empty slot)
     SMI 1              ; Decrement
     BZ NEGAMAX_LOOP_DONE  ; If count == 0, exit loop
-    STR 2              ; Store decremented count back to stack
-    DEC 2              ; Re-decrement stack pointer
+    STXD               ; Push decremented count
     LBR NEGAMAX_MOVE_LOOP
 
 NEGAMAX_LOOP_DONE:
-    ; Debug: loop done - count reached 0
-    LDI '@'
-    CALL SERIAL_WRITE_CHAR
-
     ; Count reached 0 - R2 is AT move_count, need to put it BELOW
     DEC 2              ; Now R2 is below move_count, matching Path A
     ; Fall through to NEGAMAX_RETURN
@@ -848,7 +675,9 @@ NEGAMAX_RETURN:
     ; -----------------------------------------------
     ; Return best score (in R8) via R9
     ; -----------------------------------------------
-    ; Pop move count from stack (only 1 byte was pushed at line 176!)
+    ; Skip move count (1 byte) - IRX moves R2 to AT move_count, then
+    ; CALL RESTORE will overwrite it with SCRT linkage. This effectively
+    ; "pops" move_count without needing to read it.
     IRX
 
     ; Move best score from R8 to R9 for return (R6 is SCRT linkage - off limits!)
@@ -858,6 +687,8 @@ NEGAMAX_RETURN:
     PHI 9
 
     ; Restore caller's context
+    ; NOTE: RESTORE_SEARCH_CONTEXT now properly handles SCRT linkage
+    ; (pops it from stack, reads saved context, restores R6, returns)
     CALL RESTORE_SEARCH_CONTEXT
 
     RETN
@@ -866,15 +697,24 @@ NEGAMAX_LEAF:
     ; -----------------------------------------------
     ; Leaf node - do quiescence search
     ; -----------------------------------------------
-    ; Debug: at NEGAMAX_LEAF
-    LDI 'Y'
+    ; Debug: marker L for reaching NEGAMAX_LEAF (depth 0)
+    LDI 'L'
     CALL SERIAL_WRITE_CHAR
 
     CALL QUIESCENCE_SEARCH
     ; Returns score in R9 (already from side-to-move's perspective)
     ; R6 is SCRT linkage - off limits!
 
+    ; Debug: after QS, before RESTORE
+    LDI '('
+    CALL SERIAL_WRITE_CHAR
+
     CALL RESTORE_SEARCH_CONTEXT
+
+    ; Debug: after RESTORE (if we get here)
+    LDI ')'
+    CALL SERIAL_WRITE_CHAR
+
     RETN
 
 NEGAMAX_NO_MOVES:
@@ -939,17 +779,13 @@ NEGAMAX_STALEMATE:
 ; NOTE:   R6 is SCRT linkage register - off limits for application data!
 ; ==============================================================================
 QUIESCENCE_SEARCH:
-    ; Debug: entered quiescence
-    LDI 'Z'
+    ; Debug: marker < for entering QS
+    LDI '<'
     CALL SERIAL_WRITE_CHAR
 
     ; Stand-pat: evaluate current position
     CALL EVALUATE
     ; Returns score in R9 (from white's perspective)
-
-    ; Debug: after EVALUATE
-    LDI '!'
-    CALL SERIAL_WRITE_CHAR
 
     ; Negate if black to move (R12: 0=white, 8=black)
     GLO 12
@@ -1177,6 +1013,10 @@ QS_UPDATE:
     LBR QS_LOOP
 
 QS_RETURN:
+    ; Debug: > for exiting QS
+    LDI '>'
+    CALL SERIAL_WRITE_CHAR
+
     ; Return best score in R9 (R6 is SCRT linkage - off limits!)
     LDI HIGH(QS_BEST_LO)
     PHI 10
@@ -1313,11 +1153,7 @@ SEARCH_POSITION:
     ; Debug: VERSION MARKER - change this to verify new build is loaded
     LDI 'V'
     CALL SERIAL_WRITE_CHAR
-    LDI 'N'
-    CALL SERIAL_WRITE_CHAR
-
-    ; Debug: entered SEARCH_POSITION
-    LDI '1'
+    LDI 'Q'
     CALL SERIAL_WRITE_CHAR
 
     ; Alpha = -INFINITY (to memory - R6 is SCRT linkage, off limits!)
@@ -1351,10 +1187,6 @@ SEARCH_POSITION:
     PLO 10
     LDI 0
     STR 10              ; CURRENT_PLY = 0
-
-    ; Debug: about to get side to move
-    LDI '2'
-    CALL SERIAL_WRITE_CHAR
 
     ; Get side to move
     CALL GET_SIDE_TO_MOVE
@@ -1390,16 +1222,8 @@ SEARCH_POSITION:
     INC 11
     STR 11
 
-    ; Debug: about to call NEGAMAX
-    LDI '3'
-    CALL SERIAL_WRITE_CHAR
-
     ; Call negamax
     CALL NEGAMAX
-
-    ; Debug: NEGAMAX returned
-    LDI '4'
-    CALL SERIAL_WRITE_CHAR
 
     RETN
 

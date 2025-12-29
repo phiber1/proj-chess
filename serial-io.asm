@@ -16,14 +16,18 @@
 ;
 ; REGISTER USAGE:
 ;   R8  - String/buffer pointer (PRINT_STRING, READ_LINE)
-;   R9  - R9.0 = max length, R9.1 = count (READ_LINE); R9.0 = temp (PRINT_HEX)
+;   R9  - R9.0 = max length, R9.1 = count (READ_LINE only)
+;         NOTE: R9 is NOT used by PRINT_HEX - it's the move list pointer!
 ;   R10 - Temp storage (READ_LINE)
 ;   R11 - Serial shift register (standalone mode only)
 ;   R13 - Saved/restored by output routine
-;   R14 - BIOS: R14.1 = baud constant (DO NOT TOUCH), R14.0 clobbered
+;   R14 - BIOS: R14.1 = baud constant (DO NOT TOUCH), R14.0 clobbered by F_TYPE
+;         PRINT_HEX uses R14.0 for temp (already clobbered by F_TYPE anyway)
 ;         Standalone: R14.0 = baud rate delay counter
 ;   R15 - BIOS: Used by F_MSG for string pointer
 ;         Standalone: Bit counter (output routine)
+;
+; IMPORTANT: R9 is reserved for NEGAMAX move list pointer - never clobber!
 ;
 ; REQUIRES:
 ;   - SCRT initialized (R4 = CALL, R5 = RET)
@@ -137,10 +141,11 @@ SRL_DONE:
 ; ==============================================================================
 ; SERIAL_PRINT_HEX - Print byte as two hex digits
 ; Input: D = byte to print
-; Uses: R9.0 (saved byte)
+; Uses: R14.0 (temp - already clobbered by F_TYPE anyway)
+; NOTE: Changed from R9 to R14 - R9 is move list pointer in NEGAMAX!
 ; ==============================================================================
 SERIAL_PRINT_HEX:
-    PLO 9               ; Save byte in R9.0
+    PLO 14              ; Save byte in R14.0 (F_TYPE clobbers this anyway)
 
     ; Print high nibble
     SHR
@@ -151,7 +156,7 @@ SERIAL_PRINT_HEX:
     DW SERIAL_PRINT_NIBBLE
 
     ; Print low nibble
-    GLO 9               ; Get original byte
+    GLO 14              ; Get original byte
     ANI 0FH             ; Mask low nibble
     SEP 4
     DW SERIAL_PRINT_NIBBLE
