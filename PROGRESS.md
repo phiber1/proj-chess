@@ -1905,3 +1905,75 @@ MAX_PLY = 8             ; 80 bytes total
 - Size: 15,552 bytes
 - Trampoline fix in place
 - Ready for testing OR refactor to ply-indexed arrays
+
+---
+
+## Session: December 28, 2025 (continued) - Ply-Indexed State Arrays
+
+### Architectural Refactor Complete
+
+Per user's suggestion, replaced stack-based recursion state with ply-indexed memory arrays. This eliminates all SCRT interference issues.
+
+### New Memory Layout
+
+```
+PLY_STATE_BASE = $6450   ; Base address
+PLY_FRAME_SIZE = 10      ; Bytes per ply (5 registers × 2 bytes)
+MAX_PLY = 8              ; Maximum search depth
+
+; Each frame stores: R7, R8, R9, R11, R12 (high byte first, big-endian)
+; Ply 0: $6450-$6459
+; Ply 1: $645A-$6463
+; Ply 2: $6464-$646D
+; ... etc
+```
+
+### New Functions
+
+**SAVE_PLY_STATE:**
+1. Read CURRENT_PLY from memory
+2. Multiply by 10 (×8 + ×2 via shifts)
+3. Add to PLY_STATE_BASE → frame address
+4. Store R7, R8, R9, R11, R12 (high byte first)
+5. Normal RETN (no stack tricks!)
+
+**RESTORE_PLY_STATE:**
+- Same address calculation
+- Load registers in same order
+- Normal RETN
+
+### Code Removed
+
+Deleted 168 lines of complex stack manipulation:
+- SAVE_SEARCH_CONTEXT (with SCRT linkage pop, DEC×3, push context)
+- RESTORE_SEARCH_CONTEXT (with SCRT linkage pop, context read)
+- SAVE_TRAMPOLINE (P=15 trick to modify R3)
+- RESTORE_TRAMPOLINE
+
+### Build: VR
+
+- Size: 15,564 bytes
+- Ply-indexed state management
+- Search completes and returns "bestmove h@h@"
+
+### Remaining Issue
+
+BEST_MOVE still shows "h@h@" (invalid). This is a separate bug - the move isn't being saved when score improves at root. Not a stack/SCRT issue.
+
+### Files Modified
+
+- **board-0x88.asm:** Added PLY_STATE_BASE, PLY_FRAME_SIZE, MAX_PLY definitions
+- **stack.asm:** Added SAVE_PLY_STATE/RESTORE_PLY_STATE, removed old stack-based functions
+- **negamax.asm:** Changed to CALL SAVE_PLY_STATE / CALL RESTORE_PLY_STATE, version VR
+
+### Key Insight (User)
+
+"We could avoid all this unnecessary complication by not using the system stack at all for negamax recursion state. Just reserve an area of empty memory large enough to hold number-of-values multiplied by max number of plies/iterations. Then just index into the proper set of state values per ply/iteration number."
+
+This is the correct approach for 1802 with SCRT - keep the system stack clean for call/return linkage only.
+
+### Next Session TODO
+
+- [ ] Debug BEST_MOVE not being updated (h@h@ bug)
+- [ ] Trace through root ply to see if score comparison works
+- [ ] Check CURRENT_PLY value when saving best move

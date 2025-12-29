@@ -107,6 +107,23 @@ COMPARE_TEMP    EQU $6449   ; 1 byte - scratch for comparisons (NEVER use STR 2!
 MOVECOUNT_TEMP  EQU $644A   ; 1 byte - saved move count for loop decrement
 
 ; ------------------------------------------------------------------------------
+; Ply-Indexed State Array: $6450-$649F (80 bytes = 8 plies × 10 bytes)
+; ------------------------------------------------------------------------------
+; Each ply frame stores registers that must be preserved across recursion:
+;   Offset 0: R7.hi    Offset 1: R7.lo   (alpha/beta temp)
+;   Offset 2: R8.hi    Offset 3: R8.lo   (best score)
+;   Offset 4: R9.hi    Offset 5: R9.lo   (move list pointer)
+;   Offset 6: R11.hi   Offset 7: R11.lo  (current move)
+;   Offset 8: R12.hi   Offset 9: R12.lo  (side to move)
+;
+; Address for ply N = PLY_STATE_BASE + (N × 10)
+; This replaces stack-based SAVE/RESTORE_SEARCH_CONTEXT - no SCRT interference!
+; ------------------------------------------------------------------------------
+PLY_STATE_BASE  EQU $6450   ; Base address of ply state array
+PLY_FRAME_SIZE  EQU 10      ; Bytes per ply frame
+MAX_PLY         EQU 8       ; Maximum search depth supported
+
+; ------------------------------------------------------------------------------
 ; UCI state: $6500-$6600
 ; ------------------------------------------------------------------------------
 UCI_BUFFER      EQU $6500   ; 256 bytes - input buffer ($6500-$65FF)

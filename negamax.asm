@@ -50,8 +50,8 @@ NEGAMAX:
     LDI 'N'
     CALL SERIAL_WRITE_CHAR
 
-    ; Save context to stack
-    CALL SAVE_SEARCH_CONTEXT
+    ; Save context to ply-indexed state array (no stack manipulation!)
+    CALL SAVE_PLY_STATE
 
     ; Debug: S for after SAVE returned
     LDI 'S'
@@ -76,7 +76,7 @@ NEGAMAX:
     LDI 0
     PHI 9
     PLO 9               ; R9 = 0 (draw score) - R6 is SCRT linkage!
-    CALL RESTORE_SEARCH_CONTEXT
+    CALL RESTORE_PLY_STATE
     RETN
 
 NEGAMAX_NOT_FIFTY:
@@ -689,7 +689,7 @@ NEGAMAX_RETURN:
     ; Restore caller's context
     ; NOTE: RESTORE_SEARCH_CONTEXT now properly handles SCRT linkage
     ; (pops it from stack, reads saved context, restores R6, returns)
-    CALL RESTORE_SEARCH_CONTEXT
+    CALL RESTORE_PLY_STATE
 
     RETN
 
@@ -709,7 +709,7 @@ NEGAMAX_LEAF:
     LDI '('
     CALL SERIAL_WRITE_CHAR
 
-    CALL RESTORE_SEARCH_CONTEXT
+    CALL RESTORE_PLY_STATE
 
     ; Debug: after RESTORE (if we get here)
     LDI ')'
@@ -1153,7 +1153,7 @@ SEARCH_POSITION:
     ; Debug: VERSION MARKER - change this to verify new build is loaded
     LDI 'V'
     CALL SERIAL_WRITE_CHAR
-    LDI 'Q'
+    LDI 'R'
     CALL SERIAL_WRITE_CHAR
 
     ; Alpha = -INFINITY (to memory - R6 is SCRT linkage, off limits!)
