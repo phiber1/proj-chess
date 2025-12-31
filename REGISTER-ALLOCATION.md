@@ -124,14 +124,20 @@ SERIAL_PRINT_HEX:
 
 ## Memory-Based Globals (defined in board-0x88.asm)
 
+All 16-bit values use big-endian layout: high byte at lower address, low byte at higher address.
+
 | Address | Name | Purpose |
 |---------|------|---------|
-| $6400   | ALPHA_LO/HI | Alpha bound (2 bytes) |
-| $6402   | BETA_LO/HI | Beta bound (2 bytes) |
-| $6404   | SCORE_LO/HI | Current score (2 bytes) |
-| $6406   | SEARCH_DEPTH | Search depth (2 bytes) |
+| $6442   | ALPHA_HI | Alpha bound high byte |
+| $6443   | ALPHA_LO | Alpha bound low byte |
+| $6444   | BETA_HI | Beta bound high byte |
+| $6445   | BETA_LO | Beta bound low byte |
+| $6446   | SCORE_HI | Current score high byte |
+| $6447   | SCORE_LO | Current score low byte |
+| $6448   | CURRENT_PLY | Current ply depth (1 byte) |
 | $6449   | COMPARE_TEMP | Scratch for comparisons |
 | $644A   | MOVECOUNT_TEMP | Scratch for move count |
+| $6450   | PLY_STATE_BASE | Ply-indexed state array (80 bytes) |
 | $6807   | GM_SCAN_IDX | Move gen scan index |
 
 ## Stack Usage Rules

@@ -43,10 +43,6 @@ GENERATE_MOVES:
     LDI 0
     STR 8               ; scan index = 0
 
-    ; Debug: entered GENERATE_MOVES
-    LDI '['
-    CALL SERIAL_WRITE_CHAR
-
 GEN_SCAN_BOARD:
     ; Load scan index from memory
     LDI HIGH(GM_SCAN_IDX)
@@ -60,40 +56,7 @@ GEN_SCAN_BOARD:
     LDN 10
     LBZ GEN_SKIP_SQUARE
 
-    ; Debug: print scan index when piece found (high nibble as hex)
-    LDI HIGH(GM_SCAN_IDX)
-    PHI 8
-    LDI LOW(GM_SCAN_IDX)
-    PLO 8
-    LDN 8               ; D = scan index
-    STXD                ; Save scan index
-    SHR
-    SHR
-    SHR
-    SHR                 ; High nibble
-    ADI '0'             ; Convert to ASCII
-    CALL SERIAL_WRITE_CHAR
-    IRX
-    LDN 2               ; Restore scan index
-    ANI $0F             ; Low nibble
-    ADI '0'             ; Convert to ASCII
-    SMI 10
-    BDF GEN_SCAN_HEX
-    ADI 10              ; Was 0-9
-    BR GEN_SCAN_PRINT
-GEN_SCAN_HEX:
-    ADI 7               ; A-F: '0'+10+7 = 'A'
-    ADI 10
-GEN_SCAN_PRINT:
-    CALL SERIAL_WRITE_CHAR
-    LDI ':'
-    CALL SERIAL_WRITE_CHAR
-    ; Note: STXD at line 69 + IRX at line 76 is already balanced
-    ; The IRX at 76 pointed R2 back to the data, so no extra pop needed
-
-    ; Reload piece after debug output
-    LDN 10
-
+    ; Check if piece belongs to side to move
     ANI COLOR_MASK
     STR 2
     GLO 12
@@ -107,10 +70,6 @@ GEN_SCAN_PRINT:
     PLO 8
     LDN 8
     PHI 11              ; R11.1 = from square (survives CALLs)
-
-    ; Debug: found a friendly piece, print '!'
-    LDI '!'
-    CALL SERIAL_WRITE_CHAR
 
     LDN 10
     ANI PIECE_MASK
@@ -149,10 +108,6 @@ GEN_SKIP_SQUARE:
     SHR                 ; Divide by 2 for move count
     PLO 8               ; Save move count in R8.0 (temp)
 
-    ; Debug: finished scanning
-    LDI ']'
-    CALL SERIAL_WRITE_CHAR
-
     ; Return move count
     GLO 8
     RETN
@@ -163,10 +118,6 @@ GEN_SKIP_SQUARE:
 ; Uses R11.1 for from square (set before dispatch, survives CALLs)
 ; ==============================================================================
 GEN_PAWN:
-    ; Debug: entered pawn generator
-    LDI 'p'
-    CALL SERIAL_WRITE_CHAR
-
     GLO 12
     LBZ GEN_PAWN_WHITE
 
@@ -454,10 +405,6 @@ GEN_PAWN_DONE:
 ; R11.1 has from square on entry (set before dispatch)
 ; ==============================================================================
 GEN_KNIGHT:
-    ; Debug: entered knight generator
-    LDI 'n'
-    CALL SERIAL_WRITE_CHAR
-
     ; Store from square in memory (survives all CALLs)
     LDI HIGH(GEN_FROM_SQ)
     PHI 7
@@ -532,10 +479,6 @@ GEN_KNIGHT_NEXT:
 ; GEN_BISHOP, GEN_ROOK, GEN_QUEEN - Use GEN_SLIDING
 ; ==============================================================================
 GEN_BISHOP:
-    ; Debug: entered bishop generator
-    LDI 'b'
-    CALL SERIAL_WRITE_CHAR
-
     LDI DIR_NE
     PLO 13
     CALL GEN_SLIDING
@@ -555,10 +498,6 @@ GEN_BISHOP:
     LBR GEN_SKIP_SQUARE
 
 GEN_ROOK:
-    ; Debug: entered rook generator
-    LDI 'r'
-    CALL SERIAL_WRITE_CHAR
-
     LDI DIR_N
     PLO 13
     CALL GEN_SLIDING
@@ -578,10 +517,6 @@ GEN_ROOK:
     LBR GEN_SKIP_SQUARE
 
 GEN_QUEEN:
-    ; Debug: entered queen generator
-    LDI 'q'
-    CALL SERIAL_WRITE_CHAR
-
     LDI DIR_N
     PLO 13
     CALL GEN_SLIDING
@@ -700,10 +635,6 @@ GEN_SLIDE_DONE:
 ; R11.1 has from square on entry (set before dispatch)
 ; ==============================================================================
 GEN_KING:
-    ; Debug: entered king generator
-    LDI 'k'
-    CALL SERIAL_WRITE_CHAR
-
     ; Store from square in memory (survives all CALLs)
     LDI HIGH(GEN_FROM_SQ)
     PHI 7

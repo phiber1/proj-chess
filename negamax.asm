@@ -23,21 +23,21 @@
 ; D:  Temp/scratch register 1
 ; E:  Temp/scratch register 2 (move counter)
 ; F:  Temp/scratch register 3
-; NOTE: Alpha/beta stored in memory at ALPHA_LO/HI, BETA_LO/HI (not registers)
+; NOTE: Alpha/beta stored in memory at ALPHA_HI/LO, BETA_HI/LO (big-endian)
 ; NOTE: Search depth stored in memory at SEARCH_DEPTH (not in a register)
 ; ------------------------------------------------------------------------------
 
 ; Memory locations for search state - defined in board-0x88.asm:
 ;   BEST_MOVE, NODES_SEARCHED, SEARCH_DEPTH, QS_*, EVAL_SQ_INDEX, KILLER_MOVES
-;   ALPHA_LO/HI, BETA_LO/HI, SCORE_LO/HI (added for memory-based alpha/beta)
+;   ALPHA_HI/LO, BETA_HI/LO, SCORE_HI/LO (big-endian: high byte at lower address)
 ; All engine variables consolidated at $6400+ region
 
 ; ------------------------------------------------------------------------------
 ; NEGAMAX - Main recursive search function
 ; ------------------------------------------------------------------------------
 ; Input:  SEARCH_DEPTH = depth remaining in memory (0 = leaf node, evaluate)
-;         ALPHA_LO/HI = alpha (lower bound) in memory
-;         BETA_LO/HI = beta (upper bound) in memory
+;         ALPHA_HI/LO = alpha (lower bound) in memory (big-endian)
+;         BETA_HI/LO = beta (upper bound) in memory (big-endian)
 ;         C = color (0 for white, 8 for black - matches COLOR_MASK)
 ;         A = board state pointer
 ; Output: R9 = score from current position
@@ -46,16 +46,8 @@
 ; NOTE:   R6 is SCRT linkage register - never used for data!
 ; ------------------------------------------------------------------------------
 NEGAMAX:
-    ; Debug: N for NEGAMAX entry (before SAVE)
-    LDI 'N'
-    CALL SERIAL_WRITE_CHAR
-
     ; Save context to ply-indexed state array (no stack manipulation!)
     CALL SAVE_PLY_STATE
-
-    ; Debug: S for after SAVE returned
-    LDI 'S'
-    CALL SERIAL_WRITE_CHAR
 
     ; Increment node counter (for statistics)
     CALL INC_NODE_COUNT
@@ -70,7 +62,7 @@ NEGAMAX:
     PLO 13
     LDN 13               ; D = halfmove clock
     SMI 100             ; D = halfmove - 100
-    BNF NEGAMAX_NOT_FIFTY ; If < 100, continue normally
+    LBNF NEGAMAX_NOT_FIFTY ; If < 100, continue normally (long branch - crosses page)
 
     ; Fifty-move rule triggered - return draw (score = 0)
     LDI 0
@@ -97,14 +89,6 @@ NEGAMAX_NOT_FIFTY:
 
 NEGAMAX_CONTINUE:
     ; -----------------------------------------------
-    ; Initialize best score to -INFINITY
-    ; -----------------------------------------------
-    LDI $80
-    PHI 8              ; 8.1 = $80
-    LDI $00
-    PLO 8              ; 8 = $8000 (-32768)
-
-    ; -----------------------------------------------
     ; Generate moves for current position
     ; -----------------------------------------------
     ; Board is at A, color is in C
@@ -116,10 +100,30 @@ NEGAMAX_CONTINUE:
 
     CALL GENERATE_MOVES
     ; Returns: D = move count
-    ; Move list at 9 (MOVE_LIST)
+    ; NOTE: R9 now points PAST the end of the move list!
 
     ; Save move count to stack
     STXD
+
+    ; Reset R9 to START of move list (GENERATE_MOVES left it at the end!)
+    LDI HIGH(MOVE_LIST)
+    PHI 9
+    LDI LOW(MOVE_LIST)
+    PLO 9
+
+    ; -----------------------------------------------
+    ; Initialize best score to -INFINITY in memory
+    ; -----------------------------------------------
+    ; Using memory avoids register clobbering bugs!
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    LDI $80
+    STR 10              ; BEST_SCORE_HI = $80
+    INC 10
+    LDI $00
+    STR 10              ; BEST_SCORE_LO = $00 (best = $8000 = -32768)
 
     ; Check if there are any legal moves
     IRX
@@ -140,35 +144,19 @@ NEGAMAX_MOVE_LOOP:
     DEC 2              ; Re-decrement
     LBZ NEGAMAX_RETURN  ; No moves left
 
-    ; Get next move from list
+    ; Get next move from list (big-endian: high byte first)
     LDA 9              ; Load high byte of move
-    PHI 11
+    PHI 8
     LDA 9              ; Load low byte of move
-    PLO 11              ; B = current move (16-bit encoded)
+    PLO 8              ; R8 = current move (16-bit encoded)
 
-    ; Save current state before making move
-    ; (9 = move list pointer, 8 = best score so far)
+    ; Save R9 (move pointer) to stack - best score is in memory, no R8 push needed!
     GLO 9
     STXD
     GHI 9
     STXD
 
-    GLO 8
-    STXD
-    GHI 8
-    STXD
-
-    ; -----------------------------------------------
-    ; Decode move and set MOVE_FROM/MOVE_TO for MAKE_MOVE
-    ; -----------------------------------------------
-    ; R11 has encoded move (swapped due to little-endian load)
-    ; R11.HI = encoded low byte, R11.LO = encoded high byte
-    ; DECODE_MOVE_16BIT expects R8 with normal byte order
-    GHI 11              ; Get encoded low byte
-    PLO 8               ; Store as R8 low
-    GLO 11              ; Get encoded high byte
-    PHI 8               ; Store as R8 high
-
+    ; R8 has encoded move in correct byte order for DECODE
     CALL DECODE_MOVE_16BIT
     ; R13.1 = from square, R13.0 = to square
 
@@ -189,6 +177,26 @@ NEGAMAX_MOVE_LOOP:
     CALL MAKE_MOVE
     ; MOVE_FROM/MOVE_TO set above
     ; Board is now updated with move made
+
+    ; DEBUG WH: Print from:to after MAKE_MOVE
+    LDI '{'
+    CALL SERIAL_WRITE_CHAR
+    LDI HIGH(MOVE_FROM)
+    PHI 10
+    LDI LOW(MOVE_FROM)
+    PLO 10
+    LDN 10
+    CALL SERIAL_PRINT_HEX
+    LDI ':'
+    CALL SERIAL_WRITE_CHAR
+    LDI HIGH(MOVE_TO)
+    PHI 10
+    LDI LOW(MOVE_TO)
+    PLO 10
+    LDN 10
+    CALL SERIAL_PRINT_HEX
+    LDI '}'
+    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; Save depth to stack and decrement for recursive call
@@ -223,25 +231,25 @@ NEGAMAX_MOVE_LOOP:
     ; For negamax: score = -negamax(depth-1, -beta, -alpha, -color)
 
     ; Save current alpha and beta from memory to stack
-    ; Load alpha from memory
-    LDI HIGH(ALPHA_LO)
+    ; Load alpha from memory (big-endian: HI at lower address)
+    LDI HIGH(ALPHA_HI)
     PHI 13
-    LDI LOW(ALPHA_LO)
+    LDI LOW(ALPHA_HI)
     PLO 13
-    LDA 13              ; D = alpha_lo
+    LDA 13              ; D = alpha_hi
     STXD
-    LDN 13              ; D = alpha_hi
+    LDN 13              ; D = alpha_lo
     STXD
-    ; Load beta from memory
-    LDI HIGH(BETA_LO)
+    ; Load beta from memory (big-endian: HI at lower address)
+    LDI HIGH(BETA_HI)
     PHI 13
-    LDI LOW(BETA_LO)
+    LDI LOW(BETA_HI)
     PLO 13
-    LDA 13              ; D = beta_lo
+    LDA 13              ; D = beta_hi
     STXD
-    LDN 13              ; D = beta_hi
+    LDN 13              ; D = beta_lo
     STXD
-    ; Stack now has: [beta_hi][beta_lo][alpha_hi][alpha_lo][depth]...
+    ; Stack now has: [beta_lo][beta_hi][alpha_lo][alpha_hi][depth]...
 
     ; -----------------------------------------------
     ; Save UNDO_* to stack (6 bytes) for recursive safety
@@ -268,50 +276,53 @@ NEGAMAX_MOVE_LOOP:
 
     ; Compute new_alpha = -beta, new_beta = -alpha
     ; Load beta from memory, negate, store as new alpha
+    ; Big-endian: HI at lower address, must negate low byte first for borrow
     LDI HIGH(BETA_LO)
     PHI 13
     LDI LOW(BETA_LO)
     PLO 13
-    LDA 13              ; D = beta_lo
+    LDN 13              ; D = beta_lo (at higher address)
     SDI 0               ; D = -beta_lo
-    PLO 7               ; Temp store
+    PLO 7               ; R7.0 = -beta_lo
+    DEC 13              ; Point back to BETA_HI
     LDN 13              ; D = beta_hi
     SDBI 0              ; D = -beta_hi (with borrow)
-    PHI 7               ; R7 = -beta (negated beta)
+    PHI 7               ; R7.1 = -beta_hi, R7 = -beta
 
     ; Load alpha from memory, negate
     LDI HIGH(ALPHA_LO)
     PHI 13
     LDI LOW(ALPHA_LO)
     PLO 13
-    LDA 13              ; D = alpha_lo
+    LDN 13              ; D = alpha_lo (at higher address)
     SDI 0               ; D = -alpha_lo
-    PLO 8               ; Temp in R8.0
+    PLO 8               ; R8.0 = -alpha_lo
+    DEC 13              ; Point back to ALPHA_HI
     LDN 13              ; D = alpha_hi
     SDBI 0              ; D = -alpha_hi (with borrow)
-    PHI 8               ; R8 = -alpha (negated alpha)
+    PHI 8               ; R8.1 = -alpha_hi, R8 = -alpha
 
     ; Now swap: new_alpha = -beta (in R7), new_beta = -alpha (in R8)
-    ; Store to memory
-    LDI HIGH(ALPHA_LO)
+    ; Store to memory (big-endian: high byte at lower address)
+    LDI HIGH(ALPHA_HI)
     PHI 13
-    LDI LOW(ALPHA_LO)
+    LDI LOW(ALPHA_HI)
     PLO 13
-    GLO 7
-    STR 13              ; ALPHA_LO = -beta low
-    INC 13
     GHI 7
     STR 13              ; ALPHA_HI = -beta high
-
-    LDI HIGH(BETA_LO)
-    PHI 13
-    LDI LOW(BETA_LO)
-    PLO 13
-    GLO 8
-    STR 13              ; BETA_LO = -alpha low
     INC 13
+    GLO 7
+    STR 13              ; ALPHA_LO = -beta low
+
+    LDI HIGH(BETA_HI)
+    PHI 13
+    LDI LOW(BETA_HI)
+    PLO 13
     GHI 8
     STR 13              ; BETA_HI = -alpha high
+    INC 13
+    GLO 8
+    STR 13              ; BETA_LO = -alpha low
 
     ; Toggle color (C): 0=white, 8=black (matches COLOR_MASK)
     GLO 12
@@ -353,15 +364,16 @@ NEGAMAX_MOVE_LOOP:
     PHI 9               ; R9 = -score
 
     ; Save negated score to memory (R9 will be overwritten by stack pops)
-    LDI HIGH(SCORE_LO)
+    ; Big-endian: high byte at lower address (SCORE_HI)
+    LDI HIGH(SCORE_HI)
     PHI 10
-    LDI LOW(SCORE_LO)
+    LDI LOW(SCORE_HI)
     PLO 10
-    GLO 9
+    GHI 9               ; High byte first
     STR 10
     INC 10
-    GHI 9
-    STR 10              ; SCORE_LO/HI = negated score
+    GLO 9               ; Low byte second
+    STR 10              ; SCORE_HI/LO = negated score
 
     ; -----------------------------------------------
     ; Restore UNDO_* from stack (6 bytes) before UNMAKE_MOVE
@@ -398,38 +410,38 @@ NEGAMAX_MOVE_LOOP:
     ; -----------------------------------------------
     ; Restore context (memory-based alpha/beta - R6 is SCRT linkage!)
     ; -----------------------------------------------
-    ; Stack order (low to high): beta_hi, beta_lo, alpha_hi, alpha_lo, depth_lo, depth_hi, R8, R9
+    ; Stack order (low to high): beta_lo, beta_hi, alpha_lo, alpha_hi, depth_lo, depth_hi, R8, R9
 
-    ; Pop beta from stack to BETA memory
-    IRX                 ; Point to beta_hi
-    LDXA                ; D = beta_hi
-    PHI 7               ; Temp
+    ; Pop beta from stack to BETA memory (big-endian)
+    IRX                 ; Point to beta_lo
     LDXA                ; D = beta_lo
-    PLO 7               ; R7 = beta (temp)
-    LDI HIGH(BETA_LO)
+    PLO 7               ; R7.0 = beta_lo
+    LDXA                ; D = beta_hi
+    PHI 7               ; R7.1 = beta_hi, R7 = beta
+    LDI HIGH(BETA_HI)
     PHI 13
-    LDI LOW(BETA_LO)
+    LDI LOW(BETA_HI)
     PLO 13
-    GLO 7
-    STR 13              ; BETA_LO
-    INC 13
     GHI 7
-    STR 13              ; BETA_HI
+    STR 13              ; BETA_HI (high byte at lower addr)
+    INC 13
+    GLO 7
+    STR 13              ; BETA_LO (low byte at higher addr)
 
-    ; Pop alpha from stack to ALPHA memory (NO extra IRX - R2 already at alpha_hi)
-    LDXA                ; D = alpha_hi
-    PHI 7               ; Temp
+    ; Pop alpha from stack to ALPHA memory (NO extra IRX - R2 already at alpha_lo)
     LDXA                ; D = alpha_lo
-    PLO 7               ; R7 = alpha (temp)
-    LDI HIGH(ALPHA_LO)
+    PLO 7               ; R7.0 = alpha_lo
+    LDXA                ; D = alpha_hi
+    PHI 7               ; R7.1 = alpha_hi, R7 = alpha
+    LDI HIGH(ALPHA_HI)
     PHI 13
-    LDI LOW(ALPHA_LO)
+    LDI LOW(ALPHA_HI)
     PLO 13
-    GLO 7
-    STR 13              ; ALPHA_LO
-    INC 13
     GHI 7
-    STR 13              ; ALPHA_HI
+    STR 13              ; ALPHA_HI (high byte at lower addr)
+    INC 13
+    GLO 7
+    STR 13              ; ALPHA_LO (low byte at higher addr)
 
     ; Pop depth from stack to SEARCH_DEPTH memory
     ; Stack has: depth_lo, depth_hi (depth_lo at lower addr)
@@ -452,44 +464,40 @@ NEGAMAX_MOVE_LOOP:
     XRI $08
     PLO 12              ; C = color restored
 
-    ; Pop best score (R8)
-    LDXA                ; D = R8.1
-    PHI 8
-    LDXA                ; D = R8.0
-    PLO 8
-
     ; Restore R9 (move list pointer) from stack
-    ; We need R9 to continue iterating through the move list!
-    LDXA                ; D = R9.1, then R2++ to R9.0
+    ; Best score is in memory (BEST_SCORE_HI/LO), no R8 pop needed!
+    LDXA                ; D = R9.1
     PHI 9
     LDX                 ; D = R9.0, R2 stays at R9.0 (below move_count)
     PLO 9               ; R9 = move list pointer restored
 
     ; Load score from SCORE memory into R13 (R9 is move list pointer!)
-    LDI HIGH(SCORE_LO)
+    ; Big-endian: high byte at lower address (SCORE_HI)
+    LDI HIGH(SCORE_HI)
     PHI 10
-    LDI LOW(SCORE_LO)
+    LDI LOW(SCORE_HI)
     PLO 10
-    LDA 10              ; SCORE_LO
-    PLO 13
-    LDN 10              ; SCORE_HI
-    PHI 13              ; R13 = negated score from memory
+    LDA 10              ; SCORE_HI -> high byte
+    PHI 13
+    LDN 10              ; SCORE_LO -> low byte
+    PLO 13              ; R13 = negated score from memory
 
     ; -----------------------------------------------
     ; Beta Cutoff Check: if (score >= beta) return beta
     ; -----------------------------------------------
-    ; Compare score (R9) with beta (from BETA memory)
-    ; Score is already saved to SCORE_LO/HI, can reload if needed
+    ; Compare score (R13) with beta (from BETA memory)
+    ; Score is already saved to SCORE_HI/LO, can reload if needed
 
     ; Load beta from memory into R7 (use R10 as pointer, preserve R13=score)
-    LDI HIGH(BETA_LO)
+    ; Big-endian: high byte at lower address (BETA_HI)
+    LDI HIGH(BETA_HI)
     PHI 10
-    LDI LOW(BETA_LO)
+    LDI LOW(BETA_HI)
     PLO 10
-    LDA 10              ; D = beta_lo
-    PLO 7
-    LDN 10              ; D = beta_hi
-    PHI 7               ; R7 = beta (loaded from memory)
+    LDA 10              ; D = beta_hi
+    PHI 7
+    LDN 10              ; D = beta_lo
+    PLO 7               ; R7 = beta (loaded from memory)
 
     ; SIGNED comparison: score (R13) vs beta (R7)
     ; Use COMPARE_TEMP for scratch (NEVER use STR 2 for scratch!)
@@ -509,20 +517,21 @@ NEGAMAX_MOVE_LOOP:
     LBNZ NEGAMAX_BETA_DIFF_SIGN
 
     ; Same sign - use subtraction result
+    ; Compute score - beta (SD does D - M(X), not M(X) - D like SM!)
     SEX 10
     GLO 7
-    STR 10
-    GLO 13
-    SM                  ; D = score_lo - beta_lo
+    STR 10              ; M(R10) = beta_lo
+    GLO 13              ; D = score_lo
+    SD                  ; D = score_lo - beta_lo (FIXED: was SM which gave beta - score!)
     GHI 7
-    STR 10
-    GHI 13
-    SMB                 ; D = score_hi - beta_hi - borrow
+    STR 10              ; M(R10) = beta_hi
+    GHI 13              ; D = score_hi
+    SDB                 ; D = score_hi - beta_hi - borrow (FIXED: was SMB)
     SEX 2               ; X = R2 (restore)
 
-    ; Check sign bit (negative means score < beta)
+    ; Check sign bit (negative means score < beta, no cutoff)
     ANI $80
-    LBNZ NEGAMAX_NO_BETA_CUTOFF
+    LBNZ NEGAMAX_NO_BETA_CUTOFF  ; score < beta, no cutoff
     ; Fall through to cutoff (score >= beta)
     LBR NEGAMAX_DO_BETA_CUTOFF
 
@@ -535,13 +544,18 @@ NEGAMAX_BETA_DIFF_SIGN:
 
 NEGAMAX_DO_BETA_CUTOFF:
     ; Beta cutoff! Return beta (already in R7)
-    ; Put beta in R8 (best) - NEGAMAX_RETURN will move R8 to R9
+    ; Store beta to BEST_SCORE memory for return
 
-    ; Move beta (R7) to R8 for return
-    GLO 7
-    PLO 8
-    GHI 7
-    PHI 8
+    ; Store beta (R7) to BEST_SCORE memory
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    GHI 7               ; Beta high byte
+    STR 10
+    INC 10
+    GLO 7               ; Beta low byte
+    STR 10
 
     ; Decrement move count before returning
     IRX
@@ -558,6 +572,32 @@ NEGAMAX_DO_BETA_CUTOFF:
 NEGAMAX_NO_BETA_CUTOFF:
     ; Score is already in R13 from earlier load (before beta check)
     ; R9 = move list pointer (preserved)
+
+    ; Load best score from memory into R8 for comparison
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    LDA 10              ; BEST_SCORE_HI
+    PHI 8
+    LDN 10              ; BEST_SCORE_LO
+    PLO 8               ; R8 = best score from memory
+
+    ; Debug: show score (R13) and best (R8) - format: [SSSS:BBBB]
+    LDI '['
+    CALL SERIAL_WRITE_CHAR
+    GHI 13              ; Score high byte
+    CALL SERIAL_PRINT_HEX
+    GLO 13              ; Score low byte
+    CALL SERIAL_PRINT_HEX
+    LDI ':'
+    CALL SERIAL_WRITE_CHAR
+    GHI 8               ; Best high byte
+    CALL SERIAL_PRINT_HEX
+    GLO 8               ; Best low byte
+    CALL SERIAL_PRINT_HEX
+    LDI ']'
+    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; Update best score: if (score > maxScore) maxScore = score
@@ -610,11 +650,19 @@ NEGAMAX_DIFF_SIGN:
     ; Score positive/zero, best negative - update (fall through)
 
 NEGAMAX_SCORE_BETTER:
-    ; Score is better, update best score (R13 -> R8)
-    GLO 13
-    PLO 8
-    GHI 13
-    PHI 8              ; R8 = score
+    ; Debug: + = score is better
+    LDI '+'
+    CALL SERIAL_WRITE_CHAR
+    ; Score is better, update best score in memory (R13 -> BEST_SCORE)
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    GHI 13              ; Score high byte
+    STR 10
+    INC 10
+    GLO 13              ; Score low byte
+    STR 10              ; BEST_SCORE = score
 
     ; -----------------------------------------------
     ; If at root (PLY == 0), save this move to BEST_MOVE
@@ -627,6 +675,10 @@ NEGAMAX_SCORE_BETTER:
     LBNZ NEGAMAX_NEXT_MOVE  ; Not at root, skip BEST_MOVE update
 
     ; At root - save move to BEST_MOVE
+    ; Debug: B = writing BEST_MOVE (key marker!)
+    LDI 'B'
+    CALL SERIAL_WRITE_CHAR
+
     ; Move is in UNDO_FROM/UNDO_TO (restored after unmake)
     LDI HIGH(UNDO_FROM)
     PHI 10
@@ -673,23 +725,47 @@ NEGAMAX_LOOP_DONE:
 
 NEGAMAX_RETURN:
     ; -----------------------------------------------
-    ; Return best score (in R8) via R9
+    ; Return best score (from BEST_SCORE memory) via R9
     ; -----------------------------------------------
     ; Skip move count (1 byte) - IRX moves R2 to AT move_count, then
     ; CALL RESTORE will overwrite it with SCRT linkage. This effectively
     ; "pops" move_count without needing to read it.
     IRX
 
-    ; Move best score from R8 to R9 for return (R6 is SCRT linkage - off limits!)
-    GLO 8
-    PLO 9
-    GHI 8
-    PHI 9
+    ; Copy BEST_SCORE to SCORE memory BEFORE restore (RESTORE clobbers R9!)
+    ; Best score is in BEST_SCORE_HI/LO, copy to SCORE_HI/LO for return
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    LDA 10              ; BEST_SCORE_HI
+    PHI 8               ; Temp in R8.1
+    LDN 10              ; BEST_SCORE_LO
+    PLO 8               ; Temp in R8.0
 
-    ; Restore caller's context
-    ; NOTE: RESTORE_SEARCH_CONTEXT now properly handles SCRT linkage
-    ; (pops it from stack, reads saved context, restores R6, returns)
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    GHI 8               ; Best score high byte
+    STR 10
+    INC 10
+    GLO 8               ; Best score low byte
+    STR 10
+
+    ; Restore caller's context (clobbers R7, R8, R9, R11, R12)
     CALL RESTORE_PLY_STATE
+
+    ; Load return value back into R9 AFTER restore
+    ; Big-endian: load high byte from lower address first
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    LDA 10              ; SCORE_HI -> high byte
+    PHI 9
+    LDN 10              ; SCORE_LO -> low byte
+    PLO 9
 
     RETN
 
@@ -697,23 +773,34 @@ NEGAMAX_LEAF:
     ; -----------------------------------------------
     ; Leaf node - do quiescence search
     ; -----------------------------------------------
-    ; Debug: marker L for reaching NEGAMAX_LEAF (depth 0)
-    LDI 'L'
-    CALL SERIAL_WRITE_CHAR
-
     CALL QUIESCENCE_SEARCH
     ; Returns score in R9 (already from side-to-move's perspective)
-    ; R6 is SCRT linkage - off limits!
 
-    ; Debug: after QS, before RESTORE
-    LDI '('
-    CALL SERIAL_WRITE_CHAR
+    ; Save return value to SCORE memory BEFORE restore (RESTORE clobbers R9!)
+    ; Big-endian: store high byte at lower address (SCORE_HI), low at SCORE_LO
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    GHI 9               ; Score high byte first
+    STR 10
+    INC 10
+    GLO 9               ; Score low byte second
+    STR 10
 
+    ; Restore caller's context (clobbers R7, R8, R9, R11, R12)
     CALL RESTORE_PLY_STATE
 
-    ; Debug: after RESTORE (if we get here)
-    LDI ')'
-    CALL SERIAL_WRITE_CHAR
+    ; Load return value back into R9 AFTER restore
+    ; Big-endian: load high byte from lower address first
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    LDA 10              ; SCORE_HI -> high byte
+    PHI 9
+    LDN 10              ; SCORE_LO -> low byte
+    PLO 9
 
     RETN
 
@@ -755,18 +842,29 @@ NEGAMAX_NO_MOVES:
     PLO 9
     ; High byte stays same (adding small depth won't overflow)
 
-    ; Need to put R9 into R8 for NEGAMAX_RETURN to work
-    GLO 9
-    PLO 8
-    GHI 9
-    PHI 8
+    ; Store checkmate score to BEST_SCORE memory for return
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    GHI 9               ; Score high byte
+    STR 10
+    INC 10
+    GLO 9               ; Score low byte
+    STR 10
     LBR NEGAMAX_RETURN
 
 NEGAMAX_STALEMATE:
     ; Stalemate - return 0 (draw)
+    ; Store 0 to BEST_SCORE memory for return
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
     LDI 0
-    PHI 8
-    PLO 8              ; R8 = 0 (best score), NEGAMAX_RETURN copies to R9
+    STR 10              ; BEST_SCORE_HI = 0
+    INC 10
+    STR 10              ; BEST_SCORE_LO = 0
     LBR NEGAMAX_RETURN
 
 ; ==============================================================================
@@ -779,10 +877,6 @@ NEGAMAX_STALEMATE:
 ; NOTE:   R6 is SCRT linkage register - off limits for application data!
 ; ==============================================================================
 QUIESCENCE_SEARCH:
-    ; Debug: marker < for entering QS
-    LDI '<'
-    CALL SERIAL_WRITE_CHAR
-
     ; Stand-pat: evaluate current position
     CALL EVALUATE
     ; Returns score in R9 (from white's perspective)
@@ -801,20 +895,21 @@ QUIESCENCE_SEARCH:
 
 QS_SAVE_STANDPAT:
     ; Save stand-pat score to memory as best (avoid R14!)
-    LDI HIGH(QS_BEST_LO)
+    ; Big-endian: high byte at lower address (QS_BEST_HI)
+    LDI HIGH(QS_BEST_HI)
     PHI 10
-    LDI LOW(QS_BEST_LO)
+    LDI LOW(QS_BEST_HI)
     PLO 10
-    GLO 9
+    GHI 9               ; High byte first
     STR 10
     INC 10
-    GHI 9
+    GLO 9               ; Low byte second
     STR 10              ; QS_BEST = stand-pat
 
-    ; Generate all moves
-    LDI HIGH(MOVE_LIST)
+    ; Generate all moves (use QS_MOVE_LIST to avoid clobbering parent's move list!)
+    LDI HIGH(QS_MOVE_LIST)
     PHI 9
-    LDI LOW(MOVE_LIST)
+    LDI LOW(QS_MOVE_LIST)
     PLO 9
     CALL GENERATE_MOVES
     ; D = move count
@@ -824,15 +919,15 @@ QS_SAVE_STANDPAT:
     LDI 0
     PHI 15              ; R15.1 = 0 (prevents underflow when DEC 15)
 
-    ; Save move list start pointer
-    LDI HIGH(QS_MOVE_PTR_LO)
+    ; Save move list start pointer (big-endian: high byte first)
+    LDI HIGH(QS_MOVE_PTR_HI)
     PHI 10
-    LDI LOW(QS_MOVE_PTR_LO)
+    LDI LOW(QS_MOVE_PTR_HI)
     PLO 10
-    LDI LOW(MOVE_LIST)
+    LDI HIGH(QS_MOVE_LIST)
     STR 10
     INC 10
-    LDI HIGH(MOVE_LIST)
+    LDI LOW(QS_MOVE_LIST)
     STR 10
 
 QS_LOOP:
@@ -840,32 +935,31 @@ QS_LOOP:
     GLO 15
     LBZ QS_RETURN
 
-    ; Load move list pointer
-    LDI HIGH(QS_MOVE_PTR_LO)
+    ; Load move list pointer (big-endian: high byte first)
+    LDI HIGH(QS_MOVE_PTR_HI)
     PHI 10
-    LDI LOW(QS_MOVE_PTR_LO)
+    LDI LOW(QS_MOVE_PTR_HI)
     PLO 10
-    LDN 10
-    PLO 9
-    INC 10
-    LDN 10
-    PHI 9               ; R9 = move pointer
+    LDA 10              ; High byte
+    PHI 9
+    LDN 10              ; Low byte
+    PLO 9               ; R9 = move pointer
 
-    ; Load encoded move (little-endian: low byte first)
+    ; Load encoded move (big-endian: high byte first)
     LDA 9
-    PLO 8
+    PHI 8
     LDA 9
-    PHI 8               ; R8 = encoded move
+    PLO 8               ; R8 = encoded move
 
-    ; Save updated pointer
-    LDI HIGH(QS_MOVE_PTR_LO)
+    ; Save updated pointer (big-endian: high byte first)
+    LDI HIGH(QS_MOVE_PTR_HI)
     PHI 10
-    LDI LOW(QS_MOVE_PTR_LO)
+    LDI LOW(QS_MOVE_PTR_HI)
     PLO 10
-    GLO 9
+    GHI 9
     STR 10
     INC 10
-    GHI 9
+    GLO 9
     STR 10
 
     ; Decrement move count
@@ -892,7 +986,7 @@ QS_LOOP:
     PLO 10
     SEX 10
     STR 10              ; Store target color to COMPARE_TEMP
-    GLO 12              ; D = our color (1 or $FF)
+    GLO 12              ; D = our color (0 or 8, per COLOR_MASK)
     ANI COLOR_MASK      ; D = our color masked (0 or 8)
     XOR                 ; D = our_color XOR target_color
     SEX 2
@@ -943,16 +1037,15 @@ QS_NO_NEG:
     PLO 15
 
     ; Compare: if score (R9) > best (QS_BEST), update best
-    ; Load QS_BEST into R7 for comparison
-    LDI HIGH(QS_BEST_LO)
+    ; Load QS_BEST into R7 for comparison (big-endian: HI first)
+    LDI HIGH(QS_BEST_HI)
     PHI 10
-    LDI LOW(QS_BEST_LO)
+    LDI LOW(QS_BEST_HI)
     PLO 10
-    LDN 10
-    PLO 7
-    INC 10
-    LDN 10
-    PHI 7               ; R7 = QS_BEST
+    LDA 10              ; High byte
+    PHI 7
+    LDN 10              ; Low byte
+    PLO 7               ; R7 = QS_BEST
 
     ; Signed comparison: R9 > R7?
     ; Use COMPARE_TEMP for scratch (NEVER use STR 2!)
@@ -1000,33 +1093,31 @@ QS_DIFF_SIGN:
     ; Score positive, best negative - update
 
 QS_UPDATE:
-    ; Update best = score
-    LDI HIGH(QS_BEST_LO)
+    ; Update best = score (big-endian: HI first)
+    LDI HIGH(QS_BEST_HI)
     PHI 10
-    LDI LOW(QS_BEST_LO)
+    LDI LOW(QS_BEST_HI)
     PLO 10
-    GLO 9
+    GHI 9               ; High byte first
     STR 10
     INC 10
-    GHI 9
+    GLO 9               ; Low byte second
     STR 10
     LBR QS_LOOP
 
 QS_RETURN:
-    ; Debug: > for exiting QS
-    LDI '>'
+    ; Debug: single dot when QS completes
+    LDI '.'
     CALL SERIAL_WRITE_CHAR
-
-    ; Return best score in R9 (R6 is SCRT linkage - off limits!)
-    LDI HIGH(QS_BEST_LO)
+    ; Return best score in R9 (big-endian: HI first)
+    LDI HIGH(QS_BEST_HI)
     PHI 10
-    LDI LOW(QS_BEST_LO)
+    LDI LOW(QS_BEST_HI)
     PLO 10
-    LDN 10
-    PLO 9
-    INC 10
-    LDN 10
+    LDA 10              ; High byte
     PHI 9
+    LDN 10              ; Low byte
+    PLO 9
     RETN
 
 ; ------------------------------------------------------------------------------
@@ -1151,34 +1242,36 @@ INC_NODE_DONE:
 ; ==============================================================================
 SEARCH_POSITION:
     ; Debug: VERSION MARKER - change this to verify new build is loaded
-    LDI 'V'
+    LDI 'W'
     CALL SERIAL_WRITE_CHAR
-    LDI 'R'
+    LDI 'H'
     CALL SERIAL_WRITE_CHAR
 
     ; Alpha = -INFINITY (to memory - R6 is SCRT linkage, off limits!)
     ; NOTE: Use $8001 (-32767) not $8000 (-32768) to avoid overflow when negating!
     ; -(-32768) overflows to -32768, causing invalid alpha-beta window in child
-    LDI HIGH(ALPHA_LO)
+    ; Big-endian: high byte at lower address (ALPHA_HI)
+    LDI HIGH(ALPHA_HI)
     PHI 10
-    LDI LOW(ALPHA_LO)
+    LDI LOW(ALPHA_HI)
     PLO 10
-    LDI $01
-    STR 10              ; ALPHA_LO = $01
-    INC 10
     LDI $80
-    STR 10              ; ALPHA_HI = $80 (alpha = $8001 = -32767)
+    STR 10              ; ALPHA_HI = $80 (high byte first)
+    INC 10
+    LDI $01
+    STR 10              ; ALPHA_LO = $01 (alpha = $8001 = -32767)
 
     ; Beta = +INFINITY (to memory for consistency)
-    LDI HIGH(BETA_LO)
+    ; Big-endian: high byte at lower address (BETA_HI)
+    LDI HIGH(BETA_HI)
     PHI 10
-    LDI LOW(BETA_LO)
+    LDI LOW(BETA_HI)
     PLO 10
-    LDI $FF
-    STR 10              ; BETA_LO = $FF
-    INC 10
     LDI $7F
-    STR 10              ; BETA_HI = $7F (beta = $7FFF = +32767)
+    STR 10              ; BETA_HI = $7F (high byte first)
+    INC 10
+    LDI $FF
+    STR 10              ; BETA_LO = $FF (beta = $7FFF = +32767)
 
     ; Initialize ply counter to 0 (we're at root)
     LDI HIGH(CURRENT_PLY)

@@ -53,7 +53,8 @@ KING_TYPE   EQU 6
 BOARD       EQU $6000   ; 128 bytes - 0x88 board array ($6000-$607F)
 GAME_STATE  EQU $6080   ; Game state structure (16 bytes) ($6080-$608F)
 MOVE_HIST   EQU $6090   ; Move history for undo (256 bytes) ($6090-$618F)
-MOVE_LIST   EQU $6200   ; Generated moves (512 bytes) ($6200-$63FF)
+MOVE_LIST   EQU $6200   ; Generated moves for negamax (256 bytes) ($6200-$62FF)
+QS_MOVE_LIST EQU $6300  ; Generated moves for quiescence (256 bytes) ($6300-$63FF)
 
 ; ------------------------------------------------------------------------------
 ; Engine Variables: $6400-$64FF
@@ -69,16 +70,27 @@ DECODED_FLAGS   EQU $6405   ; 1 byte - flags from DECODE_MOVE_16BIT
 MOVE_FLAGS_TEMP EQU $6406   ; 1 byte - flags for ENCODE_MOVE_16BIT
 GM_SCAN_IDX     EQU $6407   ; 1 byte - board scan index for movegen
 
+; Undo information for make/unmake move (MUST be in RAM, not ROM!)
+UNDO_CAPTURED   EQU $6408   ; 1 byte - captured piece (or EMPTY)
+UNDO_FROM       EQU $6409   ; 1 byte - from square
+UNDO_TO         EQU $640A   ; 1 byte - to square
+UNDO_CASTLING   EQU $640B   ; 1 byte - previous castling rights
+UNDO_EP         EQU $640C   ; 1 byte - previous en passant square
+UNDO_HALFMOVE   EQU $640D   ; 1 byte - previous halfmove clock
+
 ; Search state (aligned to $6410)
+; BEST_SCORE in memory - avoids register shuffling bugs!
+BEST_SCORE_HI   EQU $640E   ; 1 byte - best score high byte (big-endian)
+BEST_SCORE_LO   EQU $640F   ; 1 byte - best score low byte
 BEST_MOVE       EQU $6410   ; 2 bytes - best move found ($6410-$6411)
 NODES_SEARCHED  EQU $6412   ; 4 bytes - node counter ($6412-$6415)
 SEARCH_DEPTH    EQU $6416   ; 2 bytes - current search depth ($6416-$6417)
 
-; Quiescence search state
-QS_BEST_LO      EQU $6418   ; 1 byte - stand-pat/best score low
-QS_BEST_HI      EQU $6419   ; 1 byte - stand-pat/best score high
-QS_MOVE_PTR_LO  EQU $641A   ; 1 byte - move list pointer low
-QS_MOVE_PTR_HI  EQU $641B   ; 1 byte - move list pointer high
+; Quiescence search state (big-endian: HI at lower address)
+QS_BEST_HI      EQU $6418   ; 1 byte - stand-pat/best score high
+QS_BEST_LO      EQU $6419   ; 1 byte - stand-pat/best score low
+QS_MOVE_PTR_HI  EQU $641A   ; 1 byte - move list pointer high
+QS_MOVE_PTR_LO  EQU $641B   ; 1 byte - move list pointer low
 QS_TEMP         EQU $641C   ; 1 byte - temp storage
 
 ; Evaluation state
@@ -96,12 +108,13 @@ EVAL_TEMP1      EQU $6440   ; 1 byte - PST loop counter / endgame temp
 EVAL_TEMP2      EQU $6441   ; 1 byte - piece type temp for evaluation
 
 ; Search alpha/beta/score (memory-based to avoid R6/R7 corruption by SCRT)
-ALPHA_LO        EQU $6442   ; 1 byte - alpha low byte
-ALPHA_HI        EQU $6443   ; 1 byte - alpha high byte
-BETA_LO         EQU $6444   ; 1 byte - beta low byte
-BETA_HI         EQU $6445   ; 1 byte - beta high byte
-SCORE_LO        EQU $6446   ; 1 byte - score return low byte
-SCORE_HI        EQU $6447   ; 1 byte - score return high byte
+; Big-endian layout: high byte at lower address, low byte at higher address
+ALPHA_HI        EQU $6442   ; 1 byte - alpha high byte
+ALPHA_LO        EQU $6443   ; 1 byte - alpha low byte
+BETA_HI         EQU $6444   ; 1 byte - beta high byte
+BETA_LO         EQU $6445   ; 1 byte - beta low byte
+SCORE_HI        EQU $6446   ; 1 byte - score return high byte
+SCORE_LO        EQU $6447   ; 1 byte - score return low byte
 CURRENT_PLY     EQU $6448   ; 1 byte - current search ply (0=root)
 COMPARE_TEMP    EQU $6449   ; 1 byte - scratch for comparisons (NEVER use STR 2!)
 MOVECOUNT_TEMP  EQU $644A   ; 1 byte - saved move count for loop decrement

@@ -102,7 +102,7 @@ ATTACK_CHECK_B_PAWNS:
     PLO 13
 
     ANI $88
-    BNZ ATTACK_PAWN_2
+    LBNZ ATTACK_PAWN_2
 
     ; Valid square, check for white pawn
     LDI HIGH(BOARD)

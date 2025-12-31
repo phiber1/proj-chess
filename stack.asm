@@ -169,13 +169,16 @@ SAVE_PLY_STATE:
     LDN 10              ; D = current ply (0-7)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2
+    ; Use stack for temp storage (push then immediate pop - net zero change)
+    PHI 13              ; R13.1 = ply (save original)
     SHL                 ; D = ply × 2
-    PLO 13              ; R13.0 = ply × 2 (save for later)
     SHL                 ; D = ply × 4
     SHL                 ; D = ply × 8
-    STR 10              ; Store ply×8 to temp (M(R10) = CURRENT_PLY, OK to reuse)
-    GLO 13              ; D = ply × 2
-    ADD                 ; D = ply×8 + ply×2 = ply × 10
+    STXD                ; Push ply×8 to stack (R2 decremented)
+    GHI 13              ; D = ply (original)
+    SHL                 ; D = ply × 2
+    IRX                 ; Point R2 back at ply×8
+    ADD                 ; D = ply×2 + ply×8 = ply × 10 (R2 unchanged)
 
     ; Add to base address: R10 = PLY_STATE_BASE + offset
     ADI LOW(PLY_STATE_BASE)
@@ -236,13 +239,16 @@ RESTORE_PLY_STATE:
     LDN 10              ; D = current ply (0-7)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2
+    ; Use stack for temp storage (push then immediate pop - net zero change)
+    PHI 13              ; R13.1 = ply (save original)
     SHL                 ; D = ply × 2
-    PLO 13              ; R13.0 = ply × 2 (save for later)
     SHL                 ; D = ply × 4
     SHL                 ; D = ply × 8
-    STR 10              ; Store ply×8 to temp
-    GLO 13              ; D = ply × 2
-    ADD                 ; D = ply×8 + ply×2 = ply × 10
+    STXD                ; Push ply×8 to stack (R2 decremented)
+    GHI 13              ; D = ply (original)
+    SHL                 ; D = ply × 2
+    IRX                 ; Point R2 back at ply×8
+    ADD                 ; D = ply×2 + ply×8 = ply × 10 (R2 unchanged)
 
     ; Add to base address: R10 = PLY_STATE_BASE + offset
     ADI LOW(PLY_STATE_BASE)

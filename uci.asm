@@ -298,8 +298,8 @@ UCI_CMD_GO:
     LDI 0
     STR 13              ; SEARCH_DEPTH high = 0
     INC 13
-    LDI 6
-    STR 13              ; SEARCH_DEPTH low = 6
+    LDI 1
+    STR 13              ; SEARCH_DEPTH low = 1
 
     ; TODO: Parse depth parameter from command
 

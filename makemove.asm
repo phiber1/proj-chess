@@ -3,20 +3,10 @@
 ; ==============================================================================
 
 ; ------------------------------------------------------------------------------
-; Undo information - saved before each move for unmake
+; Undo information - defined in board-0x88.asm as EQUs in RAM ($6408-$640D)
+; UNDO_CAPTURED, UNDO_FROM, UNDO_TO, UNDO_CASTLING, UNDO_EP, UNDO_HALFMOVE
+; These MUST be in RAM (not ROM) for read/write access!
 ; ------------------------------------------------------------------------------
-UNDO_CAPTURED:
-    DS 1                ; Captured piece (or EMPTY)
-UNDO_FROM:
-    DS 1                ; From square
-UNDO_TO:
-    DS 1                ; To square
-UNDO_CASTLING:
-    DS 1                ; Previous castling rights
-UNDO_EP:
-    DS 1                ; Previous en passant square
-UNDO_HALFMOVE:
-    DS 1                ; Previous halfmove clock
 
 ; ==============================================================================
 ; MAKE_MOVE - Apply move to the board

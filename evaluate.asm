@@ -43,9 +43,7 @@ PIECE_VALUES:
 ;   5. Mobility (TODO)
 ; ------------------------------------------------------------------------------
 EVALUATE:
-    ; Debug: entered EVALUATE
-    LDI 'e'
-    CALL SERIAL_WRITE_CHAR
+    ; DEBUG WF: No debug output here - using breakpoint in negamax
 
     ; Initialize score to 0
     ; NOTE: Use R9 for score, NOT R6! R6 is SCRT linkage register!
@@ -95,14 +93,16 @@ EVAL_SCAN:
     LBZ EVAL_NEXT_SQUARE
 
     ; Get piece value from table
+    ; R8.0 = piece type (1-6), need to look up in PIECE_VALUES table
     GLO 8               ; Piece type from R8.0
-    SHL                 ; Multiply by 2 (16-bit table)
-    PLO 11              ; B.0 = offset
-
+    SHL                 ; Multiply by 2 (16-bit table entries)
+    STR 2               ; Save offset to stack
+    LDI LOW(PIECE_VALUES)
+    ADD                 ; D = LOW(PIECE_VALUES) + offset
+    PLO 11              ; R11.0 = low byte of address
     LDI HIGH(PIECE_VALUES)
-    PHI 11
-    GLO 11
-    PLO 11              ; B = PIECE_VALUES + (type * 2)
+    ADCI 0              ; Add carry if low byte overflowed
+    PHI 11              ; R11 = PIECE_VALUES + (type * 2)
 
     ; Load 16-bit value
     LDA 11
@@ -145,33 +145,10 @@ EVAL_NEXT_SQUARE:
     LBNF EVAL_SCAN      ; Continue if < 128 (DF=0 means borrow, i.e., D was < 128)
 
 EVAL_DONE:
-    ; Debug: material scan done
-    LDI 'v'
-    CALL SERIAL_WRITE_CHAR
-
     ; R9 contains material score
-    ; Add piece-square table bonuses (uses R9)
-    CALL EVAL_PST
-
-    ; Debug: after EVAL_PST
-    LDI 'a'
-    CALL SERIAL_WRITE_CHAR
-
-    ; R9 now contains material + PST score
-
-    ; Add endgame-specific bonuses (uses R9)
-    CALL EVAL_ENDGAME
-
-    ; Debug: after EVAL_ENDGAME
-    LDI 'l'
-    CALL SERIAL_WRITE_CHAR
-
-    ; R9 now contains complete evaluation
-    ; NOTE: Return value is in R9, NOT R6! R6 is SCRT linkage - off limits!
-
-    ; Debug: about to RETN
-    LDI '~'
-    CALL SERIAL_WRITE_CHAR
+    ; TEMPORARILY BYPASS PST/ENDGAME to isolate bug
+    ; CALL EVAL_PST
+    ; CALL EVAL_ENDGAME
 
     RETN
 

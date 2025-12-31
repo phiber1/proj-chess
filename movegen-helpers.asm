@@ -203,12 +203,12 @@ ADD_MOVE_ENCODED:
     CALL ENCODE_MOVE_16BIT
     ; R8 now has encoded move
 
-    ; Store to move list (little-endian)
-    GLO 8
+    ; Store to move list (big-endian: high byte first)
+    GHI 8
     STR 9
     INC 9
 
-    GHI 8
+    GLO 8
     STR 9
     INC 9
 
