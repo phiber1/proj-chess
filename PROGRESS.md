@@ -1977,3 +1977,141 @@ This is the correct approach for 1802 with SCRT - keep the system stack clean fo
 - [ ] Debug BEST_MOVE not being updated (h@h@ bug)
 - [ ] Trace through root ply to see if score comparison works
 - [ ] Check CURRENT_PLY value when saving best move
+
+---
+
+## Session: December 30, 2025 - Multiple Critical Bug Fixes
+
+### Summary
+
+Continued debugging the "bestmove h@h@" bug. Found and fixed multiple issues, narrowed down to DECODE_MOVE_16BIT extracting wrong values.
+
+### Bugs Found & Fixed
+
+#### Bug #1: PIECE_VALUES Lookup (evaluate.asm)
+
+**Symptom:** All evaluations returned $90F0 (constant score for all moves).
+
+**Root Cause:** Address calculation for piece value table was wrong:
+```asm
+; BUGGY - GLO/PLO 11 is a no-op!
+    GLO 8               ; Piece type
+    SHL                 ; ×2 for table offset
+    PLO 11              ; R11.0 = offset
+    LDI HIGH(PIECE_VALUES)
+    PHI 11
+    GLO 11              ; Load offset back
+    PLO 11              ; Store it again - NO-OP!
+```
+
+This set R11 = `(HIGH(PIECE_VALUES) << 8) | offset` instead of `PIECE_VALUES + offset`. Only works if PIECE_VALUES is page-aligned.
+
+**Fix:**
+```asm
+    GLO 8               ; Piece type
+    SHL                 ; ×2 for table offset
+    STR 2               ; Save offset to stack
+    LDI LOW(PIECE_VALUES)
+    ADD                 ; D = LOW(PIECE_VALUES) + offset
+    PLO 11
+    LDI HIGH(PIECE_VALUES)
+    ADCI 0              ; Add carry
+    PHI 11              ; R11 = PIECE_VALUES + offset
+```
+
+#### Bug #2: QS_MOVE_LIST Clobbering Parent's Moves (negamax.asm)
+
+**Symptom:** After first move, subsequent moves decoded as garbage ({70:00}, {00:70}).
+
+**Root Cause:** QUIESCENCE_SEARCH used same MOVE_LIST buffer ($6200) as parent NEGAMAX. When QS generated moves, it overwrote the parent's move list. After QS returned, R9 pointed into the now-corrupted list.
+
+**Fix:** Added separate QS_MOVE_LIST at $6300:
+```asm
+; board-0x88.asm
+MOVE_LIST   EQU $6200   ; For negamax (256 bytes)
+QS_MOVE_LIST EQU $6300  ; For quiescence (256 bytes)
+```
+
+Updated QUIESCENCE_SEARCH to use QS_MOVE_LIST.
+
+#### Bug #3: R9 Not Reset After GENERATE_MOVES (negamax.asm)
+
+**Symptom:** First move from garbage address, not from $6200.
+
+**Root Cause:** GENERATE_MOVES advances R9 as it writes moves. After returning, R9 points PAST the end of the move list, not to the start.
+
+**Fix:**
+```asm
+    CALL GENERATE_MOVES
+    ; R9 now points past end of list!
+
+    ; Reset R9 to START of move list
+    LDI HIGH(MOVE_LIST)
+    PHI 9
+    LDI LOW(MOVE_LIST)
+    PLO 9
+```
+
+#### Bug #4: UNDO_* in ROM Instead of RAM (makemove.asm, board-0x88.asm)
+
+**Symptom:** UNDO_FROM showed invalid value $7F in memory dumps.
+
+**Root Cause:** UNDO_* variables were defined with DS (Define Storage) in the code section, placing them in ROM. Writes had no effect; reads returned garbage.
+
+**Fix:** Changed to EQU definitions in RAM:
+```asm
+; board-0x88.asm - in RAM section
+UNDO_CAPTURED   EQU $6408
+UNDO_FROM       EQU $6409
+UNDO_TO         EQU $640A
+UNDO_CASTLING   EQU $640B
+UNDO_EP         EQU $640C
+UNDO_HALFMOVE   EQU $640D
+```
+
+### Remaining Issue: DECODE_MOVE_16BIT
+
+**Current symptom (WH build):** Moves decode with wrong from/to values:
+- `{00:20}` = from a1, to a3 (rook can't move there!)
+- `{10:20}` = from a2, to a3 (valid pawn move)
+
+The encoded move at $6200 is `$1001` which should decode to:
+- from = $01 & $7F = $01 (b1)
+- to = extracted bits = $20 (a3)
+
+But we're getting from=$00 instead of from=$01. The decode is off by one bit or there's a byte-order issue.
+
+### Debug Approach Used
+
+1. Added version markers (W7, W8, W9, WA, WB, WC, WD, WE, WF, WG, WH) to verify builds
+2. Added targeted debug output: `{from:to}` after MAKE_MOVE
+3. Used breakpoints (MARK/SEP 1) to dump memory at key points
+4. Compared move list contents vs decoded values
+5. Verified board initialization is correct (post-run dump shows valid pieces)
+
+### Key Lesson: BIOS F_TYPE Behavior
+
+User confirmed F_TYPE only uses R14 and D, preserves R13 and R15. Earlier hypothesis about F_TYPE clobbering R10 was wrong. The debug code reading wrong values was due to OTHER bugs (move list corruption, R9 not reset).
+
+### Files Modified
+
+- **evaluate.asm:** Fixed PIECE_VALUES lookup, temporarily bypassed PST/endgame
+- **board-0x88.asm:** Added QS_MOVE_LIST, UNDO_* EQUs in RAM
+- **negamax.asm:** Added R9 reset after GENERATE_MOVES, QS uses QS_MOVE_LIST, debug output
+- **makemove.asm:** Removed UNDO_* DS definitions (now in board-0x88.asm)
+
+### Build: WH
+
+- Size: 15,620 bytes
+- Shows `{from:to}` for each move
+- First move decodes wrong (from=$00 should be $01)
+
+### Next Session TODO
+
+- [ ] Fix DECODE_MOVE_16BIT bit extraction
+- [ ] Verify move encoding in GENERATE_MOVES matches decode expectations
+- [ ] Once moves decode correctly, evaluation should work (board will be modified correctly)
+
+### Git Commit
+
+`fc12c6a` - "WH: Fix multiple bugs, move decode still needs work"
