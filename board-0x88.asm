@@ -118,6 +118,8 @@ SCORE_LO        EQU $6447   ; 1 byte - score return low byte
 CURRENT_PLY     EQU $6448   ; 1 byte - current search ply (0=root)
 COMPARE_TEMP    EQU $6449   ; 1 byte - scratch for comparisons (NEVER use STR 2!)
 MOVECOUNT_TEMP  EQU $644A   ; 1 byte - saved move count for loop decrement
+MOVE_TEMP_HI    EQU $644B   ; 1 byte - saved encoded move high byte (SCRT clobbers R8!)
+MOVE_TEMP_LO    EQU $644C   ; 1 byte - saved encoded move low byte
 
 ; ------------------------------------------------------------------------------
 ; Ply-Indexed State Array: $6450-$649F (80 bytes = 8 plies × 10 bytes)

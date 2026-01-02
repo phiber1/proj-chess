@@ -10,12 +10,13 @@
 ; ROUTINES:
 ;   SERIAL_READ_CHAR    - Read character, returns in D
 ;   SERIAL_WRITE_CHAR   - Write character from D
-;   SERIAL_PRINT_STRING - Print null-terminated string, R8 = pointer
+;   SERIAL_PRINT_STRING - Print null-terminated string, R15 = pointer
 ;   SERIAL_PRINT_HEX    - Print byte as 2 hex digits, D = byte
 ;   SERIAL_READ_LINE    - Read line with echo, R8 = buffer, R9.0 = max length
 ;
 ; REGISTER USAGE:
-;   R8  - String/buffer pointer (PRINT_STRING, READ_LINE)
+;   R7  - Buffer pointer (READ_LINE internal - copies from R8 to preserve R8)
+;   R8  - Buffer pointer input (READ_LINE), preserved for caller
 ;   R9  - R9.0 = max length, R9.1 = count (READ_LINE only)
 ;         NOTE: R9 is NOT used by PRINT_HEX - it's the move list pointer!
 ;   R10 - Temp storage (READ_LINE)
@@ -52,6 +53,12 @@ F_MSG   EQU $FF09       ; Output string pointed to by R15
 ; Handles: Echo, Backspace (08H or 7FH), Enter (0DH)
 ; ==============================================================================
 SERIAL_READ_LINE:
+    ; Copy R8 to R7 (preserve R8 for caller)
+    GHI 8
+    PHI 7
+    GLO 8
+    PLO 7
+
     GLO 9               ; Get max length
     SMI 1               ; Reserve space for null terminator
     PLO 9               ; R9.0 = max chars we can store
@@ -88,8 +95,8 @@ SRL_READ_NEXT:
 
     ; Store character and echo it
     GLO 10              ; Get character back
-    STR 8               ; Store in buffer
-    INC 8               ; Advance buffer pointer
+    STR 7               ; Store in buffer
+    INC 7               ; Advance buffer pointer
     GHI 9               ; Increment count
     ADI 1
     PHI 9
@@ -108,7 +115,7 @@ SRL_BACKSPACE:
     ; Decrement count and pointer
     SMI 1
     PHI 9
-    DEC 8
+    DEC 7
 
     ; Echo: backspace, space, backspace (erase character on terminal)
     LDI 08H
@@ -126,7 +133,7 @@ SRL_BACKSPACE:
 SRL_DONE:
     ; Null-terminate the buffer
     LDI 0
-    STR 8
+    STR 7
 
     ; Echo CR+LF
     LDI 0DH
@@ -188,16 +195,12 @@ SPN_AF:
 
 ; ==============================================================================
 ; SERIAL_PRINT_STRING - Print null-terminated string
-; Input: R8 = pointer to null-terminated string
-; Note: Copies R8 to R15 for F_MSG compatibility
+; Input: R15 = pointer to null-terminated string (F_MSG uses R15 directly)
+; NOTE: Caller must load R15 directly - R8 is NOT used!
 ; ==============================================================================
 SERIAL_PRINT_STRING:
-    GHI 8
-    PHI 15
-    GLO 8
-    PLO 15              ; R15 = R8 (string pointer)
     SEP 4
-    DW F_MSG            ; Call BIOS string output
+    DW F_MSG            ; Call BIOS string output (uses R15)
     SEP 5               ; Return
 
 ; ==============================================================================

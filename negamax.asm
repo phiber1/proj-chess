@@ -126,7 +126,7 @@ NEGAMAX_CONTINUE:
     STR 10              ; BEST_SCORE_LO = $00 (best = $8000 = -32768)
 
     ; Check if there are any legal moves
-    IRX
+    INC 2               ; Point R2 at move count
     LDN 2               ; Peek at move count
     DEC 2               ; Restore stack pointer
     BNZ NEGAMAX_HAS_MOVES
@@ -139,9 +139,9 @@ NEGAMAX_MOVE_LOOP:
     ; Loop through all moves
     ; -----------------------------------------------
     ; Restore move count
-    IRX
+    INC 2              ; Point R2 at move count
     LDN 2              ; Peek at move count (don't pop)
-    DEC 2              ; Re-decrement
+    DEC 2              ; Restore stack pointer
     LBZ NEGAMAX_RETURN  ; No moves left
 
     ; Get next move from list (big-endian: high byte first)
@@ -150,13 +150,13 @@ NEGAMAX_MOVE_LOOP:
     LDA 9              ; Load low byte of move
     PLO 8              ; R8 = current move (16-bit encoded)
 
-    ; Save R9 (move pointer) to stack - best score is in memory, no R8 push needed!
+    ; Save R9 (move pointer) to stack
     GLO 9
     STXD
     GHI 9
     STXD
 
-    ; R8 has encoded move in correct byte order for DECODE
+    ; Decode move: R8 → R13 (from/to)
     CALL DECODE_MOVE_16BIT
     ; R13.1 = from square, R13.0 = to square
 
@@ -171,32 +171,8 @@ NEGAMAX_MOVE_LOOP:
     GLO 13              ; to
     STR 10
 
-    ; -----------------------------------------------
     ; Make the move on the board
-    ; -----------------------------------------------
     CALL MAKE_MOVE
-    ; MOVE_FROM/MOVE_TO set above
-    ; Board is now updated with move made
-
-    ; DEBUG WH: Print from:to after MAKE_MOVE
-    LDI '{'
-    CALL SERIAL_WRITE_CHAR
-    LDI HIGH(MOVE_FROM)
-    PHI 10
-    LDI LOW(MOVE_FROM)
-    PLO 10
-    LDN 10
-    CALL SERIAL_PRINT_HEX
-    LDI ':'
-    CALL SERIAL_WRITE_CHAR
-    LDI HIGH(MOVE_TO)
-    PHI 10
-    LDI LOW(MOVE_TO)
-    PLO 10
-    LDN 10
-    CALL SERIAL_PRINT_HEX
-    LDI '}'
-    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; Save depth to stack and decrement for recursive call
@@ -558,7 +534,7 @@ NEGAMAX_DO_BETA_CUTOFF:
     STR 10
 
     ; Decrement move count before returning
-    IRX
+    INC 2
     LDN 2
     SMI 1
     STR 2
@@ -582,22 +558,6 @@ NEGAMAX_NO_BETA_CUTOFF:
     PHI 8
     LDN 10              ; BEST_SCORE_LO
     PLO 8               ; R8 = best score from memory
-
-    ; Debug: show score (R13) and best (R8) - format: [SSSS:BBBB]
-    LDI '['
-    CALL SERIAL_WRITE_CHAR
-    GHI 13              ; Score high byte
-    CALL SERIAL_PRINT_HEX
-    GLO 13              ; Score low byte
-    CALL SERIAL_PRINT_HEX
-    LDI ':'
-    CALL SERIAL_WRITE_CHAR
-    GHI 8               ; Best high byte
-    CALL SERIAL_PRINT_HEX
-    GLO 8               ; Best low byte
-    CALL SERIAL_PRINT_HEX
-    LDI ']'
-    CALL SERIAL_WRITE_CHAR
 
     ; -----------------------------------------------
     ; Update best score: if (score > maxScore) maxScore = score
@@ -650,9 +610,6 @@ NEGAMAX_DIFF_SIGN:
     ; Score positive/zero, best negative - update (fall through)
 
 NEGAMAX_SCORE_BETTER:
-    ; Debug: + = score is better
-    LDI '+'
-    CALL SERIAL_WRITE_CHAR
     ; Score is better, update best score in memory (R13 -> BEST_SCORE)
     LDI HIGH(BEST_SCORE_HI)
     PHI 10
@@ -674,12 +631,7 @@ NEGAMAX_SCORE_BETTER:
     LDN 10              ; Get current ply
     LBNZ NEGAMAX_NEXT_MOVE  ; Not at root, skip BEST_MOVE update
 
-    ; At root - save move to BEST_MOVE
-    ; Debug: B = writing BEST_MOVE (key marker!)
-    LDI 'B'
-    CALL SERIAL_WRITE_CHAR
-
-    ; Move is in UNDO_FROM/UNDO_TO (restored after unmake)
+    ; At root - save move to BEST_MOVE from UNDO_FROM/UNDO_TO
     LDI HIGH(UNDO_FROM)
     PHI 10
     LDI LOW(UNDO_FROM)
@@ -1106,9 +1058,6 @@ QS_UPDATE:
     LBR QS_LOOP
 
 QS_RETURN:
-    ; Debug: single dot when QS completes
-    LDI '.'
-    CALL SERIAL_WRITE_CHAR
     ; Return best score in R9 (big-endian: HI first)
     LDI HIGH(QS_BEST_HI)
     PHI 10
@@ -1173,7 +1122,7 @@ STORE_KILLER_MOVE:
     STR 10
 
     ; Reset pointer to killer1 position
-    IRX
+    INC 2
     LDN 2
     DEC 2
     GLO 13
@@ -1241,12 +1190,6 @@ INC_NODE_DONE:
 ; WARNING: R6 is SCRT linkage register - do NOT use for return values!
 ; ==============================================================================
 SEARCH_POSITION:
-    ; Debug: VERSION MARKER - change this to verify new build is loaded
-    LDI 'W'
-    CALL SERIAL_WRITE_CHAR
-    LDI 'H'
-    CALL SERIAL_WRITE_CHAR
-
     ; Alpha = -INFINITY (to memory - R6 is SCRT linkage, off limits!)
     ; NOTE: Use $8001 (-32767) not $8000 (-32768) to avoid overflow when negating!
     ; -(-32768) overflows to -32768, causing invalid alpha-beta window in child

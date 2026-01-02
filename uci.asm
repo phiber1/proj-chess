@@ -116,24 +116,8 @@ UCI_READ_DONE:
     GLO 13
     RETN
 
-; ------------------------------------------------------------------------------
-; UCI_WRITE_STRING - Write string to output
-; ------------------------------------------------------------------------------
-; Input:  A = pointer to null-terminated string
-; Output: String sent to serial output
-; ------------------------------------------------------------------------------
-UCI_WRITE_STRING:
-    LDN 10              ; Load character
-    LBZ UCI_WRITE_DONE   ; Null terminator
-
-    ; Send character
-    CALL SERIAL_WRITE_CHAR
-
-    INC 10
-    LBR UCI_WRITE_STRING
-
-UCI_WRITE_DONE:
-    RETN
+; NOTE: UCI_WRITE_STRING removed - use F_MSG with R15 directly
+; The old UCI_WRITE_STRING used R10, which clobbered the negamax loop counter!
 
 ; ------------------------------------------------------------------------------
 ; UCI_PROCESS_COMMAND - Process UCI command from buffer
@@ -224,35 +208,39 @@ UCI_PROCESS_COMMAND:
 UCI_CMD_UCI:
     ; Send identification
     LDI HIGH(STR_ID_NAME)
-    PHI 10
+    PHI 15
     LDI LOW(STR_ID_NAME)
-    PLO 10
-    CALL UCI_WRITE_STRING
+    PLO 15
+    SEP 4
+    DW F_MSG
 
     LDI HIGH(STR_ID_AUTHOR)
-    PHI 10
+    PHI 15
     LDI LOW(STR_ID_AUTHOR)
-    PLO 10
-    CALL UCI_WRITE_STRING
+    PLO 15
+    SEP 4
+    DW F_MSG
 
     ; Send options (none for now)
 
     ; Send uciok
     LDI HIGH(STR_UCIOK)
-    PHI 10
+    PHI 15
     LDI LOW(STR_UCIOK)
-    PLO 10
-    CALL UCI_WRITE_STRING
+    PLO 15
+    SEP 4
+    DW F_MSG
 
     RETN
 
 UCI_CMD_ISREADY:
     ; Send readyok
     LDI HIGH(STR_READYOK)
-    PHI 10
+    PHI 15
     LDI LOW(STR_READYOK)
-    PLO 10
-    CALL UCI_WRITE_STRING
+    PLO 15
+    SEP 4
+    DW F_MSG
 
     RETN
 
@@ -282,13 +270,9 @@ UCI_POS_DONE:
     RETN
 
 UCI_CMD_GO:
-    ; Debug: show we entered GO
-    LDI 'G'
-    CALL SERIAL_WRITE_CHAR
-
     ; Parse go command
     ; Format: "go depth 6" or "go infinite", etc.
-    ; For now, default to depth 6
+    ; For now, default to depth 1
     ; Store in memory (R5 is SRET in BIOS mode!)
 
     LDI HIGH(SEARCH_DEPTH)
@@ -303,25 +287,18 @@ UCI_CMD_GO:
 
     ; TODO: Parse depth parameter from command
 
-    ; Debug: about to call search
-    LDI 'S'
-    CALL SERIAL_WRITE_CHAR
-
     ; Run search
     CALL SEARCH_POSITION
 
-    ; Debug: search returned
-    LDI 'R'
-    CALL SERIAL_WRITE_CHAR
-
-    ; 6 has score, best move at BEST_MOVE
+    ; Best move now at BEST_MOVE
 
     ; Send best move
     LDI HIGH(STR_BESTMOVE)
-    PHI 10
+    PHI 15
     LDI LOW(STR_BESTMOVE)
-    PLO 10
-    CALL UCI_WRITE_STRING
+    PLO 15
+    SEP 4
+    DW F_MSG
 
     ; Convert best move to algebraic and send
     ; TODO: Load best move and convert
@@ -380,7 +357,7 @@ UCI_SEND_BEST_MOVE:
 ; Output: Two characters sent (file letter, rank number)
 ; ------------------------------------------------------------------------------
 SQUARE_TO_ALGEBRAIC:
-    PLO 13              ; Save square
+    PLO 7               ; Save square in R7.0 (R13 used by caller!)
 
     ; Get file (0-7 → 'a'-'h')
     ANI $07             ; File bits
@@ -388,7 +365,7 @@ SQUARE_TO_ALGEBRAIC:
     CALL SERIAL_WRITE_CHAR
 
     ; Get rank (0-7 → '1'-'8')
-    GLO 13
+    GLO 7               ; Get square from R7.0
     SHR
     SHR
     SHR

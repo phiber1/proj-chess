@@ -399,318 +399,542 @@ GEN_PAWN_DONE:
     LBR GEN_SKIP_SQUARE
 
 ; ==============================================================================
-; GEN_KNIGHT - COMPLETE VERSION
+; GEN_KNIGHT - UNROLLED VERSION (no stack math, no loops)
 ; ==============================================================================
-; Uses memory for loop counter and from square (globals in memory, not registers)
-; R11.1 has from square on entry (set before dispatch)
+; R11.1 has from square on entry (set before dispatch, survives CALLs)
+; Uses ADI with immediate offsets - no ADD/stack operations
+; Knight offsets: NNE=$21, NNW=$1F, NEE=$12, NWW=$0E
+;                 SSE=$E1, SSW=$DF, SEE=$F2, SWW=$EE
 ; ==============================================================================
 GEN_KNIGHT:
-    ; Store from square in memory (survives all CALLs)
-    LDI HIGH(GEN_FROM_SQ)
-    PHI 7
-    LDI LOW(GEN_FROM_SQ)
-    PLO 7
-    GHI 11              ; From square from R11.1
-    STR 7
-
-    ; Initialize loop counter in memory
-    LDI HIGH(GEN_LOOP_CTR)
-    PHI 7
-    LDI LOW(GEN_LOOP_CTR)
-    PLO 7
-    LDI 8
-    STR 7               ; Loop counter = 8
-
-    ; Set up offset table pointer
-    LDI HIGH(KNIGHT_OFFSETS)
-    PHI 8
-    LDI LOW(KNIGHT_OFFSETS)
-    PLO 8
-
-GEN_KNIGHT_LOOP:
-    ; Get from square from memory
-    LDI HIGH(GEN_FROM_SQ)
-    PHI 7
-    LDI LOW(GEN_FROM_SQ)
-    PLO 7
-    LDN 7               ; D = from square
-    STR 2               ; Store on stack for ADD
-
-    ; Add offset to get target
-    LDN 8               ; D = offset
-    ADD                 ; D = from + offset
-    PLO 11              ; R11.0 = target square
-
+    ; --- Direction 1: NNE (+$21) ---
+    GHI 11              ; From square
+    ADI $21             ; target = from + $21
+    PLO 11              ; R11.0 = target
     ANI $88
-    LBNZ GEN_KNIGHT_NEXT
-
-    ; Check target (uses R7, preserves R13)
+    LBNZ GEN_KN_DIR2
     CALL CHECK_TARGET_SQUARE
-    LBZ GEN_KNIGHT_NEXT   ; Blocked by friendly
-
-    ; Add move - get from square from memory
-    LDI HIGH(GEN_FROM_SQ)
-    PHI 7
-    LDI LOW(GEN_FROM_SQ)
-    PLO 7
-    LDN 7               ; D = from square
-    PHI 13              ; R13.1 = from
-    GLO 11              ; to
-    PLO 13              ; R13.0 = to
+    LBZ GEN_KN_DIR2
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
 
-GEN_KNIGHT_NEXT:
-    INC 8               ; Next offset
+GEN_KN_DIR2:
+    ; --- Direction 2: NNW (+$1F) ---
+    GHI 11
+    ADI $1F
+    PLO 11
+    ANI $88
+    LBNZ GEN_KN_DIR3
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KN_DIR3
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
 
-    ; Decrement loop counter in memory
-    LDI HIGH(GEN_LOOP_CTR)
-    PHI 7
-    LDI LOW(GEN_LOOP_CTR)
-    PLO 7
-    LDN 7               ; Load counter
-    SMI 1               ; Decrement
-    STR 7               ; Store back
-    LBNZ GEN_KNIGHT_LOOP
+GEN_KN_DIR3:
+    ; --- Direction 3: NEE (+$12) ---
+    GHI 11
+    ADI $12
+    PLO 11
+    ANI $88
+    LBNZ GEN_KN_DIR4
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KN_DIR4
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
 
+GEN_KN_DIR4:
+    ; --- Direction 4: NWW (+$0E) ---
+    GHI 11
+    ADI $0E
+    PLO 11
+    ANI $88
+    LBNZ GEN_KN_DIR5
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KN_DIR5
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KN_DIR5:
+    ; --- Direction 5: SSE (+$E1 = -$1F) ---
+    GHI 11
+    ADI $E1
+    PLO 11
+    ANI $88
+    LBNZ GEN_KN_DIR6
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KN_DIR6
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KN_DIR6:
+    ; --- Direction 6: SSW (+$DF = -$21) ---
+    GHI 11
+    ADI $DF
+    PLO 11
+    ANI $88
+    LBNZ GEN_KN_DIR7
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KN_DIR7
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KN_DIR7:
+    ; --- Direction 7: SEE (+$F2 = -$0E) ---
+    GHI 11
+    ADI $F2
+    PLO 11
+    ANI $88
+    LBNZ GEN_KN_DIR8
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KN_DIR8
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KN_DIR8:
+    ; --- Direction 8: SWW (+$EE = -$12) ---
+    GHI 11
+    ADI $EE
+    PLO 11
+    ANI $88
+    LBNZ GEN_KN_DONE
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KN_DONE
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KN_DONE:
     LBR GEN_SKIP_SQUARE
 
 ; ==============================================================================
-; GEN_BISHOP, GEN_ROOK, GEN_QUEEN - Use GEN_SLIDING
+; GEN_BISHOP, GEN_ROOK, GEN_QUEEN - Use direction-specific sliding functions
 ; ==============================================================================
 GEN_BISHOP:
-    LDI DIR_NE
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_NW
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_SE
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_SW
-    PLO 13
-    CALL GEN_SLIDING
-
+    CALL GEN_SLIDE_NE
+    CALL GEN_SLIDE_NW
+    CALL GEN_SLIDE_SE
+    CALL GEN_SLIDE_SW
     LBR GEN_SKIP_SQUARE
 
 GEN_ROOK:
-    LDI DIR_N
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_S
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_E
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_W
-    PLO 13
-    CALL GEN_SLIDING
-
+    CALL GEN_SLIDE_N
+    CALL GEN_SLIDE_S
+    CALL GEN_SLIDE_E
+    CALL GEN_SLIDE_W
     LBR GEN_SKIP_SQUARE
 
 GEN_QUEEN:
-    LDI DIR_N
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_NE
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_E
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_SE
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_S
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_SW
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_W
-    PLO 13
-    CALL GEN_SLIDING
-
-    LDI DIR_NW
-    PLO 13
-    CALL GEN_SLIDING
-
+    CALL GEN_SLIDE_N
+    CALL GEN_SLIDE_NE
+    CALL GEN_SLIDE_E
+    CALL GEN_SLIDE_SE
+    CALL GEN_SLIDE_S
+    CALL GEN_SLIDE_SW
+    CALL GEN_SLIDE_W
+    CALL GEN_SLIDE_NW
     LBR GEN_SKIP_SQUARE
 
 ; ==============================================================================
-; GEN_SLIDING - COMPLETE VERSION with blocking
+; GEN_SLIDE_* - Direction-specific sliding (no stack math)
 ; ==============================================================================
-; Uses R11.1 for from square (set before dispatch)
-; R13.0 = direction (passed in), R7.0 = current position during slide
+; Each function handles one direction with hardcoded ADI
+; R11.1 = from square (survives CALLs), R7.0 = current position
+; Direction offsets: N=$10, NE=$11, E=$01, SE=$F1, S=$F0, SW=$EF, W=$FF, NW=$0F
 ; ==============================================================================
-GEN_SLIDING:
-    ; Save R15 (holds move list start pointer)
-    GLO 15
-    STXD
-    GHI 15
-    STXD
 
-    ; Save direction and from square
-    GLO 13              ; direction
-    STXD
-    GHI 11              ; from square
-    STXD
-
-    ; Start from current square
+; --- GEN_SLIDE_N: North (+$10) ---
+GEN_SLIDE_N:
     GHI 11
-    PLO 7               ; R7.0 = current position
-
-GEN_SLIDE_LOOP:
-    ; Move in direction - peek at direction from stack
-    IRX                 ; Point to from square
-    IRX                 ; Point to direction
-    LDN 2               ; D = direction
-    DEC 2
-    DEC 2               ; Restore stack pointer
-
+    PLO 7               ; R7.0 = current position = from
+GEN_SLIDE_N_LOOP:
     GLO 7
-    ADD
-    PLO 7               ; R7.0 = new position
-
-    ; Check if off board
+    ADI $10             ; next = current + $10
+    PLO 7               ; R7.0 = target
     ANI $88
-    LBNZ GEN_SLIDE_DONE
-
-    ; Check target square
-    GLO 7
-    PLO 11              ; R11.0 = target for CHECK_TARGET_SQUARE
+    LBNZ GEN_SLIDE_N_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11              ; R11.0 = target
     CALL CHECK_TARGET_SQUARE
-    ; D = 0 (blocked), 1 (empty), 2 (capture)
-
-    PLO 8               ; Save result in R8.0
-
-    LBZ GEN_SLIDE_DONE   ; Blocked by friendly
-
-    ; Add move - get from square from stack
-    IRX
-    LDN 2               ; D = from square
-    DEC 2
-    PHI 13              ; R13.1 = from
-    GLO 7               ; to
-    PLO 13              ; R13.0 = to
+    PLO 8               ; Save result
+    LBZ GEN_SLIDE_N_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_N_RET  ; Capture, stop
+    LBR GEN_SLIDE_N_LOOP
+GEN_SLIDE_N_RET:
+    RETN
 
-    ; Check if we should continue sliding
-    GLO 8               ; Get saved result
-    XRI 2               ; Was it a capture?
-    LBZ GEN_SLIDE_DONE   ; Yes, stop sliding
+; --- GEN_SLIDE_NE: Northeast (+$11) ---
+GEN_SLIDE_NE:
+    GHI 11
+    PLO 7
+GEN_SLIDE_NE_LOOP:
+    GLO 7
+    ADI $11
+    PLO 7
+    ANI $88
+    LBNZ GEN_SLIDE_NE_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11
+    CALL CHECK_TARGET_SQUARE
+    PLO 8
+    LBZ GEN_SLIDE_NE_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_NE_RET
+    LBR GEN_SLIDE_NE_LOOP
+GEN_SLIDE_NE_RET:
+    RETN
 
-    LBR GEN_SLIDE_LOOP  ; Empty, continue
+; --- GEN_SLIDE_E: East (+$01) ---
+GEN_SLIDE_E:
+    GHI 11
+    PLO 7
+GEN_SLIDE_E_LOOP:
+    GLO 7
+    ADI $01
+    PLO 7
+    ANI $88
+    LBNZ GEN_SLIDE_E_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11
+    CALL CHECK_TARGET_SQUARE
+    PLO 8
+    LBZ GEN_SLIDE_E_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_E_RET
+    LBR GEN_SLIDE_E_LOOP
+GEN_SLIDE_E_RET:
+    RETN
 
-GEN_SLIDE_DONE:
-    IRX                 ; Point to from square
-    IRX                 ; Point to direction
-    IRX                 ; Point to R15.1
-    ; Restore R15 (move list start pointer)
-    LDXA                ; Load R15.1, advance to R15.0
-    PHI 15
-    LDX                 ; Load R15.0
-    PLO 15
+; --- GEN_SLIDE_SE: Southeast (+$F1 = -$0F) ---
+GEN_SLIDE_SE:
+    GHI 11
+    PLO 7
+GEN_SLIDE_SE_LOOP:
+    GLO 7
+    ADI $F1
+    PLO 7
+    ANI $88
+    LBNZ GEN_SLIDE_SE_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11
+    CALL CHECK_TARGET_SQUARE
+    PLO 8
+    LBZ GEN_SLIDE_SE_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_SE_RET
+    LBR GEN_SLIDE_SE_LOOP
+GEN_SLIDE_SE_RET:
+    RETN
+
+; --- GEN_SLIDE_S: South (+$F0 = -$10) ---
+GEN_SLIDE_S:
+    GHI 11
+    PLO 7
+GEN_SLIDE_S_LOOP:
+    GLO 7
+    ADI $F0
+    PLO 7
+    ANI $88
+    LBNZ GEN_SLIDE_S_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11
+    CALL CHECK_TARGET_SQUARE
+    PLO 8
+    LBZ GEN_SLIDE_S_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_S_RET
+    LBR GEN_SLIDE_S_LOOP
+GEN_SLIDE_S_RET:
+    RETN
+
+; --- GEN_SLIDE_SW: Southwest (+$EF = -$11) ---
+GEN_SLIDE_SW:
+    GHI 11
+    PLO 7
+GEN_SLIDE_SW_LOOP:
+    GLO 7
+    ADI $EF
+    PLO 7
+    ANI $88
+    LBNZ GEN_SLIDE_SW_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11
+    CALL CHECK_TARGET_SQUARE
+    PLO 8
+    LBZ GEN_SLIDE_SW_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_SW_RET
+    LBR GEN_SLIDE_SW_LOOP
+GEN_SLIDE_SW_RET:
+    RETN
+
+; --- GEN_SLIDE_W: West (+$FF = -$01) ---
+GEN_SLIDE_W:
+    GHI 11
+    PLO 7
+GEN_SLIDE_W_LOOP:
+    GLO 7
+    ADI $FF
+    PLO 7
+    ANI $88
+    LBNZ GEN_SLIDE_W_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11
+    CALL CHECK_TARGET_SQUARE
+    PLO 8
+    LBZ GEN_SLIDE_W_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_W_RET
+    LBR GEN_SLIDE_W_LOOP
+GEN_SLIDE_W_RET:
+    RETN
+
+; --- GEN_SLIDE_NW: Northwest (+$0F) ---
+GEN_SLIDE_NW:
+    GHI 11
+    PLO 7
+GEN_SLIDE_NW_LOOP:
+    GLO 7
+    ADI $0F
+    PLO 7
+    ANI $88
+    LBNZ GEN_SLIDE_NW_RET
+    GLO 7               ; Get target back (ANI destroyed D)
+    PLO 11
+    CALL CHECK_TARGET_SQUARE
+    PLO 8
+    LBZ GEN_SLIDE_NW_RET
+    GHI 11
+    PHI 13
+    GLO 7
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+    GLO 8
+    XRI 2
+    LBZ GEN_SLIDE_NW_RET
+    LBR GEN_SLIDE_NW_LOOP
+GEN_SLIDE_NW_RET:
     RETN
 
 ; ==============================================================================
-; GEN_KING - COMPLETE VERSION with castling
+; GEN_KING - UNROLLED VERSION with castling (no stack math, no loops)
 ; ==============================================================================
-; Uses memory for loop counter and from square (globals in memory, not registers)
-; R11.1 has from square on entry (set before dispatch)
+; R11.1 has from square on entry (set before dispatch, survives CALLs)
+; Uses ADI with immediate offsets - no ADD/stack operations
+; King offsets: N=$10, NE=$11, E=$01, SE=$F1, S=$F0, SW=$EF, W=$FF, NW=$0F
 ; ==============================================================================
 GEN_KING:
-    ; Store from square in memory (survives all CALLs)
-    LDI HIGH(GEN_FROM_SQ)
-    PHI 7
-    LDI LOW(GEN_FROM_SQ)
-    PLO 7
-    GHI 11              ; From square from R11.1
-    STR 7
-
-    ; Initialize loop counter in memory
-    LDI HIGH(GEN_LOOP_CTR)
-    PHI 7
-    LDI LOW(GEN_LOOP_CTR)
-    PLO 7
-    LDI 8
-    STR 7               ; Loop counter = 8
-
-    ; Set up offset table pointer
-    LDI HIGH(KING_OFFSETS)
-    PHI 8
-    LDI LOW(KING_OFFSETS)
-    PLO 8
-
-GEN_KING_LOOP:
-    ; Get from square from memory
-    LDI HIGH(GEN_FROM_SQ)
-    PHI 7
-    LDI LOW(GEN_FROM_SQ)
-    PLO 7
-    LDN 7               ; D = from square
-    STR 2               ; Store on stack for ADD
-
-    ; Add offset to get target
-    LDN 8               ; D = offset
-    ADD                 ; D = from + offset
-    PLO 11              ; R11.0 = target square
-
+    ; --- Direction 1: N (+$10) ---
+    GHI 11
+    ADI $10
+    PLO 11
     ANI $88
-    LBNZ GEN_KING_NEXT
-
-    ; Check target (uses R7, preserves R13)
+    LBNZ GEN_KG_DIR2
     CALL CHECK_TARGET_SQUARE
-    LBZ GEN_KING_NEXT
-
-    ; Add move - get from square from memory
-    LDI HIGH(GEN_FROM_SQ)
-    PHI 7
-    LDI LOW(GEN_FROM_SQ)
-    PLO 7
-    LDN 7               ; D = from square
-    PHI 13              ; R13.1 = from
-    GLO 11              ; to
-    PLO 13              ; R13.0 = to
+    LBZ GEN_KG_DIR2
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
 
-GEN_KING_NEXT:
-    INC 8               ; Next offset
+GEN_KG_DIR2:
+    ; --- Direction 2: NE (+$11) ---
+    GHI 11
+    ADI $11
+    PLO 11
+    ANI $88
+    LBNZ GEN_KG_DIR3
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KG_DIR3
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
 
-    ; Decrement loop counter in memory
-    LDI HIGH(GEN_LOOP_CTR)
-    PHI 7
-    LDI LOW(GEN_LOOP_CTR)
-    PLO 7
-    LDN 7               ; Load counter
-    SMI 1               ; Decrement
-    STR 7               ; Store back
-    LBNZ GEN_KING_LOOP
+GEN_KG_DIR3:
+    ; --- Direction 3: E (+$01) ---
+    GHI 11
+    ADI $01
+    PLO 11
+    ANI $88
+    LBNZ GEN_KG_DIR4
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KG_DIR4
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
 
-    ; Get from square from memory for castling
-    LDI HIGH(GEN_FROM_SQ)
-    PHI 7
-    LDI LOW(GEN_FROM_SQ)
-    PLO 7
-    LDN 7               ; D = from square (king position)
+GEN_KG_DIR4:
+    ; --- Direction 4: SE (+$F1 = -$0F) ---
+    GHI 11
+    ADI $F1
+    PLO 11
+    ANI $88
+    LBNZ GEN_KG_DIR5
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KG_DIR5
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
 
-    ; Add castling moves
+GEN_KG_DIR5:
+    ; --- Direction 5: S (+$F0 = -$10) ---
+    GHI 11
+    ADI $F0
+    PLO 11
+    ANI $88
+    LBNZ GEN_KG_DIR6
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KG_DIR6
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KG_DIR6:
+    ; --- Direction 6: SW (+$EF = -$11) ---
+    GHI 11
+    ADI $EF
+    PLO 11
+    ANI $88
+    LBNZ GEN_KG_DIR7
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KG_DIR7
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KG_DIR7:
+    ; --- Direction 7: W (+$FF = -$01) ---
+    GHI 11
+    ADI $FF
+    PLO 11
+    ANI $88
+    LBNZ GEN_KG_DIR8
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KG_DIR8
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KG_DIR8:
+    ; --- Direction 8: NW (+$0F) ---
+    GHI 11
+    ADI $0F
+    PLO 11
+    ANI $88
+    LBNZ GEN_KG_CASTLING
+    CALL CHECK_TARGET_SQUARE
+    LBZ GEN_KG_CASTLING
+    GHI 11
+    PHI 13
+    GLO 11
+    PLO 13
+    LDI MOVE_NORMAL
+    CALL ADD_MOVE_ENCODED
+
+GEN_KG_CASTLING:
+    ; Add castling moves (R11.1 still has king square)
+    GHI 11              ; D = king square for castling check
     CALL GEN_CASTLING_MOVES
 
     LBR GEN_SKIP_SQUARE

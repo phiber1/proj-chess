@@ -1,5 +1,7 @@
 # RCA 1802/1806 Chess Engine - Register Allocation
 
+**Last Updated:** January 1, 2026 (Post-UCI_WRITE_STRING removal)
+
 ## System Reserved (NEVER touch)
 
 | Reg | Name | Purpose |
@@ -12,143 +14,123 @@
 | R5  | RET  | SCRT return routine pointer |
 | R6  | LINK | SCRT linkage - CORRUPTED BY EVERY CALL! |
 
-## Engine Global Registers (preserve across functions)
+## Engine Registers (All are caller-save unless noted)
 
-| Reg | Name | Purpose | Notes |
-|-----|------|---------|-------|
-| R10 | A    | Board pointer | Set to BOARD ($6000) before search |
-| R12 | C    | Side to move | 0=WHITE, 8=BLACK (matches COLOR_MASK) |
+| Reg | Name | Primary Use | Notes |
+|-----|------|-------------|-------|
+| R7  |      | Temp/scratch | Board lookup in piece generators |
+| R8  |      | Temp/scratch | Direction table ptr in movegen; encoded move in negamax |
+| R9  |      | Move list ptr / return value | NEGAMAX loop counter; 16-bit return values |
+| R10 | A    | Memory access pointer | Used locally within functions (NOT preserved!) |
+| R11 | B    | Square calculation | R11.1=from, R11.0=to in movegen |
+| R12 | C    | Side to move | 0=WHITE, 8=BLACK (matches COLOR_MASK). Preserved by convention. |
+| R13 | D    | Temp/scratch | Loop counters, decode results |
+| R14 | E    | **R14.1 = BAUD CONST (NEVER TOUCH!)** | R14.0 safe for scratch, clobbered by F_TYPE |
+| R15 | F    | F_MSG string pointer | Also move count in movegen; bit counter in standalone serial |
 
-## Function-Local Registers (caller-save, may be clobbered)
+## Critical Register Rules
 
-| Reg | Name | NEGAMAX | GENERATE_MOVES | EVALUATE | MAKE_MOVE | SERIAL_* |
-|-----|------|---------|----------------|----------|-----------|----------|
-| R7  |      | Alpha/beta temp | - | - | - | - |
-| R8  |      | Best score | Ptr to GM_SCAN_IDX | - | Undo ptr | String ptr |
-| R9  |      | Move list ptr / return score | Move list ptr | Score accum | Ptr | Safe (fixed) |
-| R11 | B    | Current move | From square (R11.1) | - | - | Shift reg (standalone) |
-| R13 | D    | Temp/scratch | - | - | - | Saved by BIOS |
-| R14 | E    | **R14.1 = BAUD CONST (NEVER TOUCH!)** | - | - | - | R14.0 clobbered by F_TYPE |
-| R15 | F    | Temp/scratch | Move list start | - | - | F_MSG ptr / bit counter |
+### R6 - SCRT Linkage
+- **NEVER** store data in R6
+- Every CALL corrupts R6 with return address
+- Using R6 as temp will crash on RETN
 
-## R14 Special Handling (BIOS Mode)
+### R10 - Memory Access Pointer (NOT Global!)
+Despite older documentation, R10 is **NOT** a preserved "board pointer":
+- Used locally within each function for memory access
+- Each function sets R10 to whatever address it needs
+- Caller must assume R10 is clobbered by any CALL
+- Examples: BEST_SCORE access, UNDO_* access, ply state array access
 
+### R12 - Side to Move
+- Convention: preserved across function calls
+- Set once at start of search, toggled by MAKE_MOVE/UNMAKE_MOVE
+- 0 = WHITE, 8 = BLACK (matches COLOR_MASK for piece detection)
+
+### R14 - BAUD Rate Constant (BIOS Mode)
 - **R14.1:** BIOS baud rate constant - NEVER use PHI 14 or GHI 14!
 - **R14.0:** Clobbered by every F_TYPE call - safe to use as scratch
-
-## BUGS FIXED (Dec 28, 2025)
-
-### Bug 1: SERIAL_PRINT_HEX corrupting R9
-**SERIAL_PRINT_HEX was using R9.0** to save the byte being printed, but R9 is the move list pointer in NEGAMAX. Fixed by changing to R14.0 (already clobbered by F_TYPE).
-
-### Bug 2: RESTORE_SEARCH_CONTEXT and SCRT stack interference
-**RESTORE_SEARCH_CONTEXT was reading SCRT linkage as saved registers.**
-
-When calling a function via SCRT, R6 is pushed onto the stack BELOW where R2 points. This means:
-- CALL pushes R6 (2 bytes) via STXD
-- Inside the called function, R2 is 2 bytes lower than expected
-- RESTORE's first IRX pointed at SCRT's R6, not the saved R7.1!
-
-**Fix:** Modified RESTORE_SEARCH_CONTEXT to:
-1. First pop the SCRT linkage (R6) from stack, save to R13
-2. Then read the saved context (R7-R12)
-3. Manually restore R6 from R13 and return via SEP 3 (bypassing SRET)
-
-This ensures the SCRT linkage chain is properly maintained while correctly restoring the saved register context.
-
-### Bug 3: EVALUATE infinite loop (LBDF vs LBNF)
-**EVALUATE's square counter loop used wrong branch condition.**
-
-At the end of EVAL_NEXT_SQUARE:
-```asm
-    SMI 128
-    LBDF EVAL_SCAN      ; WRONG: branches when counter >= 128
-```
-
-For SMI (subtract immediate):
-- If D < 128: borrow occurs, DF = 0
-- If D >= 128: no borrow, DF = 1
-
-LBDF branches when DF=1, meaning it looped forever once counter hit 128!
-
-**Fix:** Changed to `LBNF EVAL_SCAN` (branch when DF=0, i.e., counter < 128).
-
-### Bug 4: IRX-before-CALL in NEGAMAX_NEXT_MOVE
-**Move count was being peeked (LDN 2) instead of popped (LDX).**
-
-The code did IRX to point at move_count, then LDN 2 to peek, then CALL SERIAL_PRINT_HEX. The CALL corrupted M(R2). The workaround of saving to R15.0 and restoring with STR 2; DEC 2 was fragile.
-
-**Fix:** Changed to proper pop pattern:
-- `LDX` instead of `LDN 2` (marks slot as empty)
-- `STXD` instead of `STR 2; DEC 2` (atomic push)
-
-### Bug 5: SAVE_SEARCH_CONTEXT corrupting R6 on return
-**SAVE pushed 10 bytes of context, then did RETN. RETN popped from wrong location!**
-
-When CALL SAVE executes, SCRT pushes R6 linkage (2 bytes). Then SAVE pushes 10 bytes of context. At RETN, the stack looks like:
-```
-[SCRT linkage (2 bytes)]  ← what RETN should pop
-[context (10 bytes)]      ← what RETN actually pops from (R2+1)
-R2 points here
-```
-
-RETN tried to pop from R2+1, which pointed at context (R7.hi/R7.lo), NOT the SCRT linkage. R6 got corrupted with R7 values! This broke the return chain for all subsequent CALLs.
-
-**Fix:** Changed SAVE to match RESTORE's pattern:
-1. Pop SCRT linkage first into R13
-2. Adjust R2 back to entry position (3 DECs after IRX + 2 LDXAs)
-3. Push context at same positions as original design
-4. Manually return via SEP 3 (bypassing RETN)
+- SERIAL_PRINT_HEX saves byte in R14.0 (already clobbered by F_TYPE)
 
 ## BIOS Register Usage
 
-- **F_TYPE ($FF03):** Clobbers R14.0 only
-- **F_READ ($FF06):** Clobbers R14.0 only
-- **F_MSG ($FF09):** Uses R15 as string pointer, also clobbers R14.0
+| Entry | Uses | Clobbers | Notes |
+|-------|------|----------|-------|
+| F_TYPE ($FF03) | D=char | R14.0 | Output single character |
+| F_READ ($FF06) | - | R14.0 | Read char with echo, returns in D |
+| F_MSG ($FF09) | R15=string | R14.0 | Output null-terminated string |
 
-**CRITICAL:** Only use R14.0 (via PLO/GLO). NEVER touch R14.1 (via PHI/GHI) - it holds the BIOS baud rate constant!
+**IMPORTANT:** BIOS calls save R13/R15 to stack on entry - R2 must point to available stack slot.
+**NOTE:** BIOS SCRT only uses R4, R5, R6. Other registers (R7-R13, R15) are preserved.
 
-```asm
-; BEFORE (buggy):
-SERIAL_PRINT_HEX:
-    PLO 9               ; Save byte in R9.0 - CORRUPTS MOVE LIST PTR!
-    ...
-    GLO 9               ; Get original byte
+## Function Register Usage Summary
 
-; AFTER (fixed):
-SERIAL_PRINT_HEX:
-    PLO 14              ; Save byte in R14.0 - already clobbered by F_TYPE
-    ...                 ; R14.1 (baud constant) is UNTOUCHED
-    GLO 14              ; Get original byte
-```
+### NEGAMAX (negamax.asm)
+- R9: Move list ptr, then loop counter, then score return
+- R10: Memory access (ALPHA, BETA, SCORE, BEST_*, UNDO_*, PLY)
+- R11: Current move being evaluated
+- R12: Side to move (preserved)
+- R13: Temp/scratch
 
-## Memory-Based Globals (defined in board-0x88.asm)
+### GENERATE_MOVES (movegen-fixed.asm)
+- R7: Board lookup pointer (piece generators)
+- R8: Offset/direction table pointer
+- R9: Move list pointer (IN: start, OUT: past end)
+- R10: Board scan pointer (local to function)
+- R11: R11.1=from square, R11.0=target square
+- R12: Side to move (MUST preserve)
+- R13: R13.0=loop counter, R13.1=direction
+- R14: R14.0=current square index
+- R15: R15.0=move count
 
-All 16-bit values use big-endian layout: high byte at lower address, low byte at higher address.
+### EVALUATE (evaluate.asm)
+- R8: Piece type for table lookup
+- R10: Board scan pointer (local)
+- R11: Accumulator for score
+
+### MAKE_MOVE / UNMAKE_MOVE (makemove.asm)
+- R10.0: Moving piece
+- R10.1: Captured piece
+- R13: Decoded from/to squares
+
+### SERIAL_READ_LINE (serial-io.asm)
+- R8: Buffer pointer
+- R9.0: Max length, R9.1: count
+- R10.0: Temp character storage (during backspace)
+
+### SAVE_PLY_STATE / RESTORE_PLY_STATE (stack.asm)
+- R10: Frame address pointer (local)
+- Saves/restores: R7, R8, R9, R11, R12 (10 bytes per ply)
+
+## Memory-Based Globals (board-0x88.asm)
+
+All 16-bit values use **big-endian** layout: high byte at lower address.
 
 | Address | Name | Purpose |
 |---------|------|---------|
-| $6442   | ALPHA_HI | Alpha bound high byte |
-| $6443   | ALPHA_LO | Alpha bound low byte |
-| $6444   | BETA_HI | Beta bound high byte |
-| $6445   | BETA_LO | Beta bound low byte |
-| $6446   | SCORE_HI | Current score high byte |
-| $6447   | SCORE_LO | Current score low byte |
-| $6448   | CURRENT_PLY | Current ply depth (1 byte) |
-| $6449   | COMPARE_TEMP | Scratch for comparisons |
-| $644A   | MOVECOUNT_TEMP | Scratch for move count |
-| $6450   | PLY_STATE_BASE | Ply-indexed state array (80 bytes) |
-| $6807   | GM_SCAN_IDX | Move gen scan index |
+| $6200   | MOVE_LIST | Negamax move buffer (256 bytes) |
+| $6300   | QS_MOVE_LIST | Quiescence move buffer (256 bytes) |
+| $6400   | GAME_STATE | Game state block |
+| $6408   | UNDO_CAPTURED | Captured piece for unmake |
+| $6409   | UNDO_FROM | From square for unmake |
+| $640A   | UNDO_TO | To square for unmake |
+| $640B   | UNDO_CASTLING | Castling rights for unmake |
+| $640C   | UNDO_EP | EP square for unmake |
+| $640D   | UNDO_HALFMOVE | Halfmove clock for unmake |
+| $6442   | ALPHA_HI/LO | Alpha bound (2 bytes, big-endian) |
+| $6444   | BETA_HI/LO | Beta bound (2 bytes, big-endian) |
+| $6446   | SCORE_HI/LO | Current score (2 bytes, big-endian) |
+| $6448   | CURRENT_PLY | Current ply depth (1 byte, 0-7) |
+| $6450   | PLY_STATE_BASE | Ply-indexed state (80 bytes, 10/ply) |
 
 ## Stack Usage Rules
 
 1. Stack grows downward (STXD: store then decrement)
 2. R2 points ONE BELOW the top of stack
 3. After IRX, R2 points AT the data
-4. CALL corrupts M(R2) before decrementing - never leave R2 pointing at important data during CALL!
-5. **IRX should ONLY appear immediately before a pop sequence (LDXA/LDX)**
-6. After LDX (without A), R2 still points at the now-consumed slot - this is the "empty" slot
-7. BIOS routines (F_TYPE, F_READ, F_MSG) save R13/R15 to stack on entry - R2 must point to available slot
+4. CALL corrupts M(R2) before decrementing - never leave R2 pointing at important data!
+5. IRX should ONLY appear immediately before a pop sequence (LDXA/LDX)
+6. After LDX, R2 still points at the now-consumed slot
 
 ### Safe Pop-then-CALL Pattern
 ```asm
@@ -164,19 +146,37 @@ All 16-bit values use big-endian layout: high byte at lower address, low byte at
     PLO 15          ; Save to register
     CALL FOO        ; SCRT uses empty slot (safe)
     GLO 15          ; Retrieve saved value
-    STXD            ; Push new value back
 ```
+
+## Bugs Fixed (History)
+
+### Dec 28, 2025: SERIAL_PRINT_HEX corrupting R9
+- **Bug:** Used R9.0 to save byte being printed, but R9 is move list pointer
+- **Fix:** Changed to R14.0 (already clobbered by F_TYPE)
+
+### Dec 28, 2025: SAVE/RESTORE_SEARCH_CONTEXT vs SCRT
+- **Bug:** Context save/restore didn't account for SCRT linkage on stack
+- **Fix:** Pop SCRT linkage first, then access saved context
+
+### Dec 30, 2025: UNDO_* variables in ROM
+- **Bug:** UNDO_* defined with DS (in code section = ROM), writes had no effect
+- **Fix:** Changed to EQU definitions pointing to RAM at $6408+
+
+### Jan 1, 2026: UCI_WRITE_STRING clobbering R10
+- **Bug:** Custom string output function used R10 as iterator
+- **Fix:** Removed function entirely; use F_MSG with R15 directly
 
 ## Calling Conventions
 
 ### Parameters
-- Pass via memory (globals) for complex data
-- Pass via registers for simple values (D, or specific register per function docs)
+- Simple values: pass in D or specific register per function docs
+- Complex data: pass via memory (globals or stack)
 
 ### Return Values
-- R9 = 16-bit return value (score, pointer, etc.)
-- D = 8-bit return value or status
+- R9: 16-bit return value (score, pointer)
+- D: 8-bit return value or status
 
-### Preservation
-- Caller-save: R7-R9, R11, R13-R15 (assume clobbered by any CALL)
-- Callee-save: R10, R12 (must be preserved or explicitly documented as clobbered)
+### Preservation Summary
+- **Caller-save (assume clobbered):** R7-R11, R13-R15
+- **Preserved by convention:** R12 (side to move)
+- **Never touch:** R0-R6, R14.1

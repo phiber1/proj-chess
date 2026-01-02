@@ -75,49 +75,53 @@ CHECK_TARGET_INVALID:
 ; ------------------------------------------------------------------------------
 ENCODE_MOVE_16BIT:
     ; Low byte = from (bits 0-6) + bit 0 of to (bit 7)
+    ; NO STACK OPERATIONS - use conditional ORI instead
     GHI 13              ; From square
     ANI $7F             ; Ensure 7 bits
-    PLO 8              ; 8.0 = from
+    PLO 8               ; 8.0 = from
 
     GLO 13              ; To square
     ANI $01             ; Get bit 0 of to
-    SHL
-    SHL
-    SHL
-    SHL
-    SHL
-    SHL
-    SHL                 ; Shift to bit 7
-    STR 2
+    BZ ENCODE_LOW_DONE  ; If to.0 = 0, R8.0 already correct
+    ; to.0 = 1, need to set bit 7
     GLO 8
-    OR                  ; Combine
-    PLO 8              ; 8.0 = from | (to.0 << 7)
+    ORI $80
+    PLO 8               ; 8.0 = from | $80
+ENCODE_LOW_DONE:
 
     ; High byte = bits 1-6 of to (bits 0-5) + flags (bits 6-7)
     GLO 13              ; To square
     SHR                 ; Shift right 1 (remove bit 0)
     ANI $3F             ; Mask to 6 bits
-    PHI 8              ; 8.1 = to.bits[1-6]
+    PHI 8               ; 8.1 = to.bits[1-6]
 
-    ; Get flags from memory
+    ; Get flags from memory - use conditional ORI (no stack!)
     LDI HIGH(MOVE_FLAGS_TEMP)
     PHI 7
     LDI LOW(MOVE_FLAGS_TEMP)
     PLO 7
     LDN 7               ; D = flags
-
     ANI $03             ; Ensure 2 bits
-    SHL
-    SHL
-    SHL
-    SHL
-    SHL
-    SHL                 ; Shift to bits 6-7
-    STR 2
+    LBZ ENCODE_HI_DONE  ; flags = 0 (MOVE_NORMAL), no change needed
+    SMI 1
+    LBZ ENCODE_FLAG_1   ; flags = 1
+    SMI 1
+    LBZ ENCODE_FLAG_2   ; flags = 2
+    ; flags = 3
     GHI 8
-    OR
-    PHI 8              ; 8.1 = (to >> 1) | (flags << 6)
-
+    ORI $C0
+    PHI 8
+    LBR ENCODE_HI_DONE
+ENCODE_FLAG_2:
+    GHI 8
+    ORI $80
+    PHI 8
+    LBR ENCODE_HI_DONE
+ENCODE_FLAG_1:
+    GHI 8
+    ORI $40
+    PHI 8
+ENCODE_HI_DONE:
     RETN
 
 ; DECODED_FLAGS defined in board-0x88.asm ($6805)
@@ -133,32 +137,37 @@ ENCODE_MOVE_16BIT:
 ; NOTE: R14 is off-limits (BIOS uses it for serial baud rate)
 ; ------------------------------------------------------------------------------
 DECODE_MOVE_16BIT:
+    ; NO STACK OPERATIONS - use conditional ORI instead
+
     ; Extract from (bits 0-6 of low byte)
     GLO 8
     ANI $7F
     PHI 13              ; R13.1 = from
 
     ; Extract to square (bit 7 of low byte + bits 0-5 of high byte)
-    GLO 8
-    SHR
-    SHR
-    SHR
-    SHR
-    SHR
-    SHR
-    SHR                 ; Get bit 7
-    ANI $01             ; to.bit0
-    PLO 13              ; R13.0 = to.bit0
-
-    GHI 8              ; High byte
+    ; First get to.bits[1-6] from high byte, shifted left
+    GHI 8               ; High byte
     ANI $3F             ; Bits 0-5 are to.bits[1-6]
     SHL                 ; Shift left 1
-    STR 2
-    GLO 13
-    OR                  ; Combine with bit 0
-    PLO 13              ; R13.0 = to (full 7 bits)
+    PLO 13              ; R13.0 = to.bits[1-6] << 1
 
-    ; Extract flags (bits 6-7 of high byte) - store to memory, not R14!
+    ; Now check if bit 7 of low byte (to.bit0) is set
+    GLO 8               ; Low byte
+    ANI $80             ; Check bit 7
+    BZ DECODE_TO_DONE   ; If 0, R13.0 is complete
+    ; to.bit0 = 1, add it
+    GLO 13
+    ORI $01
+    PLO 13              ; R13.0 = to (full 7 bits)
+DECODE_TO_DONE:
+
+    ; Extract flags (bits 6-7 of high byte) - store to memory
+    ; Set up pointer first (before extracting, since LDI clobbers D)
+    LDI HIGH(DECODED_FLAGS)
+    PHI 7
+    LDI LOW(DECODED_FLAGS)
+    PLO 7
+    ; Now extract and store flags
     GHI 8
     SHR
     SHR
@@ -167,14 +176,6 @@ DECODE_MOVE_16BIT:
     SHR
     SHR                 ; Shift right 6
     ANI $03             ; Mask to 2 bits
-    ; Store to memory instead of R14
-    STXD                ; Save flags on stack temporarily
-    LDI HIGH(DECODED_FLAGS)
-    PHI 7
-    LDI LOW(DECODED_FLAGS)
-    PLO 7
-    IRX
-    LDX                 ; Pop flags back to D
     STR 7               ; Store to DECODED_FLAGS memory
 
     RETN

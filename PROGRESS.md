@@ -2115,3 +2115,189 @@ User confirmed F_TYPE only uses R14 and D, preserves R13 and R15. Earlier hypoth
 ### Git Commit
 
 `fc12c6a` - "WH: Fix multiple bugs, move decode still needs work"
+
+---
+
+## Session: January 1, 2026
+
+### Summary
+
+Major refactoring to eliminate stack-based math operations. User pointed out design decision: never touch the stack for math, always use ADI/SMI/ORI/etc with immediate values, and X should always = R2.
+
+### Key Design Principle (from user)
+
+> "We agreed not to touch the stack, and always leave X = R2. All the back-and-forth stack operations, prone to error, would be replaced with index table lookups in memory. Every math and logical operation has an immediate mode. This together with register INC and DEC instructions provides everything we need to index through tables in memory."
+
+The largest chess move offset is $21 (knight NNE), which fits in ADI's immediate byte.
+
+### Refactoring Completed
+
+#### 1. ENCODE_MOVE_16BIT (movegen-helpers.asm)
+- **Before:** Used `STR 2` / `OR` pattern (stack-based OR)
+- **After:** Uses conditional `ORI` with immediate values
+  - If to.bit0 = 1: `ORI $80`
+  - For flags 1/2/3: `ORI $40/$80/$C0`
+
+#### 2. DECODE_MOVE_16BIT (movegen-helpers.asm)
+- **Before:** Used `STR 2` / `OR` and `STXD`/`IRX`/`LDX` patterns
+- **After:** Uses conditional `ORI $01` for to.bit0, direct memory store for flags
+
+#### 3. GEN_KNIGHT (movegen-fixed.asm)
+- **Before:** Loop with offset table, `STR 2` / `ADD` pattern
+- **After:** Unrolled 8 directions with hardcoded ADI:
+  - NNE: `ADI $21`, NNW: `ADI $1F`, NEE: `ADI $12`, NWW: `ADI $0E`
+  - SSE: `ADI $E1`, SSW: `ADI $DF`, SEE: `ADI $F2`, SWW: `ADI $EE`
+
+#### 4. GEN_KING (movegen-fixed.asm)
+- **Before:** Loop with offset table
+- **After:** Unrolled 8 directions with hardcoded ADI:
+  - N: `ADI $10`, NE: `ADI $11`, E: `ADI $01`, SE: `ADI $F1`
+  - S: `ADI $F0`, SW: `ADI $EF`, W: `ADI $FF`, NW: `ADI $0F`
+
+#### 5. GEN_SLIDING → 8 Direction-Specific Functions
+- **Before:** Single parameterized `GEN_SLIDING` with stack-based direction storage
+- **After:** 8 separate functions: `GEN_SLIDE_N`, `GEN_SLIDE_NE`, `GEN_SLIDE_E`, `GEN_SLIDE_SE`, `GEN_SLIDE_S`, `GEN_SLIDE_SW`, `GEN_SLIDE_W`, `GEN_SLIDE_NW`
+- Each uses hardcoded ADI for its direction
+
+#### 6. SERIAL_READ_LINE (serial-io.asm)
+- Changed from R8 to R7 internally to preserve R8 for caller
+
+### Bug Fix: GEN_SLIDE_* Target Register (WM)
+
+**Symptom:** Crash at first move, encoded move showing from=$00
+
+**Root Cause:** In all 8 GEN_SLIDE functions, after `ANI $88` (board bounds check), D was destroyed (became 0 or non-zero). Then `PLO 11` stored the wrong value:
+```asm
+    PLO 7               ; R7.0 = target
+    ANI $88             ; D destroyed here!
+    LBNZ GEN_SLIDE_X_RET
+    PLO 11              ; BUG: R11.0 = 0, not target!
+```
+
+**Fix:** Reload target from R7 before PLO 11:
+```asm
+    PLO 7               ; R7.0 = target
+    ANI $88
+    LBNZ GEN_SLIDE_X_RET
+    GLO 7               ; Get target back
+    PLO 11              ; R11.0 = correct target
+```
+
+### Version History This Session
+
+- **WK:** Pre-refactoring (crashed)
+- **WL:** Refactored but missing version marker update
+- **WM:** Fixed GEN_SLIDE_* target bug, ready for test
+
+### Current Build
+
+- **Version:** WM
+- **Size:** 16,880 bytes
+- **Status:** Awaiting test results
+
+### Files Modified
+
+- **movegen-helpers.asm:** ENCODE/DECODE use conditional ORI
+- **movegen-fixed.asm:** Unrolled GEN_KNIGHT/GEN_KING, 8 GEN_SLIDE_* functions
+- **serial-io.asm:** SERIAL_READ_LINE uses R7 instead of R8
+- **negamax.asm:** Version marker updates
+
+### Remaining Acceptable Patterns
+
+- Simple `STR 2` / `XOR` for color comparisons (single operation, X=2 maintained)
+- `SEX 10` / `SEX 2` pairs in negamax.asm for 16-bit score comparisons (contained blocks)
+
+### CRITICAL: BIOS SCRT Does NOT Clobber R8
+
+User clarified: BIOS SCRT only uses R4, R5, R6. The earlier hypothesis that SCRT was clobbering R8 was incorrect. The MOVE_TEMP save/restore code in negamax debug is unnecessary but harmless.
+
+---
+
+## Session: January 1, 2026 (continued) - SQUARE_TO_ALGEBRAIC Bug Fix
+
+### Summary
+
+Found and fixed the real cause of "bestmove b1b1" output. Debug prints during search were a red herring - the actual bug was in UCI output formatting.
+
+### The Bug Hunt
+
+Extensive debugging with version markers (WM through WR) led us down a rabbit hole:
+- Debug output showed `[1080]<00:20>` suggesting DECODE wasn't setting bit 0 of 'to'
+- Added forced ORI $01 in all DECODE paths - still showed even values
+- Added stores inside DECODE - still showed even values
+
+**Key Insight from User:** Memory dump revealed the truth:
+- MOVE_TO at $6403 contained $55 (odd!) - DECODE was working correctly
+- BEST_MOVE at $6410-$6411 contained $01:$22 (b1:c3) - valid knight move
+- The debug output was misleading because it showed intermediate values during search
+
+### The Real Bug: SQUARE_TO_ALGEBRAIC (uci.asm)
+
+```asm
+SQUARE_TO_ALGEBRAIC:
+    PLO 13              ; Save square ← CLOBBERS R13.0!
+    ANI $07
+    ADI 'a'
+    CALL SERIAL_WRITE_CHAR
+    GLO 13              ; Get square back
+    ...
+```
+
+UCI_SEND_BEST_MOVE loads:
+- R13.1 = from square (e.g., $01 = b1)
+- R13.0 = to square (e.g., $22 = c3)
+
+Then calls SQUARE_TO_ALGEBRAIC with `GHI 13` (from), which does `PLO 13` - **overwriting the 'to' square!**
+
+When the second call uses `GLO 13` to get 'to', it gets the 'from' value instead. Hence "b1b1" instead of "b1c3".
+
+### The Fix
+
+Changed SQUARE_TO_ALGEBRAIC to use R7.0 instead of R13.0:
+
+```asm
+SQUARE_TO_ALGEBRAIC:
+    PLO 7               ; Save square in R7.0 (R13 used by caller!)
+    ANI $07
+    ADI 'a'
+    CALL SERIAL_WRITE_CHAR
+    GLO 7               ; Get square from R7.0
+    ...
+```
+
+### Lesson Learned
+
+**Debug output can be misleading.** When prints show stale/intermediate values during a complex search, they may not reflect the final state. Memory dumps after execution reveal the truth.
+
+The debug showed `<00:20>` for moves, but:
+1. Those were intermediate values at various search plies
+2. The final BEST_MOVE in memory was correct ($01:$22)
+3. The bug was in OUTPUT formatting, not in DECODE or move generation
+
+### Cleanup
+
+Removed all debug output:
+- Version markers (GS, WS, etc.)
+- Score comparisons ([SSSS:BBBB])
+- Move decode prints ([encoded]<from:to>{from:to})
+- Progress markers (+, ., B, R)
+
+### Final Build
+
+- **Size:** 16,436 bytes (reduced from ~17,000 with debug code)
+- **Output:** `bestmove b1c3` (valid knight move!)
+
+### Files Modified
+
+- **uci.asm:** Fixed SQUARE_TO_ALGEBRAIC to use R7.0 instead of R13.0
+- **negamax.asm:** Removed all debug output
+- **movegen-helpers.asm:** Cleaned up DECODE (removed debug stores)
+
+### BIOS Register Usage (Confirmed)
+
+| Register | Status |
+|----------|--------|
+| R4, R5, R6 | Used by SCRT |
+| R14.1 | Baud constant - NEVER TOUCH |
+| R14.0 | Clobbered by BIOS calls |
+| R7-R13, R15 | PRESERVED by BIOS |
