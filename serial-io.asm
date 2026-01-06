@@ -148,11 +148,11 @@ SRL_DONE:
 ; ==============================================================================
 ; SERIAL_PRINT_HEX - Print byte as two hex digits
 ; Input: D = byte to print
-; Uses: R14.0 (temp - already clobbered by F_TYPE anyway)
-; NOTE: Changed from R9 to R14 - R9 is move list pointer in NEGAMAX!
+; Uses: Stack (1 byte)
+; NOTE: Cannot use R14.0 - F_TYPE clobbers it during first nibble print!
 ; ==============================================================================
 SERIAL_PRINT_HEX:
-    PLO 14              ; Save byte in R14.0 (F_TYPE clobbers this anyway)
+    STXD                ; Save byte on stack
 
     ; Print high nibble
     SHR
@@ -163,7 +163,8 @@ SERIAL_PRINT_HEX:
     DW SERIAL_PRINT_NIBBLE
 
     ; Print low nibble
-    GLO 14              ; Get original byte
+    IRX
+    LDX                 ; Pop original byte from stack
     ANI 0FH             ; Mask low nibble
     SEP 4
     DW SERIAL_PRINT_NIBBLE

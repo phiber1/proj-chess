@@ -263,18 +263,189 @@ UCI_CMD_POSITION:
     CALL INIT_BOARD
     CALL INIT_MOVE_HISTORY
 
-    ; Check for " moves"
-    ; TODO: Parse and apply move list
+    ; Skip past "startpos" (8 chars) to check for " moves"
+    ; Buffer now at "startpos..." - need to find " moves "
+    LDI HIGH(UCI_BUFFER + 17) ; "position startpos" = 17 chars
+    PHI 10
+    LDI LOW(UCI_BUFFER + 17)
+    PLO 10
+
+    ; Check if there's more (should be space or null)
+    LDN 10
+    LBZ UCI_POS_DONE    ; End of string, no moves
+    XRI ' '
+    LBNZ UCI_POS_DONE   ; Not a space, unexpected
+
+    ; Skip the space
+    INC 10
+
+    ; Check for "moves" (5 chars)
+    LDN 10
+    XRI 'm'
+    LBNZ UCI_POS_DONE
+    INC 10
+    LDN 10
+    XRI 'o'
+    LBNZ UCI_POS_DONE
+    INC 10
+    LDN 10
+    XRI 'v'
+    LBNZ UCI_POS_DONE
+    INC 10
+    LDN 10
+    XRI 'e'
+    LBNZ UCI_POS_DONE
+    INC 10
+    LDN 10
+    XRI 's'
+    LBNZ UCI_POS_DONE
+    INC 10              ; R10 now past "moves"
+
+    ; Now parse move list: " e2e4 e7e5 ..."
+UCI_POS_MOVE_LOOP:
+    ; Skip spaces
+    LDN 10
+    LBZ UCI_POS_DONE    ; End of string
+    XRI ' '
+    LBNZ UCI_POS_PARSE_MOVE  ; Not a space, should be move
+    INC 10
+    LBR UCI_POS_MOVE_LOOP
+
+UCI_POS_PARSE_MOVE:
+    ; R10 points to start of move (e.g., "e2e4")
+    ; Parse from square (2 chars)
+    CALL ALGEBRAIC_TO_SQUARE
+    XRI $FF
+    LBZ UCI_POS_DONE    ; Invalid square, abort
+
+    ; Save from square
+    XRI $FF             ; Restore value (XRI is self-inverse)
+    PHI 7               ; R7.1 = from square
+
+    ; Parse to square (2 chars)
+    CALL ALGEBRAIC_TO_SQUARE
+    XRI $FF
+    LBZ UCI_POS_DONE    ; Invalid square, abort
+    XRI $FF             ; Restore value
+
+    ; Store from and to in MOVE_FROM/MOVE_TO
+    PLO 7               ; R7.0 = to square
+
+    LDI HIGH(MOVE_FROM)
+    PHI 8
+    LDI LOW(MOVE_FROM)
+    PLO 8
+    GHI 7
+    STR 8               ; MOVE_FROM = from
+    INC 8
+    GLO 7
+    STR 8               ; MOVE_TO = to
+
+    ; Apply the move
+    CALL MAKE_MOVE
+
+    ; Continue parsing
+    LBR UCI_POS_MOVE_LOOP
 
 UCI_POS_DONE:
+    RETN
+
+; ------------------------------------------------------------------------------
+; ALGEBRAIC_TO_SQUARE - Convert algebraic notation to 0x88 square
+; ------------------------------------------------------------------------------
+; Input:  R10 = pointer to 2-char string (e.g., "e2"), advanced by 2
+; Output: D = 0x88 square index, or $FF if invalid
+; Uses:   R7.0 for file temp
+; ------------------------------------------------------------------------------
+ALGEBRAIC_TO_SQUARE:
+    ; Get file character (a-h)
+    LDA 10              ; Load file char, advance R10
+    SMI 'a'             ; Convert to 0-7
+    LBNF ATS_INVALID    ; If DF=0 (borrow), char < 'a', invalid
+    PLO 7               ; Save potential file in R7.0
+    SMI 8               ; Check if >= 8
+    LBDF ATS_INVALID    ; If >= 8, invalid
+
+    ; Get rank character (1-8)
+    LDA 10              ; Load rank char, advance R10
+    SMI '1'             ; Convert to 0-7
+    LBNF ATS_INVALID    ; If DF=0 (borrow), char < '1', invalid
+    SMI 8               ; Check if >= 8
+    LBDF ATS_INVALID    ; If >= 8, invalid
+    ADI 8               ; Restore 0-7 value
+
+    ; Calculate 0x88 square = rank * 16 + file
+    ; rank is in D (0-7), file in R7.0
+    SHL                 ; D = rank * 2
+    SHL                 ; D = rank * 4
+    SHL                 ; D = rank * 8
+    SHL                 ; D = rank * 16
+    STR 2               ; Save rank*16 on stack
+    GLO 7               ; Get file (0-7)
+    ADD                 ; D = rank*16 + file
+    RETN
+
+ATS_INVALID:
+    INC 10              ; Skip second char even on error (keep R10 consistent)
+    LDI $FF
     RETN
 
 UCI_CMD_GO:
     ; Parse go command
     ; Format: "go depth 6" or "go infinite", etc.
-    ; For now, default to depth 1
+    ; Default to depth 1, parse "depth N" if present
     ; Store in memory (R5 is SRET in BIOS mode!)
 
+    ; Default depth = 1
+    LDI 1
+    PLO 7               ; R7.0 = depth (default 1)
+
+    ; Check for "depth " after "go "
+    ; Buffer: "go depth 3" or "go" or "go infinite"
+    LDI HIGH(UCI_BUFFER + 3)  ; Skip "go "
+    PHI 10
+    LDI LOW(UCI_BUFFER + 3)
+    PLO 10
+
+    ; Check if we have "depth"
+    LDN 10
+    XRI 'd'
+    LBNZ UCI_GO_SET_DEPTH   ; Not "depth", use default
+    INC 10
+    LDN 10
+    XRI 'e'
+    LBNZ UCI_GO_SET_DEPTH
+    INC 10
+    LDN 10
+    XRI 'p'
+    LBNZ UCI_GO_SET_DEPTH
+    INC 10
+    LDN 10
+    XRI 't'
+    LBNZ UCI_GO_SET_DEPTH
+    INC 10
+    LDN 10
+    XRI 'h'
+    LBNZ UCI_GO_SET_DEPTH
+    INC 10
+    LDN 10
+    XRI ' '
+    LBNZ UCI_GO_SET_DEPTH
+    INC 10              ; R10 now at the number
+
+    ; Parse the depth number (1-9, single digit only)
+    ; Depths > 9 would take impractically long on the 1802 anyway
+    LDN 10
+    SMI '0'             ; Convert ASCII to value
+    BM UCI_GO_SET_DEPTH ; Invalid (< '0'), use default
+    SMI 10              ; Check if >= 10
+    BDF UCI_GO_SET_DEPTH ; >= 10, use default
+    ADI 10              ; Restore 0-9 value
+    BZ UCI_GO_SET_DEPTH ; Depth 0 invalid, use default
+    PLO 7               ; R7.0 = parsed depth (1-9)
+
+UCI_GO_SET_DEPTH:
+    ; Set SEARCH_DEPTH from R7.0
     LDI HIGH(SEARCH_DEPTH)
     PHI 13
     LDI LOW(SEARCH_DEPTH)
@@ -282,10 +453,8 @@ UCI_CMD_GO:
     LDI 0
     STR 13              ; SEARCH_DEPTH high = 0
     INC 13
-    LDI 1
-    STR 13              ; SEARCH_DEPTH low = 1
-
-    ; TODO: Parse depth parameter from command
+    GLO 7
+    STR 13              ; SEARCH_DEPTH low = depth
 
     ; Run search
     CALL SEARCH_POSITION
@@ -313,14 +482,8 @@ UCI_CMD_GO:
     RETN
 
 UCI_CMD_QUIT:
-    ; Clean shutdown
-    ; TODO: Could save state, etc.
-    ; For now, just halt
-    DIS
-UCI_HALT:
-    BR UCI_HALT         ; Infinite loop (1802 has no IDLE)
-    ; Or jump to exit routine
-    RETN
+    ; Return to monitor at $8000
+    LBR $8003
 
 ; ------------------------------------------------------------------------------
 ; UCI_SEND_BEST_MOVE - Send best move in algebraic notation

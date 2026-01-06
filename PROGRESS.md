@@ -2301,3 +2301,128 @@ Removed all debug output:
 | R14.1 | Baud constant - NEVER TOUCH |
 | R14.0 | Clobbered by BIOS calls |
 | R7-R13, R15 | PRESERVED by BIOS |
+
+---
+
+## Session: January 5, 2026 - Depth 2 Working, Depth 3 Investigation
+
+### Summary
+
+Fixed multiple bugs to get depth 2 search working correctly. Identified and implemented fix for depth 3 crash. Depth 3 now hangs rather than crashing - investigation ongoing.
+
+### Bugs Found & Fixed
+
+#### 1. SERIAL_PRINT_HEX Clobbering Low Nibble
+
+- **Symptom:** Debug output showed `{00:20}` instead of `{00:23}` - low nibble always 0
+- **Cause:** Original code stored byte in R14.0, but F_TYPE clobbers R14.0 during first nibble print
+- **Fix:** Changed to use stack instead of R14.0
+
+```asm
+; BEFORE (broken):
+SERIAL_PRINT_HEX:
+    PLO 14              ; Save byte in R14.0 (clobbered by F_TYPE!)
+    ...
+    GLO 14              ; Gets garbage
+
+; AFTER (fixed):
+SERIAL_PRINT_HEX:
+    STXD                ; Save byte on stack
+    ...
+    IRX
+    LDX                 ; Pop original byte from stack
+```
+
+#### 2. PLY Check Using Clobbered D
+
+- **Symptom:** PLY==0 check never triggered at root
+- **Cause:** After `CALL SERIAL_PRINT_HEX`, D register was garbage
+- **Fix:** Reload CURRENT_PLY before the LBNZ check
+
+#### 3. R9 Clobbered by UNMAKE_MOVE in QS
+
+- **Symptom:** Scores corrupted after captures in quiescence search
+- **Cause:** QS stored score in R9, but UNMAKE_MOVE clobbers R9
+- **Fix:** Push/pop R9 around UNMAKE_MOVE call in QS
+
+```asm
+QS_NO_NEG:
+    ; Save score (R9) before UNMAKE_MOVE clobbers it
+    GHI 9
+    STXD
+    GLO 9
+    STXD
+    CALL UNMAKE_MOVE
+    ; Restore score (R9)
+    IRX
+    LDXA
+    PLO 9
+    LDX
+    PHI 9
+```
+
+#### 4. Beta Comparison Inverted (SD vs SM)
+
+- **Symptom:** Alpha-beta pruning not working correctly
+- **Cause:** SD does M(X) - D, not D - M(X). Was computing beta - score instead of score - beta.
+- **Fix:** Changed to SM/SMB for correct score - beta calculation
+
+```asm
+; BEFORE (wrong):
+    GLO 13              ; D = score_lo
+    SD                  ; D = M(X) - D = beta - score (WRONG!)
+
+; AFTER (correct):
+    GLO 13              ; D = score_lo
+    SM                  ; D = D - M(X) = score - beta (CORRECT!)
+```
+
+#### 5. Move List Overwrite During Recursion (Depth 3 Crash)
+
+- **Symptom:** Depth 3 crashed after ~40 seconds, RAM filled with "03 83" pattern from $6206 to stack
+- **Cause:** Every NEGAMAX call wrote moves to same MOVE_LIST address ($6200). Child recursion overwrites parent's move list.
+- **Fix:** Implemented ply-indexed move lists. Each ply gets 64 bytes (32 moves).
+
+```asm
+; Calculate move list base as MOVE_LIST + (CURRENT_PLY × 64)
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply (0-7)
+    ; Multiply by 64: shift left 6 times
+    SHL                 ; ×2
+    SHL                 ; ×4
+    SHL                 ; ×8
+    SHL                 ; ×16
+    SHL                 ; ×32
+    SHL                 ; ×64
+    ; Add to MOVE_LIST base
+    ADI LOW(MOVE_LIST)
+    PLO 9
+    LDI HIGH(MOVE_LIST)
+    ADCI 0              ; Add carry
+    PHI 9               ; R9 = ply-indexed move list
+```
+
+### Other Changes
+
+- **uci.asm:** Added 'quit' command (LBR $8003 for BIOS warm start)
+- **uci.asm:** Fixed branch error - changed `BM` to `LBNF` (1802 has no long BM instruction)
+
+### Current Status
+
+- **Depth 2:** Working correctly, produces `bestmove b1c3`
+- **Depth 3:** No longer crashes with "03 83" pattern, but hangs indefinitely
+
+### Next Steps
+
+1. Add minimal debug to check if search is progressing or stuck in loop
+2. Investigate if infinite loop in move generation or recursion
+3. Consider timeout/move limit for debugging
+
+### Files Modified
+
+- **negamax.asm:** QS R9 save/restore, beta comparison fix (SD→SM), ply-indexed move lists
+- **serial-io.asm:** SERIAL_PRINT_HEX uses stack instead of R14.0
+- **uci.asm:** Added quit command, fixed BM→LBNF branch error

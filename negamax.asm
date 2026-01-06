@@ -91,12 +91,30 @@ NEGAMAX_CONTINUE:
     ; -----------------------------------------------
     ; Generate moves for current position
     ; -----------------------------------------------
-    ; Board is at A, color is in C
-    ; Move list will be placed at MOVE_LIST
+    ; Use ply-indexed move list to avoid overwrites during recursion!
+    ; Each ply gets 64 bytes (32 moves): PLY 0 at $6200, PLY 1 at $6240, etc.
+    ; Calculate: MOVE_LIST + (CURRENT_PLY × 64)
+
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply (0-7)
+
+    ; Multiply by 64: shift left 6 times
+    SHL                 ; ×2
+    SHL                 ; ×4
+    SHL                 ; ×8
+    SHL                 ; ×16
+    SHL                 ; ×32
+    SHL                 ; ×64
+
+    ; Add to MOVE_LIST base
+    ADI LOW(MOVE_LIST)
+    PLO 9
     LDI HIGH(MOVE_LIST)
-    PHI 9
-    LDI LOW(MOVE_LIST)
-    PLO 9              ; 9 = move list pointer
+    ADCI 0              ; Add carry
+    PHI 9               ; R9 = ply-indexed move list
 
     CALL GENERATE_MOVES
     ; Returns: D = move count
@@ -105,11 +123,24 @@ NEGAMAX_CONTINUE:
     ; Save move count to stack
     STXD
 
-    ; Reset R9 to START of move list (GENERATE_MOVES left it at the end!)
-    LDI HIGH(MOVE_LIST)
-    PHI 9
-    LDI LOW(MOVE_LIST)
+    ; Reset R9 to START of ply-indexed move list
+    ; Recalculate base (simpler than saving it)
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    SHL
+    SHL
+    SHL
+    SHL
+    SHL
+    SHL                 ; D = ply × 64
+    ADI LOW(MOVE_LIST)
     PLO 9
+    LDI HIGH(MOVE_LIST)
+    ADCI 0              ; Add carry
+    PHI 9               ; R9 = ply-indexed move list start
 
     ; -----------------------------------------------
     ; Initialize best score to -INFINITY in memory
@@ -248,7 +279,20 @@ NEGAMAX_MOVE_LOOP:
     STXD
     LDN 10              ; UNDO_HALFMOVE
     STXD
-    ; Stack now has: [UNDO_*][beta][alpha][depth][R8][R9]...
+
+    ; -----------------------------------------------
+    ; Save BEST_SCORE to stack (2 bytes) for recursive safety
+    ; Child calls will reinitialize BEST_SCORE to -infinity!
+    ; -----------------------------------------------
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    LDA 10              ; BEST_SCORE_HI
+    STXD
+    LDN 10              ; BEST_SCORE_LO
+    STXD
+    ; Stack now has: [BEST_SCORE][UNDO_*][beta][alpha][depth][R9]...
 
     ; Compute new_alpha = -beta, new_beta = -alpha
     ; Load beta from memory, negate, store as new alpha
@@ -352,6 +396,21 @@ NEGAMAX_MOVE_LOOP:
     STR 10              ; SCORE_HI/LO = negated score
 
     ; -----------------------------------------------
+    ; Restore BEST_SCORE from stack FIRST (it was pushed last - LIFO!)
+    ; This was corrupted by child's NEGAMAX initialization!
+    ; -----------------------------------------------
+    LDI HIGH(BEST_SCORE_LO)
+    PHI 10
+    LDI LOW(BEST_SCORE_LO)
+    PLO 10
+    IRX
+    LDXA                ; BEST_SCORE_LO
+    STR 10
+    DEC 10
+    LDX                 ; BEST_SCORE_HI (R2 stays at this slot)
+    STR 10
+
+    ; -----------------------------------------------
     ; Restore UNDO_* from stack (6 bytes) before UNMAKE_MOVE
     ; -----------------------------------------------
     LDI HIGH(UNDO_HALFMOVE)
@@ -386,7 +445,7 @@ NEGAMAX_MOVE_LOOP:
     ; -----------------------------------------------
     ; Restore context (memory-based alpha/beta - R6 is SCRT linkage!)
     ; -----------------------------------------------
-    ; Stack order (low to high): beta_lo, beta_hi, alpha_lo, alpha_hi, depth_lo, depth_hi, R8, R9
+    ; Stack order (low to high): beta_lo, beta_hi, alpha_lo, alpha_hi, depth_lo, depth_hi, R9
 
     ; Pop beta from stack to BETA memory (big-endian)
     IRX                 ; Point to beta_lo
@@ -493,16 +552,16 @@ NEGAMAX_MOVE_LOOP:
     LBNZ NEGAMAX_BETA_DIFF_SIGN
 
     ; Same sign - use subtraction result
-    ; Compute score - beta (SD does D - M(X), not M(X) - D like SM!)
+    ; Compute score - beta: SM does D - M(X), SD does M(X) - D
     SEX 10
     GLO 7
     STR 10              ; M(R10) = beta_lo
     GLO 13              ; D = score_lo
-    SD                  ; D = score_lo - beta_lo (FIXED: was SM which gave beta - score!)
+    SM                  ; D = D - M(X) = score_lo - beta_lo
     GHI 7
     STR 10              ; M(R10) = beta_hi
     GHI 13              ; D = score_hi
-    SDB                 ; D = score_hi - beta_hi - borrow (FIXED: was SMB)
+    SMB                 ; D = D - M(X) - borrow = score_hi - beta_hi - borrow
     SEX 2               ; X = R2 (restore)
 
     ; Check sign bit (negative means score < beta, no cutoff)
@@ -666,7 +725,7 @@ NEGAMAX_NEXT_MOVE:
     IRX                ; Point to move_count
     LDX                ; Pop move count (R2 at now-empty slot)
     SMI 1              ; Decrement
-    BZ NEGAMAX_LOOP_DONE  ; If count == 0, exit loop
+    LBZ NEGAMAX_LOOP_DONE ; If count == 0, exit loop (long branch)
     STXD               ; Push decremented count
     LBR NEGAMAX_MOVE_LOOP
 
@@ -970,7 +1029,7 @@ QS_LOOP:
     ; Negate if black to move (R12: 0=white, 8=black)
     GLO 12
     ANI $08             ; Check if black (COLOR_MASK)
-    BZ QS_NO_NEG
+    LBZ QS_NO_NEG       ; Long branch - crosses page boundary
     ; Negate R9 (R6 is SCRT linkage - off limits!)
     GLO 9
     SDI 0
@@ -979,9 +1038,21 @@ QS_LOOP:
     SDBI 0
     PHI 9
 QS_NO_NEG:
+    ; Save score (R9) before UNMAKE_MOVE clobbers it
+    GHI 9
+    STXD
+    GLO 9
+    STXD
 
     ; Unmake move
     CALL UNMAKE_MOVE
+
+    ; Restore score (R9)
+    IRX
+    LDXA
+    PLO 9
+    LDX
+    PHI 9
 
     ; Restore move count
     IRX
