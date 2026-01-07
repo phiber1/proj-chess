@@ -129,7 +129,7 @@ DEBUG_EVAL EQU 0
 /* #define CFG_USE_TRANSPOSITION_TABLE */
 /* #define CFG_USE_OPENING_BOOK */
 /* #define CFG_USE_PST */
-#define CFG_USE_KILLER_MOVES    /* ENABLED by default */
+/* #define CFG_USE_KILLER_MOVES */    /* DISABLED for debugging */
 /* #define CFG_USE_HISTORY */
 
 #ifdef CFG_USE_TRANSPOSITION_TABLE

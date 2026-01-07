@@ -1,6 +1,74 @@
-# RCA 1802/1806 Chess Engine - Register Allocation
+# RCA 1802 Chess Engine - Platform & Register Documentation
 
-**Last Updated:** January 1, 2026 (Post-UCI_WRITE_STRING removal)
+> **CLAUDE: If context was compacted, re-read this file and PROGRESS.md before continuing work.**
+
+This file contains platform-specific documentation and register allocation for the chess engine.
+
+**Related files:**
+- `PROGRESS.md` - Current session notes
+- `PROGRESS-movegen.md` - Move generation debugging (Dec 11-17, 2025)
+- `PROGRESS-search.md` - Search implementation & debugging (Dec 18-28, 2025)
+
+---
+
+## Hardware Platforms
+
+This project has been developed on TWO different platforms:
+
+### Platform 1: Membership Card (Emulator) - Dec 11-20, 2025
+- **CPU:** 1802 at 1.75 MHz (emulated)
+- **Mode:** STANDALONE - our own SCRT and Chuck Yakym's bit-bang serial routines
+- **Serial:** Software bit-bang at 9600 baud using EF3/Q
+- **Register constraints (standalone mode):**
+  - R11.0: Serial shift register
+  - R14.0: Baud rate delay counter
+  - R15.0: Bit counter
+  - These are ONLY relevant to standalone mode!
+
+### Platform 2: ELPH (Real Hardware) - Dec 21 onwards
+- **CPU:** CDP1806 at 12 MHz
+- **Mode:** BIOS - hardware provides SCRT and serial I/O via BIOS entry points
+- **Serial:** Hardware UART via BIOS calls
+- **BIOS Entry Points:**
+  - F_TYPE ($FF03): Output character from D
+  - F_READ ($FF06): Read character into D (with echo)
+  - F_MSG ($FF09): Output null-terminated string at R15
+- **Register constraints (BIOS mode):**
+  - R14.1: Baud constant - NEVER TOUCH!
+  - R14.0: Clobbered by every BIOS call
+  - R0-R6: Reserved for SCRT (provided by BIOS)
+
+---
+
+## Current Build Mode
+
+**We are now using BIOS mode exclusively.** The standalone mode code still exists in serial-io.asm for reference but is not compiled.
+
+Build configuration: `#define CFG_USE_BIOS` in config.asm
+
+---
+
+## Key Differences
+
+| Aspect | Standalone (Membership Card) | BIOS (ELPH) |
+|--------|------------------------------|-------------|
+| Clock | 1.75 MHz | 12 MHz (6.7x faster) |
+| Serial | Bit-bang (R11, R14, R15) | BIOS F_TYPE (clobbers R14.0 only) |
+| SCRT | Our own implementation | BIOS provides it |
+| R14 | Used for bit timing | OFF LIMITS (baud constant) |
+| R15 | Used for bit counter | Safe, but F_MSG uses it |
+
+---
+
+## IMPORTANT: Register Clobbering Notes in Earlier Sessions
+
+Some earlier debug sessions (Dec 11-20) mention "SERIAL_WRITE_CHAR clobbers R11.0, R14.0, R15.0" - this refers to **standalone mode only**. In BIOS mode, F_TYPE only clobbers R14.0.
+
+---
+
+# Register Allocation
+
+**Last Updated:** January 5, 2026
 
 ## System Reserved (NEVER touch)
 
@@ -50,7 +118,9 @@ Despite older documentation, R10 is **NOT** a preserved "board pointer":
 ### R14 - BAUD Rate Constant (BIOS Mode)
 - **R14.1:** BIOS baud rate constant - NEVER use PHI 14 or GHI 14!
 - **R14.0:** Clobbered by every F_TYPE call - safe to use as scratch
-- SERIAL_PRINT_HEX saves byte in R14.0 (already clobbered by F_TYPE)
+- SERIAL_PRINT_HEX saves byte on stack (F_TYPE clobbers R14.0)
+
+---
 
 ## BIOS Register Usage
 
@@ -62,6 +132,8 @@ Despite older documentation, R10 is **NOT** a preserved "board pointer":
 
 **IMPORTANT:** BIOS calls save R13/R15 to stack on entry - R2 must point to available stack slot.
 **NOTE:** BIOS SCRT only uses R4, R5, R6. Other registers (R7-R13, R15) are preserved.
+
+---
 
 ## Function Register Usage Summary
 
@@ -89,12 +161,13 @@ Despite older documentation, R10 is **NOT** a preserved "board pointer":
 - R11: Accumulator for score
 
 ### MAKE_MOVE / UNMAKE_MOVE (makemove.asm)
+- R9: Clobbered (used internally)
 - R10.0: Moving piece
 - R10.1: Captured piece
 - R13: Decoded from/to squares
 
 ### SERIAL_READ_LINE (serial-io.asm)
-- R8: Buffer pointer
+- R7: Buffer pointer (changed from R8)
 - R9.0: Max length, R9.1: count
 - R10.0: Temp character storage (during backspace)
 
@@ -102,26 +175,35 @@ Despite older documentation, R10 is **NOT** a preserved "board pointer":
 - R10: Frame address pointer (local)
 - Saves/restores: R7, R8, R9, R11, R12 (10 bytes per ply)
 
+---
+
 ## Memory-Based Globals (board-0x88.asm)
 
 All 16-bit values use **big-endian** layout: high byte at lower address.
 
 | Address | Name | Purpose |
 |---------|------|---------|
-| $6200   | MOVE_LIST | Negamax move buffer (256 bytes) |
-| $6300   | QS_MOVE_LIST | Quiescence move buffer (256 bytes) |
-| $6400   | GAME_STATE | Game state block |
+| $6000-$607F | BOARD | 128-byte 0x88 board array |
+| $6080-$608F | GAME_STATE | Game state (16 bytes) |
+| $6090-$618F | MOVE_HIST | Move history for undo (256 bytes) |
+| $6200-$63FF | MOVE_LIST | Ply-indexed move buffers (128 bytes/ply, 4 plies max) |
+| $6400-$64FF | Engine vars | See below |
+| $6500-$65FF | QS_MOVE_LIST | Quiescence move buffer (overlays UCI_BUFFER during search) |
+| $6400   | HISTORY_PTR | Move history pointer (2 bytes) |
 | $6408   | UNDO_CAPTURED | Captured piece for unmake |
 | $6409   | UNDO_FROM | From square for unmake |
 | $640A   | UNDO_TO | To square for unmake |
 | $640B   | UNDO_CASTLING | Castling rights for unmake |
 | $640C   | UNDO_EP | EP square for unmake |
 | $640D   | UNDO_HALFMOVE | Halfmove clock for unmake |
+| $6410   | BEST_MOVE | Best move found (2 bytes) |
 | $6442   | ALPHA_HI/LO | Alpha bound (2 bytes, big-endian) |
 | $6444   | BETA_HI/LO | Beta bound (2 bytes, big-endian) |
 | $6446   | SCORE_HI/LO | Current score (2 bytes, big-endian) |
 | $6448   | CURRENT_PLY | Current ply depth (1 byte, 0-7) |
 | $6450   | PLY_STATE_BASE | Ply-indexed state (80 bytes, 10/ply) |
+
+---
 
 ## Stack Usage Rules
 
@@ -148,23 +230,7 @@ All 16-bit values use **big-endian** layout: high byte at lower address.
     GLO 15          ; Retrieve saved value
 ```
 
-## Bugs Fixed (History)
-
-### Dec 28, 2025: SERIAL_PRINT_HEX corrupting R9
-- **Bug:** Used R9.0 to save byte being printed, but R9 is move list pointer
-- **Fix:** Changed to R14.0 (already clobbered by F_TYPE)
-
-### Dec 28, 2025: SAVE/RESTORE_SEARCH_CONTEXT vs SCRT
-- **Bug:** Context save/restore didn't account for SCRT linkage on stack
-- **Fix:** Pop SCRT linkage first, then access saved context
-
-### Dec 30, 2025: UNDO_* variables in ROM
-- **Bug:** UNDO_* defined with DS (in code section = ROM), writes had no effect
-- **Fix:** Changed to EQU definitions pointing to RAM at $6408+
-
-### Jan 1, 2026: UCI_WRITE_STRING clobbering R10
-- **Bug:** Custom string output function used R10 as iterator
-- **Fix:** Removed function entirely; use F_MSG with R15 directly
+---
 
 ## Calling Conventions
 
@@ -180,3 +246,27 @@ All 16-bit values use **big-endian** layout: high byte at lower address.
 - **Caller-save (assume clobbered):** R7-R11, R13-R15
 - **Preserved by convention:** R12 (side to move)
 - **Never touch:** R0-R6, R14.1
+
+---
+
+## Historical Bugs (Reference)
+
+### Dec 28, 2025: SERIAL_PRINT_HEX corrupting R9
+- **Bug:** Used R9.0 to save byte being printed, but R9 is move list pointer
+- **Fix:** Changed to R14.0 (already clobbered by F_TYPE)
+
+### Dec 28, 2025: SAVE/RESTORE_SEARCH_CONTEXT vs SCRT
+- **Bug:** Context save/restore didn't account for SCRT linkage on stack
+- **Fix:** Replaced with ply-indexed state arrays (no stack manipulation)
+
+### Dec 30, 2025: UNDO_* variables in ROM
+- **Bug:** UNDO_* defined with DS (in code section = ROM), writes had no effect
+- **Fix:** Changed to EQU definitions pointing to RAM at $6408+
+
+### Jan 1, 2026: SQUARE_TO_ALGEBRAIC clobbering R13.0
+- **Bug:** Used R13.0 to save square, but caller stored 'to' square there
+- **Fix:** Changed to use R7.0 instead
+
+### Jan 5, 2026: SERIAL_PRINT_HEX clobbering low nibble
+- **Bug:** Stored byte in R14.0, but F_TYPE clobbers R14.0 before second nibble
+- **Fix:** Changed to use stack (STXD/IRX/LDX)

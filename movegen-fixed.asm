@@ -584,9 +584,9 @@ GEN_SLIDE_N_LOOP:
     ANI $88
     LBNZ GEN_SLIDE_N_RET
     GLO 7               ; Get target back (ANI destroyed D)
-    PLO 11              ; R11.0 = target
+    PLO 11              ; R11.0 = target (for CHECK_TARGET_SQUARE)
     CALL CHECK_TARGET_SQUARE
-    PLO 8               ; Save result
+    PLO 11              ; Save result to R11.0 (R8 clobbered by ADD_MOVE_ENCODED)
     LBZ GEN_SLIDE_N_RET
     GHI 11
     PHI 13
@@ -594,7 +594,7 @@ GEN_SLIDE_N_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_N_RET  ; Capture, stop
     LBR GEN_SLIDE_N_LOOP
@@ -611,10 +611,10 @@ GEN_SLIDE_NE_LOOP:
     PLO 7
     ANI $88
     LBNZ GEN_SLIDE_NE_RET
-    GLO 7               ; Get target back (ANI destroyed D)
+    GLO 7
     PLO 11
     CALL CHECK_TARGET_SQUARE
-    PLO 8
+    PLO 11              ; Save result to R11.0
     LBZ GEN_SLIDE_NE_RET
     GHI 11
     PHI 13
@@ -622,7 +622,7 @@ GEN_SLIDE_NE_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_NE_RET
     LBR GEN_SLIDE_NE_LOOP
@@ -639,10 +639,10 @@ GEN_SLIDE_E_LOOP:
     PLO 7
     ANI $88
     LBNZ GEN_SLIDE_E_RET
-    GLO 7               ; Get target back (ANI destroyed D)
+    GLO 7
     PLO 11
     CALL CHECK_TARGET_SQUARE
-    PLO 8
+    PLO 11              ; Save result to R11.0
     LBZ GEN_SLIDE_E_RET
     GHI 11
     PHI 13
@@ -650,7 +650,7 @@ GEN_SLIDE_E_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_E_RET
     LBR GEN_SLIDE_E_LOOP
@@ -667,10 +667,10 @@ GEN_SLIDE_SE_LOOP:
     PLO 7
     ANI $88
     LBNZ GEN_SLIDE_SE_RET
-    GLO 7               ; Get target back (ANI destroyed D)
+    GLO 7
     PLO 11
     CALL CHECK_TARGET_SQUARE
-    PLO 8
+    PLO 11              ; Save result to R11.0
     LBZ GEN_SLIDE_SE_RET
     GHI 11
     PHI 13
@@ -678,7 +678,7 @@ GEN_SLIDE_SE_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_SE_RET
     LBR GEN_SLIDE_SE_LOOP
@@ -695,10 +695,10 @@ GEN_SLIDE_S_LOOP:
     PLO 7
     ANI $88
     LBNZ GEN_SLIDE_S_RET
-    GLO 7               ; Get target back (ANI destroyed D)
+    GLO 7
     PLO 11
     CALL CHECK_TARGET_SQUARE
-    PLO 8
+    PLO 11              ; Save result to R11.0
     LBZ GEN_SLIDE_S_RET
     GHI 11
     PHI 13
@@ -706,7 +706,7 @@ GEN_SLIDE_S_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_S_RET
     LBR GEN_SLIDE_S_LOOP
@@ -723,10 +723,10 @@ GEN_SLIDE_SW_LOOP:
     PLO 7
     ANI $88
     LBNZ GEN_SLIDE_SW_RET
-    GLO 7               ; Get target back (ANI destroyed D)
+    GLO 7
     PLO 11
     CALL CHECK_TARGET_SQUARE
-    PLO 8
+    PLO 11              ; Save result to R11.0
     LBZ GEN_SLIDE_SW_RET
     GHI 11
     PHI 13
@@ -734,7 +734,7 @@ GEN_SLIDE_SW_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_SW_RET
     LBR GEN_SLIDE_SW_LOOP
@@ -751,10 +751,10 @@ GEN_SLIDE_W_LOOP:
     PLO 7
     ANI $88
     LBNZ GEN_SLIDE_W_RET
-    GLO 7               ; Get target back (ANI destroyed D)
+    GLO 7
     PLO 11
     CALL CHECK_TARGET_SQUARE
-    PLO 8
+    PLO 11              ; Save result to R11.0
     LBZ GEN_SLIDE_W_RET
     GHI 11
     PHI 13
@@ -762,7 +762,7 @@ GEN_SLIDE_W_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_W_RET
     LBR GEN_SLIDE_W_LOOP
@@ -779,10 +779,10 @@ GEN_SLIDE_NW_LOOP:
     PLO 7
     ANI $88
     LBNZ GEN_SLIDE_NW_RET
-    GLO 7               ; Get target back (ANI destroyed D)
+    GLO 7
     PLO 11
     CALL CHECK_TARGET_SQUARE
-    PLO 8
+    PLO 11              ; Save result to R11.0
     LBZ GEN_SLIDE_NW_RET
     GHI 11
     PHI 13
@@ -790,7 +790,7 @@ GEN_SLIDE_NW_LOOP:
     PLO 13
     LDI MOVE_NORMAL
     CALL ADD_MOVE_ENCODED
-    GLO 8
+    GLO 11              ; Get result from R11.0
     XRI 2
     LBZ GEN_SLIDE_NW_RET
     LBR GEN_SLIDE_NW_LOOP

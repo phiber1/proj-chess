@@ -191,6 +191,12 @@ DECODE_TO_DONE:
 ; NOTE: R14 is off-limits (BIOS uses it for serial baud rate)
 ; ------------------------------------------------------------------------------
 ADD_MOVE_ENCODED:
+    ; Save R7 (used by slider loops for current position!)
+    GLO 7
+    STXD
+    GHI 7
+    STXD
+
     ; Store flags from D to MOVE_FLAGS_TEMP (R14 is off-limits)
     STXD                ; Push flags to stack
     LDI HIGH(MOVE_FLAGS_TEMP)
@@ -212,6 +218,13 @@ ADD_MOVE_ENCODED:
     GLO 8
     STR 9
     INC 9
+
+    ; Restore R7
+    IRX
+    LDXA
+    PHI 7
+    LDX
+    PLO 7
 
     RETN
 

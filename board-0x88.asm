@@ -53,8 +53,10 @@ KING_TYPE   EQU 6
 BOARD       EQU $6000   ; 128 bytes - 0x88 board array ($6000-$607F)
 GAME_STATE  EQU $6080   ; Game state structure (16 bytes) ($6080-$608F)
 MOVE_HIST   EQU $6090   ; Move history for undo (256 bytes) ($6090-$618F)
-MOVE_LIST   EQU $6200   ; Generated moves for negamax (256 bytes) ($6200-$62FF)
-QS_MOVE_LIST EQU $6300  ; Generated moves for quiescence (256 bytes) ($6300-$63FF)
+MOVE_LIST   EQU $6200   ; Ply-indexed move lists (512 bytes) ($6200-$63FF)
+                        ; Each ply gets 128 bytes (64 moves max): ply×128 + $6200
+QS_MOVE_LIST EQU $6500  ; Quiescence moves (256 bytes) ($6500-$65FF)
+                        ; NOTE: Overlays UCI_BUFFER, unused during search
 
 ; ------------------------------------------------------------------------------
 ; Engine Variables: $6400-$64FF

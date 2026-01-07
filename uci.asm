@@ -437,11 +437,11 @@ UCI_CMD_GO:
     ; Depths > 9 would take impractically long on the 1802 anyway
     LDN 10
     SMI '0'             ; Convert ASCII to value
-    BM UCI_GO_SET_DEPTH ; Invalid (< '0'), use default
+    LBNF UCI_GO_SET_DEPTH ; Invalid (< '0'), use default
     SMI 10              ; Check if >= 10
-    BDF UCI_GO_SET_DEPTH ; >= 10, use default
+    LBDF UCI_GO_SET_DEPTH ; >= 10, use default
     ADI 10              ; Restore 0-9 value
-    BZ UCI_GO_SET_DEPTH ; Depth 0 invalid, use default
+    LBZ UCI_GO_SET_DEPTH ; Depth 0 invalid, use default
     PLO 7               ; R7.0 = parsed depth (1-9)
 
 UCI_GO_SET_DEPTH:

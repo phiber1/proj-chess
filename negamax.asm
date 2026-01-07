@@ -92,29 +92,31 @@ NEGAMAX_CONTINUE:
     ; Generate moves for current position
     ; -----------------------------------------------
     ; Use ply-indexed move list to avoid overwrites during recursion!
-    ; Each ply gets 64 bytes (32 moves): PLY 0 at $6200, PLY 1 at $6240, etc.
-    ; Calculate: MOVE_LIST + (CURRENT_PLY × 64)
+    ; Each ply gets 128 bytes (64 moves): PLY 0 at $6200, PLY 1 at $6280, etc.
+    ; ply × 128 overflows 8 bits for ply >= 2, so use 16-bit math:
+    ;   offset_hi = ply >> 1, offset_lo = (ply & 1) << 7
 
     LDI HIGH(CURRENT_PLY)
     PHI 10
     LDI LOW(CURRENT_PLY)
     PLO 10
-    LDN 10              ; D = current ply (0-7)
+    LDN 10              ; D = current ply (0-3)
 
-    ; Multiply by 64: shift left 6 times
-    SHL                 ; ×2
-    SHL                 ; ×4
-    SHL                 ; ×8
-    SHL                 ; ×16
-    SHL                 ; ×32
-    SHL                 ; ×64
+    ; Calculate high byte: HIGH(MOVE_LIST) + (ply >> 1)
+    SHR                 ; D = ply >> 1 (0 or 1)
+    ADI HIGH(MOVE_LIST) ; D = $62 + (ply >> 1)
+    PHI 9               ; R9.1 = high byte
 
-    ; Add to MOVE_LIST base
-    ADI LOW(MOVE_LIST)
-    PLO 9
-    LDI HIGH(MOVE_LIST)
-    ADCI 0              ; Add carry
-    PHI 9               ; R9 = ply-indexed move list
+    ; Calculate low byte: (ply & 1) << 7 = $00 or $80
+    LDN 10              ; D = ply (reload)
+    ANI $01             ; D = ply & 1
+    BZ NEGAMAX_PLY_EVEN
+    LDI $80             ; Odd ply: low byte = $80
+    BR NEGAMAX_PLY_DONE
+NEGAMAX_PLY_EVEN:
+    LDI $00             ; Even ply: low byte = $00
+NEGAMAX_PLY_DONE:
+    PLO 9               ; R9 = ply-indexed move list
 
     CALL GENERATE_MOVES
     ; Returns: D = move count
@@ -123,24 +125,28 @@ NEGAMAX_CONTINUE:
     ; Save move count to stack
     STXD
 
-    ; Reset R9 to START of ply-indexed move list
-    ; Recalculate base (simpler than saving it)
+    ; Reset R9 to START of ply-indexed move list (128 bytes per ply)
     LDI HIGH(CURRENT_PLY)
     PHI 10
     LDI LOW(CURRENT_PLY)
     PLO 10
     LDN 10              ; D = current ply
-    SHL
-    SHL
-    SHL
-    SHL
-    SHL
-    SHL                 ; D = ply × 64
-    ADI LOW(MOVE_LIST)
-    PLO 9
-    LDI HIGH(MOVE_LIST)
-    ADCI 0              ; Add carry
-    PHI 9               ; R9 = ply-indexed move list start
+
+    ; Calculate high byte: HIGH(MOVE_LIST) + (ply >> 1)
+    SHR                 ; D = ply >> 1
+    ADI HIGH(MOVE_LIST)
+    PHI 9
+
+    ; Calculate low byte: (ply & 1) << 7
+    LDN 10              ; D = ply (reload)
+    ANI $01
+    BZ NEGAMAX_RESET_EVEN
+    LDI $80
+    BR NEGAMAX_RESET_DONE
+NEGAMAX_RESET_EVEN:
+    LDI $00
+NEGAMAX_RESET_DONE:
+    PLO 9               ; R9 = ply-indexed move list start
 
     ; -----------------------------------------------
     ; Initialize best score to -INFINITY in memory
@@ -782,10 +788,22 @@ NEGAMAX_RETURN:
 
 NEGAMAX_LEAF:
     ; -----------------------------------------------
-    ; Leaf node - do quiescence search
+    ; Leaf node - static evaluation only (QS disabled for speed test)
     ; -----------------------------------------------
-    CALL QUIESCENCE_SEARCH
-    ; Returns score in R9 (already from side-to-move's perspective)
+    CALL EVALUATE
+    ; Returns score in R9 (from white's perspective)
+
+    ; Negate if black to move
+    GLO 12
+    ANI $08
+    LBZ NEGAMAX_LEAF_DONE
+    GLO 9
+    SDI 0
+    PLO 9
+    GHI 9
+    SDBI 0
+    PHI 9
+NEGAMAX_LEAF_DONE:
 
     ; Save return value to SCORE memory BEFORE restore (RESTORE clobbers R9!)
     ; Big-endian: store high byte at lower address (SCORE_HI), low at SCORE_LO
@@ -1192,15 +1210,12 @@ STORE_KILLER_MOVE:
     GHI 13
     STR 10
 
-    ; Reset pointer to killer1 position
-    INC 2
-    LDN 2
-    DEC 2
-    GLO 13
-    ADD
-    PLO 10
+    ; Reset pointer to killer1 position (R10 is at killer2_high, need killer1_low)
+    DEC 10              ; killer2_low
+    DEC 10              ; killer1_high
+    DEC 10              ; killer1_low
 
-    ; Store new killer1
+    ; Store new killer1 (R11 = move that caused cutoff)
     GLO 11
     STR 10
     INC 10
