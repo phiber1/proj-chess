@@ -341,8 +341,17 @@ UCI_POS_PARSE_MOVE:
     GLO 7
     STR 8               ; MOVE_TO = to
 
-    ; Apply the move
+    ; Apply the move (save R10 - MAKE_MOVE clobbers it!)
+    GHI 10
+    STXD
+    GLO 10
+    STXD
     CALL MAKE_MOVE
+    IRX
+    LDXA
+    PLO 10
+    LDX
+    PHI 10
 
     ; Continue parsing
     LBR UCI_POS_MOVE_LOOP
