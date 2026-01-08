@@ -341,6 +341,43 @@ UCI_POS_PARSE_MOVE:
     GLO 7
     STR 8               ; MOVE_TO = to
 
+    ; ---- Record move in MOVE_HIST for opening book ----
+    ; Calculate offset: GAME_PLY * 2
+    LDI HIGH(GAME_PLY)
+    PHI 8
+    LDI LOW(GAME_PLY)
+    PLO 8
+    LDN 8               ; D = GAME_PLY
+    SHL                 ; D = GAME_PLY * 2
+    PLO 9               ; R9.0 = offset
+
+    ; R9 = MOVE_HIST + offset
+    LDI HIGH(MOVE_HIST)
+    PHI 9
+    LDI LOW(MOVE_HIST)
+    SEX 2
+    STR 2
+    GLO 9               ; D = offset
+    ADD                 ; D = LOW(MOVE_HIST) + offset
+    PLO 9
+    LDI HIGH(MOVE_HIST)
+    ADCI 0              ; Add carry to high byte
+    PHI 9
+
+    ; Store from square
+    GHI 7               ; from square
+    STR 9
+    INC 9
+    ; Store to square
+    GLO 7               ; to square
+    STR 9
+
+    ; Increment GAME_PLY
+    LDN 8               ; R8 still points to GAME_PLY
+    ADI 1
+    STR 8
+    ; ---- End of MOVE_HIST recording ----
+
     ; Apply the move (save R10 - MAKE_MOVE clobbers it!)
     GHI 10
     STXD
@@ -465,9 +502,33 @@ UCI_GO_SET_DEPTH:
     GLO 7
     STR 13              ; SEARCH_DEPTH low = depth
 
+    ; ---- Check opening book first ----
+    CALL BOOK_LOOKUP
+    LBZ UCI_GO_SEARCH   ; D=0: no book hit, do normal search
+
+    ; Book hit! Copy BOOK_MOVE to BEST_MOVE
+    LDI HIGH(BOOK_MOVE_FROM)
+    PHI 8
+    LDI LOW(BOOK_MOVE_FROM)
+    PLO 8
+    LDI HIGH(BEST_MOVE)
+    PHI 9
+    LDI LOW(BEST_MOVE)
+    PLO 9
+
+    ; Store book move in BEST_MOVE (from in high, to in low)
+    LDA 8               ; BOOK_MOVE_FROM
+    STR 9               ; BEST_MOVE high = from
+    INC 9
+    LDN 8               ; BOOK_MOVE_TO
+    STR 9               ; BEST_MOVE low = to
+    LBR UCI_GO_SEND_MOVE
+
+UCI_GO_SEARCH:
     ; Run search
     CALL SEARCH_POSITION
 
+UCI_GO_SEND_MOVE:
     ; Best move now at BEST_MOVE
 
     ; Send best move

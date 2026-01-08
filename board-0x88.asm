@@ -123,6 +123,11 @@ MOVECOUNT_TEMP  EQU $644A   ; 1 byte - saved move count for loop decrement
 MOVE_TEMP_HI    EQU $644B   ; 1 byte - saved encoded move high byte (SCRT clobbers R8!)
 MOVE_TEMP_LO    EQU $644C   ; 1 byte - saved encoded move low byte
 
+; Opening book support
+GAME_PLY        EQU $644D   ; 1 byte - game ply (moves since start position)
+BOOK_MOVE_FROM  EQU $644E   ; 1 byte - book response from square
+BOOK_MOVE_TO    EQU $644F   ; 1 byte - book response to square
+
 ; ------------------------------------------------------------------------------
 ; Ply-Indexed State Array: $6450-$649F (80 bytes = 8 plies × 10 bytes)
 ; ------------------------------------------------------------------------------
@@ -538,6 +543,14 @@ INIT_MOVE_HISTORY:
     INC 10
     LDI LOW(MOVE_HIST)
     STR 10              ; HISTORY_PTR low byte = $90
+
+    ; Clear GAME_PLY for opening book tracking
+    LDI HIGH(GAME_PLY)
+    PHI 10
+    LDI LOW(GAME_PLY)
+    PLO 10
+    LDI 0
+    STR 10              ; GAME_PLY = 0
     RETN
 
 ; ==============================================================================

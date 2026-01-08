@@ -10,17 +10,83 @@ This file contains current session notes. For historical sessions and reference 
 
 ---
 
-## Current Status (January 6, 2026)
+## Current Status (January 7, 2026)
 
-- **Depth 2:** Working correctly, produces `bestmove b1c3` in ~38 seconds (slow - see notes)
+- **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
+- **Depth 2:** Working correctly, ~38 seconds when out of book
 - **Depth 3:** Works but very slow (search is correct, just time-consuming)
 - **Engine is functionally correct** - search, move generation, evaluation all working
+- **Engine size:** 19,250 bytes
 
-### Performance Issue
-- 38 seconds for depth 2 on 12 MHz 1806 is too slow
-- Main bottleneck identified: Quiescence Search generates ALL moves then filters for captures
-- Test build with QS disabled available for speed comparison
-- Future optimization: implement capture-only move generator for QS
+### Recent Milestones
+- Opening book support added - instant moves in known positions
+- R10 clobbering bug fixed in UCI position parsing
+- Removed unused GENERATE_CAPTURES code (2.6KB savings)
+
+---
+
+## Session: January 7, 2026 - Opening Book Implementation
+
+### Summary
+Implemented opening book support for instant moves in the opening phase. Engine now plays the Giuoco Piano/Italian Game instantly through 7-8 moves.
+
+### Components Added
+
+**1. Book Data Generator (`tools/pgn_to_book.py`)**
+- Parses PGN files and generates assembly book data
+- Tracks board state to convert algebraic notation to 0x88 squares
+- Includes `can_piece_reach()` for proper piece disambiguation
+- Generated from GiuocoPiano.pgn (52,811 games)
+
+**2. Book Data (`opening-book.asm`)**
+- 47 entries, 640 bytes
+- Format: `[ply] [move1_from] [move1_to] ... [response_from] [response_to]`
+- Sorted by ply for efficient early-exit
+- Terminated with $FF marker
+
+**3. Book Lookup (`opening-book-lookup.asm`)**
+- `BOOK_LOOKUP` function searches book for current position
+- Returns D=1 if hit (response in BOOK_MOVE_FROM/TO), D=0 if miss
+- Early exit when book ply exceeds game ply
+
+**4. Game Move Tracking**
+- Added `GAME_PLY` variable to track moves since start position
+- UCI position parsing now records moves to `MOVE_HIST` buffer
+- `INIT_MOVE_HISTORY` clears both HISTORY_PTR and GAME_PLY
+
+**5. UCI Integration**
+- `UCI_CMD_GO` calls `BOOK_LOOKUP` before search
+- If book hit, returns instantly without searching
+- If miss, falls back to normal search
+
+### Files Modified
+- `board-0x88.asm` - Added GAME_PLY, BOOK_MOVE_FROM/TO; updated INIT_MOVE_HISTORY
+- `uci.asm` - Move recording in position parsing; book check in go command
+- `build.sh` - Added opening-book-lookup.asm and opening-book.asm
+
+### Test Results
+```
+position startpos
+go depth 2
+→ bestmove e2e4 (instant - book hit)
+
+position startpos moves e2e4
+go depth 2
+→ bestmove e7e5 (instant - book hit)
+
+position startpos moves e2e4 e7e5
+go depth 2
+→ bestmove g1f3 (instant - book hit)
+
+position startpos moves e2e4 e7e5 g1f3
+go depth 2
+→ bestmove b8c6 (instant - book hit)
+```
+
+### Size Impact
+- Previous: 17,170 bytes
+- Current: 19,250 bytes
+- Added: ~2KB for book lookup code + 640 bytes book data
 
 ---
 

@@ -788,22 +788,10 @@ NEGAMAX_RETURN:
 
 NEGAMAX_LEAF:
     ; -----------------------------------------------
-    ; Leaf node - static evaluation only (QS disabled for speed test)
+    ; Leaf node - do quiescence search
     ; -----------------------------------------------
-    CALL EVALUATE
-    ; Returns score in R9 (from white's perspective)
-
-    ; Negate if black to move
-    GLO 12
-    ANI $08
-    LBZ NEGAMAX_LEAF_DONE
-    GLO 9
-    SDI 0
-    PLO 9
-    GHI 9
-    SDBI 0
-    PHI 9
-NEGAMAX_LEAF_DONE:
+    CALL QUIESCENCE_SEARCH
+    ; Returns score in R9 (already from side-to-move's perspective)
 
     ; Save return value to SCORE memory BEFORE restore (RESTORE clobbers R9!)
     ; Big-endian: store high byte at lower address (SCORE_HI), low at SCORE_LO
