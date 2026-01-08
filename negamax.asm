@@ -166,6 +166,24 @@ NEGAMAX_RESET_DONE:
     CALL ORDER_KILLER_MOVES
 
 NEGAMAX_SKIP_KILLER:
+    ; -----------------------------------------------
+    ; Order captures first (MVV-LVA preparation)
+    ; Only at ply 0-2 to avoid overhead deep in tree
+    ; -----------------------------------------------
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    SMI 3               ; Check if ply >= 3
+    LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 3
+
+    INC 2               ; Point to move count on stack
+    LDN 2               ; D = move count (peek, don't pop)
+    DEC 2               ; Restore stack pointer
+    CALL ORDER_CAPTURES_FIRST
+
+NEGAMAX_SKIP_CAPTURE_ORDER:
 
     ; -----------------------------------------------
     ; Initialize best score to -INFINITY in memory
@@ -1707,6 +1725,138 @@ OKM_K2_SWAP:
     STR 8
 
 OKM_DONE:
+    RETN
+
+; ------------------------------------------------------------------------------
+; ORDER_CAPTURES_FIRST - Move captures to front of move list (MVV-LVA prep)
+; ------------------------------------------------------------------------------
+; Input:  R9 = start of move list
+;         D = move count
+; Output: Move list reordered with captures at front
+; Uses:   R7, R8, R10, R11, R13
+; Note:   Call after GENERATE_MOVES, before move loop
+;         Captures scored by MVV-LVA: victim_type * 8 - attacker_type
+; ------------------------------------------------------------------------------
+ORDER_CAPTURES_FIRST:
+    ; Save move count
+    PLO 7               ; R7.0 = move count
+    LBZ OCF_DONE        ; No moves
+
+    ; R8 = front pointer (where to put next capture)
+    GHI 9
+    PHI 8
+    GLO 9
+    PLO 8               ; R8 = front = list start
+
+    ; R10 = scan pointer
+    GHI 9
+    PHI 10
+    GLO 9
+    PLO 10              ; R10 = scan = list start
+
+    ; R7.1 = remaining count to scan
+    GLO 7
+    PHI 7
+
+OCF_SCAN_LOOP:
+    GHI 7
+    LBZ OCF_DONE        ; No more moves to scan
+
+    ; Decode move at R10 to get target square
+    ; Move format: [flags:2][to:7][from:7]
+    ; Low byte bits 0-6 = from, High byte bits 0-5 << 1 | low byte bit 7 = to
+    LDA 10              ; Low byte
+    PLO 11              ; Save low byte
+    LDN 10              ; High byte
+    PHI 11              ; R11 = encoded move (hi.lo)
+
+    ; Extract 'to' square: (high & $3F) << 1 | (low >> 7)
+    ANI $3F
+    SHL
+    PLO 13              ; R13.0 = to bits 1-6
+    GLO 11              ; Low byte
+    ANI $80             ; Bit 7
+    LBZ OCF_TO_BIT0_CLR
+    GLO 13
+    ORI $01
+    PLO 13
+OCF_TO_BIT0_CLR:
+    ; R13.0 = to square, R11 = encoded move
+
+    ; Check if target square has a piece (any piece = potential capture)
+    ; Calculate BOARD + to_square
+    ; BOARD is at $6000, so high byte is $60, low byte is to_square
+    LDI HIGH(BOARD)
+    PHI 13
+    ; R13 now = $60xx where xx = to_square (already in R13.0)
+
+    ; Load piece at target square
+    LDN 13              ; D = piece at target
+    DEC 10              ; Reset R10 to low byte position
+
+    ; If piece is 0 (empty), not a capture
+    LBZ OCF_NEXT_MOVE   ; Empty square, skip
+
+    ; Non-empty = capture (we don't check color here for simplicity)
+    ; Fall through to OCF_IS_CAPTURE
+
+OCF_IS_CAPTURE:
+    ; Move is a capture - swap to front if not already there
+    ; R10 points to current move, R8 points to front
+    GHI 10
+    STR 2
+    GHI 8
+    XOR
+    LBNZ OCF_DO_SWAP
+    GLO 10
+    STR 2
+    GLO 8
+    XOR
+    LBZ OCF_ADVANCE_FRONT  ; Already at front
+
+OCF_DO_SWAP:
+    ; Swap 2-byte entries at R8 and R10
+    ; Save R8 entry to stack
+    LDA 8
+    STXD
+    LDN 8
+    STXD
+    DEC 8               ; Reset R8
+
+    ; Copy R10 to R8
+    LDA 10
+    STR 8
+    INC 8
+    LDN 10
+    STR 8
+    DEC 8
+    DEC 10              ; Reset both
+
+    ; Copy stack to R10
+    IRX
+    LDXA                ; High byte
+    INC 10
+    STR 10
+    DEC 10
+    LDX                 ; Low byte
+    STR 10
+
+OCF_ADVANCE_FRONT:
+    ; Advance front pointer
+    INC 8
+    INC 8
+
+OCF_NEXT_MOVE:
+    ; Advance scan pointer
+    INC 10
+    INC 10
+    ; Decrement counter
+    GHI 7
+    SMI 1
+    PHI 7
+    LBR OCF_SCAN_LOOP
+
+OCF_DONE:
     RETN
 
 ; ------------------------------------------------------------------------------
