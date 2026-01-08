@@ -942,6 +942,192 @@ QS_SAVE_STANDPAT:
     GLO 9               ; Low byte second
     STR 10              ; QS_BEST = stand-pat
 
+    ; -----------------------------------------------
+    ; Stand-pat beta cutoff: if stand-pat >= beta, return
+    ; (Position is already good enough, no need to search captures)
+    ; -----------------------------------------------
+    ; Load beta from memory (big-endian: HI at lower address)
+    LDI HIGH(BETA_HI)
+    PHI 10
+    LDI LOW(BETA_HI)
+    PLO 10
+    LDA 10              ; beta high
+    PHI 7
+    LDN 10              ; beta low
+    PLO 7               ; R7 = beta
+
+    ; Compare: stand-pat (R9) >= beta (R7)?
+    ; Signed comparison using COMPARE_TEMP
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+    GHI 9               ; stand-pat high
+    STR 10
+    GHI 7               ; beta high
+    XOR
+    ANI $80             ; Check if different signs
+    SEX 2
+    LBNZ QS_BETA_DIFF_SIGN
+
+    ; Same sign - compare magnitudes
+    ; stand-pat >= beta means stand-pat - beta >= 0, i.e., no borrow
+    SEX 10
+    GLO 7               ; beta low
+    STR 10
+    GLO 9               ; stand-pat low
+    SM                  ; D = stand-pat_lo - beta_lo
+    GHI 7               ; beta high
+    STR 10
+    GHI 9               ; stand-pat high
+    SMB                 ; D = stand-pat_hi - beta_hi - borrow
+    SEX 2
+    LBDF QS_RETURN      ; No borrow = stand-pat >= beta, cutoff!
+    LBR QS_NO_BETA_CUTOFF
+
+QS_BETA_DIFF_SIGN:
+    ; Different signs: positive >= negative always
+    ; stand-pat positive (bit 7 = 0) means stand-pat >= beta
+    GHI 9
+    ANI $80
+    LBZ QS_RETURN       ; stand-pat positive, beta negative -> cutoff
+
+QS_NO_BETA_CUTOFF:
+    ; -----------------------------------------------
+    ; Alpha update: if stand-pat > alpha, alpha = stand-pat
+    ; (Tightens window, makes beta cutoffs more likely)
+    ; -----------------------------------------------
+    ; Load alpha (R9 still has stand-pat)
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    LDA 10              ; alpha high
+    PHI 7
+    LDN 10              ; alpha low
+    PLO 7               ; R7 = alpha
+
+    ; Compare: stand-pat (R9) > alpha (R7)?
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+    GHI 9
+    STR 10
+    GHI 7
+    XOR
+    ANI $80
+    SEX 2
+    LBNZ QS_ALPHA_DIFF_SIGN
+
+    ; Same sign - R9 > R7 means R9 - R7 > 0 (positive, no borrow, not zero)
+    SEX 10
+    GLO 7
+    STR 10
+    GLO 9
+    SM                  ; D = stand-pat_lo - alpha_lo
+    PHI 8               ; Save low result
+    GHI 7
+    STR 10
+    GHI 9
+    SMB                 ; D = stand-pat_hi - alpha_hi - borrow
+    SEX 2
+    LBNF QS_NO_ALPHA_UPDATE  ; Borrow = stand-pat <= alpha
+    LBNZ QS_UPDATE_ALPHA     ; High diff non-zero and positive
+    GHI 8                    ; Check low diff
+    LBZ QS_NO_ALPHA_UPDATE   ; Both zero = equal, don't update
+    LBR QS_UPDATE_ALPHA
+
+QS_ALPHA_DIFF_SIGN:
+    ; Different signs: positive > negative
+    GHI 9
+    ANI $80
+    LBNZ QS_NO_ALPHA_UPDATE  ; stand-pat negative, alpha positive
+    ; stand-pat positive, alpha negative -> update
+
+QS_UPDATE_ALPHA:
+    ; alpha = stand-pat
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    GHI 9
+    STR 10
+    INC 10
+    GLO 9
+    STR 10
+
+QS_NO_ALPHA_UPDATE:
+    ; -----------------------------------------------
+    ; Delta pruning: if stand-pat + QUEEN_VALUE < alpha, return alpha
+    ; (Even capturing a queen can't raise alpha - futile to search)
+    ; -----------------------------------------------
+    ; Load alpha from memory (big-endian: HI at lower address)
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    LDA 10              ; alpha high
+    PHI 7
+    LDN 10              ; alpha low
+    PLO 7               ; R7 = alpha
+
+    ; Calculate stand-pat + QUEEN_VALUE (900 = $0384)
+    ; R9 = stand-pat, add 900
+    GLO 9
+    ADI LOW(900)        ; Add low byte of 900 ($84)
+    PLO 8
+    GHI 9
+    ADCI HIGH(900)      ; Add high byte of 900 ($03) + carry
+    PHI 8               ; R8 = stand-pat + 900
+
+    ; Compare: (stand-pat + 900) < alpha?
+    ; If R8 < R7, then delta prune
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+    GHI 8               ; (stand-pat + 900) high
+    STR 10
+    GHI 7               ; alpha high
+    XOR
+    ANI $80             ; Check if different signs
+    SEX 2
+    LBNZ QS_DELTA_DIFF_SIGN
+
+    ; Same sign - compare: R8 < R7 means R8 - R7 has borrow
+    SEX 10
+    GLO 7               ; alpha low
+    STR 10
+    GLO 8               ; (stand-pat + 900) low
+    SM                  ; D = (sp+900)_lo - alpha_lo
+    GHI 7               ; alpha high
+    STR 10
+    GHI 8               ; (stand-pat + 900) high
+    SMB                 ; D = (sp+900)_hi - alpha_hi - borrow
+    SEX 2
+    LBNF QS_DELTA_PRUNE ; Borrow = (stand-pat + 900) < alpha, prune!
+    LBR QS_NO_DELTA_PRUNE
+
+QS_DELTA_DIFF_SIGN:
+    ; Different signs: negative < positive always
+    ; (stand-pat + 900) negative means it's < alpha (if alpha positive)
+    GHI 8
+    ANI $80
+    LBZ QS_NO_DELTA_PRUNE ; (stand-pat + 900) positive -> no prune
+
+QS_DELTA_PRUNE:
+    ; Return alpha (in R7) - we're too far behind
+    GHI 7
+    PHI 9
+    GLO 7
+    PLO 9               ; R9 = alpha
+    RETN
+
+QS_NO_DELTA_PRUNE:
     ; Generate all moves (use QS_MOVE_LIST to avoid clobbering parent's move list!)
     LDI HIGH(QS_MOVE_LIST)
     PHI 9
@@ -1151,7 +1337,62 @@ QS_UPDATE:
     INC 10
     GLO 9               ; Low byte second
     STR 10
+
+    ; -----------------------------------------------
+    ; Beta cutoff check: if best >= beta, return beta
+    ; -----------------------------------------------
+    ; Load beta (big-endian: HI first)
+    LDI HIGH(BETA_HI)
+    PHI 10
+    LDI LOW(BETA_HI)
+    PLO 10
+    LDA 10              ; beta high
+    PHI 7
+    LDN 10              ; beta low
+    PLO 7               ; R7 = beta
+
+    ; Compare: best (R9) >= beta (R7)?
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+    GHI 9               ; best high
+    STR 10
+    GHI 7               ; beta high
+    XOR
+    ANI $80
+    SEX 2
+    LBNZ QS_BETA_CUT_DIFF
+
+    ; Same sign: best >= beta means best - beta >= 0 (no borrow)
+    SEX 10
+    GLO 7               ; beta low
+    STR 10
+    GLO 9               ; best low
+    SM
+    GHI 7               ; beta high
+    STR 10
+    GHI 9               ; best high
+    SMB
+    SEX 2
+    LBDF QS_BETA_CUTOFF ; No borrow = best >= beta, cutoff!
     LBR QS_LOOP
+
+QS_BETA_CUT_DIFF:
+    ; Different signs: positive >= negative
+    GHI 9               ; best high
+    ANI $80
+    LBZ QS_BETA_CUTOFF  ; best positive, beta negative -> cutoff
+    LBR QS_LOOP
+
+QS_BETA_CUTOFF:
+    ; Return beta (fail-high)
+    GHI 7
+    PHI 9
+    GLO 7
+    PLO 9               ; R9 = beta
+    RETN
 
 QS_RETURN:
     ; Return best score in R9 (big-endian: HI first)
