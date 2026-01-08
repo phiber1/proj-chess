@@ -149,6 +149,25 @@ NEGAMAX_RESET_DONE:
     PLO 9               ; R9 = ply-indexed move list start
 
     ; -----------------------------------------------
+    ; Apply killer move ordering (search killers first)
+    ; Only at ply 0-2 to avoid overhead deep in tree
+    ; -----------------------------------------------
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    SMI 3               ; Check if ply >= 3
+    LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 3
+
+    INC 2               ; Point to move count on stack
+    LDN 2               ; D = move count (peek, don't pop)
+    DEC 2               ; Restore stack pointer
+    CALL ORDER_KILLER_MOVES
+
+NEGAMAX_SKIP_KILLER:
+
+    ; -----------------------------------------------
     ; Initialize best score to -INFINITY in memory
     ; -----------------------------------------------
     ; Using memory avoids register clobbering bugs!
@@ -166,7 +185,7 @@ NEGAMAX_RESET_DONE:
     INC 2               ; Point R2 at move count
     LDN 2               ; Peek at move count
     DEC 2               ; Restore stack pointer
-    BNZ NEGAMAX_HAS_MOVES
+    LBNZ NEGAMAX_HAS_MOVES  ; Long branch (may cross page boundary)
     ; No legal moves - checkmate or stalemate
     LBR NEGAMAX_NO_MOVES
 
@@ -1160,19 +1179,19 @@ QS_RETURN:
 ; ------------------------------------------------------------------------------
 ; STORE_KILLER_MOVE - Store killer move for move ordering
 ; ------------------------------------------------------------------------------
-; Input:  B = move that caused beta cutoff
-;         SEARCH_DEPTH = current depth (in memory)
+; Input:  R11 = move that caused beta cutoff
+;         CURRENT_PLY = current ply (in memory)
 ; Output: Killer move stored in table
-; Uses:   A, D
+; Uses:   R10, R13, D
 ; ------------------------------------------------------------------------------
 STORE_KILLER_MOVE:
-    ; Calculate ply from depth (use depth directly, limit to 16 plies)
-    ; Load depth low byte from memory
-    LDI HIGH(SEARCH_DEPTH + 1)
+    ; Calculate killer table offset from CURRENT_PLY
+    ; (Use ply, not depth, so killers work across different search depths)
+    LDI HIGH(CURRENT_PLY)
     PHI 13
-    LDI LOW(SEARCH_DEPTH + 1)
+    LDI LOW(CURRENT_PLY)
     PLO 13
-    LDN 13              ; D = depth low byte
+    LDN 13              ; D = current ply
     ANI $0F             ; Limit to 16 plies
     SHL
     SHL                 ; × 4 (2 moves × 2 bytes each)
@@ -1210,6 +1229,243 @@ STORE_KILLER_MOVE:
     GHI 11
     STR 10
 
+    RETN
+
+; ------------------------------------------------------------------------------
+; ORDER_KILLER_MOVES - Promote killer moves to front of move list
+; ------------------------------------------------------------------------------
+; Input:  R9 = start of move list
+;         D = move count
+;         CURRENT_PLY = current ply (for killer table index)
+; Output: Move list reordered with killers at front
+; Uses:   R7, R8, R10, R11, R13
+; Note:   Call this right after GENERATE_MOVES, before move loop
+; ------------------------------------------------------------------------------
+ORDER_KILLER_MOVES:
+    ; Save move count
+    PLO 7               ; R7.0 = move count
+    LBZ OKM_DONE        ; No moves, nothing to order
+
+    ; Calculate killer table offset from CURRENT_PLY
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = ply
+    ANI $0F             ; Limit to 16 plies
+    SHL
+    SHL                 ; × 4 (2 moves × 2 bytes each)
+    PLO 13              ; R13.0 = offset
+
+    ; Point to killer table entry
+    LDI HIGH(KILLER_MOVES)
+    PHI 10
+    GLO 13
+    ADI LOW(KILLER_MOVES)
+    PLO 10              ; R10 = &killer1 for this ply
+
+    ; Load killer1 (16-bit) into R11
+    LDA 10              ; killer1 low
+    PLO 11
+    LDA 10              ; killer1 high
+    PHI 11              ; R11 = killer1
+
+    ; Load killer2 (16-bit) into R13
+    LDA 10              ; killer2 low
+    PLO 13
+    LDN 10              ; killer2 high
+    PHI 13              ; R13 = killer2
+
+    ; Check if killers are zero (uninitialized)
+    GLO 11
+    OR
+    GHI 11
+    LBZ OKM_TRY_KILLER2 ; killer1 is zero, skip
+
+    ; === Search for killer1 in move list ===
+    ; R8 = scan pointer, start from R9
+    GHI 9
+    PHI 8
+    GLO 9
+    PLO 8               ; R8 = move list start
+
+    GLO 7               ; D = move count
+    PHI 7               ; R7.1 = loop counter
+
+OKM_SCAN_K1:
+    GHI 7
+    LBZ OKM_TRY_KILLER2 ; No more moves to scan
+
+    ; Compare move at R8 with killer1 (R11)
+    LDA 8               ; move low byte
+    STR 2
+    GLO 11
+    XOR
+    LBNZ OKM_K1_NEXT    ; Low bytes don't match
+
+    LDN 8               ; move high byte
+    STR 2
+    GHI 11
+    XOR
+    LBZ OKM_K1_FOUND    ; Match! Swap to front
+
+OKM_K1_NEXT:
+    INC 8               ; Skip high byte (already loaded)
+    GHI 7
+    SMI 1
+    PHI 7               ; Decrement counter
+    LBR OKM_SCAN_K1
+
+OKM_K1_FOUND:
+    ; Killer1 found at R8-1 (we did LDA). Swap with first move.
+    DEC 8               ; R8 points to killer1_low in list
+
+    ; Only swap if not already at front
+    GHI 8
+    STR 2
+    GHI 9
+    XOR
+    LBNZ OKM_K1_SWAP
+    GLO 8
+    STR 2
+    GLO 9
+    XOR
+    LBZ OKM_TRY_KILLER2 ; Already at front, no swap needed
+
+OKM_K1_SWAP:
+    ; Swap 2-byte entry at R8 with entry at R9
+    ; Save move at R9 to stack
+    LDA 9
+    STXD
+    LDN 9
+    STXD
+
+    ; Copy killer from R8 to R9-2 (reset R9 first)
+    DEC 9
+    DEC 9
+    LDA 8               ; killer low
+    STR 9
+    INC 9
+    LDN 8               ; killer high
+    STR 9
+    INC 9               ; R9 back to +2
+
+    ; Copy saved move from stack to R8
+    DEC 8               ; Back to low byte position
+    IRX
+    LDXA                ; Saved high byte
+    INC 8
+    STR 8               ; Store at R8+1
+    DEC 8
+    LDX                 ; Saved low byte
+    STR 8               ; Store at R8
+
+    ; Reset R9 to list start
+    DEC 9
+    DEC 9
+
+OKM_TRY_KILLER2:
+    ; Check if killer2 is zero
+    GLO 13
+    OR
+    GHI 13
+    LBZ OKM_DONE        ; killer2 is zero, skip
+
+    ; Check if we have at least 2 moves
+    GLO 7               ; Original move count
+    SMI 2
+    LBNF OKM_DONE       ; Less than 2 moves
+
+    ; === Search for killer2 in move list (skip first entry) ===
+    GHI 9
+    PHI 8
+    GLO 9
+    ADI 2               ; Skip first entry
+    PLO 8
+    GHI 9
+    ADCI 0
+    PHI 8               ; R8 = second entry
+
+    GLO 7               ; move count
+    SMI 1               ; Skip first
+    PHI 7               ; R7.1 = counter
+
+OKM_SCAN_K2:
+    GHI 7
+    LBZ OKM_DONE        ; No more moves
+
+    ; Compare move at R8 with killer2 (R13)
+    LDA 8               ; move low byte
+    STR 2
+    GLO 13
+    XOR
+    LBNZ OKM_K2_NEXT    ; Low bytes don't match
+
+    LDN 8               ; move high byte
+    STR 2
+    GHI 13
+    XOR
+    LBZ OKM_K2_FOUND    ; Match!
+
+OKM_K2_NEXT:
+    INC 8
+    GHI 7
+    SMI 1
+    PHI 7
+    LBR OKM_SCAN_K2
+
+OKM_K2_FOUND:
+    ; Killer2 found at R8-1. Swap with second move (R9+2).
+    DEC 8               ; R8 points to killer2_low
+
+    ; Calculate second entry position
+    GHI 9
+    PHI 10
+    GLO 9
+    ADI 2
+    PLO 10
+    GHI 9
+    ADCI 0
+    PHI 10              ; R10 = second entry
+
+    ; Only swap if not already there
+    GHI 8
+    STR 2
+    GHI 10
+    XOR
+    LBNZ OKM_K2_SWAP
+    GLO 8
+    STR 2
+    GLO 10
+    XOR
+    LBZ OKM_DONE        ; Already in position
+
+OKM_K2_SWAP:
+    ; Swap 2-byte entry at R8 with entry at R10
+    LDA 10              ; second entry low
+    STXD
+    LDN 10              ; second entry high
+    STXD
+
+    ; Copy killer to second position
+    DEC 10
+    LDA 8               ; killer low
+    STR 10
+    INC 10
+    LDN 8               ; killer high
+    STR 10
+
+    ; Copy saved to R8
+    DEC 8
+    IRX
+    LDXA                ; high byte
+    INC 8
+    STR 8
+    DEC 8
+    LDX                 ; low byte
+    STR 8
+
+OKM_DONE:
     RETN
 
 ; ------------------------------------------------------------------------------
