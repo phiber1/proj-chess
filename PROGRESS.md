@@ -10,18 +10,58 @@ This file contains current session notes. For historical sessions and reference 
 
 ---
 
-## Current Status (January 7, 2026)
+## Current Status (January 7, 2026 - End of Day)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~38 seconds when out of book
 - **Depth 3:** Works but very slow (search is correct, just time-consuming)
 - **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 19,250 bytes
+- **Engine size:** 20,636 bytes
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering (prepared for deeper searches)
 
 ### Recent Milestones
 - Opening book support added - instant moves in known positions
-- R10 clobbering bug fixed in UCI position parsing
-- Removed unused GENERATE_CAPTURES code (2.6KB savings)
+- Search optimizations added (killer moves, QS pruning, capture ordering)
+- Note: Optimizations don't speed up depth 2 but will help at depth 4+
+
+---
+
+## Session: January 7, 2026 - Search Optimizations
+
+### Summary
+Added multiple search optimizations to improve alpha-beta pruning efficiency. No measurable speedup at depth 2 (overhead cancels gains), but these are foundational for deeper searches.
+
+### Optimizations Implemented
+
+**1. Killer Move Ordering (`ORDER_KILLER_MOVES`)**
+- Stores moves that caused beta cutoffs in KILLER_MOVES table
+- Promotes killer1/killer2 to front of move list
+- Limited to ply 0-2 to reduce overhead
+- Fixed STORE_KILLER_MOVE to use CURRENT_PLY (was using SEARCH_DEPTH)
+
+**2. Quiescence Search Alpha-Beta Pruning**
+- Stand-pat beta cutoff: if stand-pat >= beta, return immediately
+- Alpha update: if stand-pat > alpha, tighten the window
+- Delta pruning: if stand-pat + QUEEN_VALUE < alpha, prune
+- Loop beta cutoff: stop searching captures when score >= beta
+
+**3. Capture-First Ordering (`ORDER_CAPTURES_FIRST`)**
+- Scans move list, identifies captures by checking target square
+- Moves all captures to front of list before quiet moves
+- Foundation for full MVV-LVA (victim-attacker scoring)
+- Limited to ply 0-2 to reduce overhead
+
+### Performance Results
+- Baseline (d4 from startpos): 38 seconds - unchanged
+- Complex position (ply 9): ~63 seconds - unchanged
+- No regression, no improvement at depth 2
+- Benefits expected at depth 4+ where pruning has more impact
+
+### Commits
+- WX: Opening book support
+- WY: Killer move ordering
+- WZ: QS alpha-beta pruning
+- W10: Capture-first ordering
 
 ---
 
