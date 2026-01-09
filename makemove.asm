@@ -176,9 +176,8 @@ MM_RESET_HALFMOVE:
     STR 8
 
 MM_DONE:
-    ; NOTE: Hash updates removed for simplified TT testing.
-    ; Hash is computed once at search start via HASH_INIT.
-    ; Incremental updates can be added back as an optimization later.
+    ; Update hash: toggle side-to-move
+    CALL HASH_XOR_SIDE
 
     LDI 0               ; Return success
     SEP 5
@@ -280,8 +279,8 @@ UNMAKE_MOVE:
     XRI BLACK           ; Toggle between 0 and 8
     STR 8
 
-    ; NOTE: Hash updates removed for simplified TT testing.
-    ; Hash is computed once at search start via HASH_INIT.
+    ; Update hash: toggle side-to-move (restores original hash)
+    CALL HASH_XOR_SIDE
 
     SEP 5
 
