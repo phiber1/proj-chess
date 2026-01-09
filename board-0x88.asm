@@ -55,8 +55,7 @@ GAME_STATE  EQU $6080   ; Game state structure (16 bytes) ($6080-$608F)
 MOVE_HIST   EQU $6090   ; Move history for undo (256 bytes) ($6090-$618F)
 MOVE_LIST   EQU $6200   ; Ply-indexed move lists (512 bytes) ($6200-$63FF)
                         ; Each ply gets 128 bytes (64 moves max): ply×128 + $6200
-QS_MOVE_LIST EQU $6500  ; Quiescence moves (256 bytes) ($6500-$65FF)
-                        ; NOTE: Overlays UCI_BUFFER, unused during search
+QS_MOVE_LIST EQU $6F00  ; Quiescence moves (256 bytes) ($6F00-$6FFF) - separate from UCI_BUFFER
 
 ; ------------------------------------------------------------------------------
 ; Engine Variables: $6400-$64FF
