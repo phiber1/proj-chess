@@ -73,9 +73,22 @@ NEGAMAX:
 
 NEGAMAX_NOT_FIFTY:
     ; -----------------------------------------------
-    ; Transposition Table Probe
+    ; Transposition Table Probe (ROOT ONLY)
     ; -----------------------------------------------
-    ; Check if this position is already in the TT
+    ; NOTE: Without incremental hash updates in MAKE/UNMAKE_MOVE,
+    ; the hash stays constant throughout search. So we can ONLY
+    ; probe TT at ply 0 (root). Internal nodes would all have the
+    ; same hash and corrupt the search.
+    ;
+    ; Check if we're at root (ply 0)
+    LDI HIGH(CURRENT_PLY)
+    PHI 13
+    LDI LOW(CURRENT_PLY)
+    PLO 13
+    LDN 13              ; D = current ply
+    LBNZ NEGAMAX_TT_MISS    ; Not root, skip TT probe entirely
+
+    ; At root - check TT
     ; Load current search depth for comparison
     LDI HIGH(SEARCH_DEPTH)
     PHI 13
@@ -874,10 +887,20 @@ NEGAMAX_RETURN:
     STR 10
 
     ; -----------------------------------------------
-    ; Store result in Transposition Table
+    ; Store result in Transposition Table (ROOT ONLY)
     ; -----------------------------------------------
+    ; NOTE: Without incremental hash updates, only store at root.
+    ; Internal nodes all have the same hash, so storing would
+    ; overwrite the root entry with garbage.
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    LBNZ NEGAMAX_SKIP_TT_STORE  ; Not root, skip TT store
+
+    ; At root - store result
     ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
-    ; For now, always store as EXACT (we're returning a real score)
     LDI TT_FLAG_EXACT
     PLO 8               ; R8.0 = flag
     LDI HIGH(SEARCH_DEPTH)
@@ -886,6 +909,8 @@ NEGAMAX_RETURN:
     PLO 10
     LDN 10              ; D = depth low byte
     CALL TT_STORE
+
+NEGAMAX_SKIP_TT_STORE:
 
     ; Restore caller's context (clobbers R7, R8, R9, R11, R12)
     CALL RESTORE_PLY_STATE

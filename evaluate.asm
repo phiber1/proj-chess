@@ -230,7 +230,7 @@ EVAL_PST_NEXT:
     ADI 1
     STR 13
     SMI 128
-    BM EVAL_PST_SCAN
+    LBNF EVAL_PST_SCAN  ; Long branch - BM can't reach target
 
     ; Add PST score to material score
     ; Restore material score from stack into R9

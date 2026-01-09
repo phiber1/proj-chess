@@ -1,43 +1,29 @@
-TT Debugging Status - January 8, 2026
+TT Status - January 9, 2026
 
-Current Bug: TT doesn't work for real searches (only appeared to work because opening book was answering)
+WORKING: Root-only Transposition Table
 
-Key Discovery:
-- Opening book covers ply 0-7, so "instant" responses were book hits, not TT hits
-- At 8 ply, book has no entry, so real search happens
-- TT should cache the result, but second search is also slow (~61 seconds)
+Implementation:
+- HASH_INIT computes Zobrist hash from board position at search start
+- TT_PROBE only at ply 0 (root) - checks if position cached
+- TT_STORE only at ply 0 (root) - caches result after search
+- No incremental hash updates in MAKE_MOVE/UNMAKE_MOVE (removed for simplicity)
 
-What we've verified:
-- 0-7 moves: Book hit → instant (TT never tested)
-- 8+ moves: Book miss → full search, TT not working
+Test Results:
+- Same position, two searches: first ~61s, second instant (TT hit)
+- Different positions get different hashes ("D" vs "O")
+- Hash is consistent for same position
 
-Current debug build:
-- Added single-character hash output before search
-- Prints high nibble of HASH_LO as letter A-P
-- If both searches print same letter → hash is consistent
-- If different letters → hash is computed differently (bug in HASH_INIT or state)
+Limitations:
+- TT only caches root positions
+- Internal transpositions not detected (would need incremental hash updates)
+- This is fine for now - simple and correct
 
-Test to run:
-  position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 g8f6
-  go depth 2
-  go depth 2
+Next Steps (optional optimizations):
+- Add incremental hash updates to MAKE_MOVE/UNMAKE_MOVE
+- Enable internal TT probe/store (requires correct hash at each node)
+- This would detect transpositions during search for additional speedup
 
-Look for: The letter printed before each search (e.g., "K" or "M")
-- Same letter both times → hash is consistent, bug is elsewhere (TT_STORE/TT_PROBE)
-- Different letters → hash is different, bug is in HASH_INIT or board state
-
-Fixes made this session:
-1. Fixed TT_PROBE to only update BEST_MOVE at root (ply 0)
-2. Fixed MAKE_MOVE/UNMAKE_MOVE to save/restore from GAME_STATE+STATE_* instead of CASTLING ($6404)
-3. Removed unused CASTLING variable from $6404
-4. Clarified memory layout comments
-
-Files modified:
-- negamax.asm (TT probe fix, debug output)
-- makemove.asm (GAME_STATE address fix)
-- board-0x88.asm (removed CASTLING, added note)
-- transposition.asm (reverted to use GAME_STATE+STATE_CASTLING)
-
-Known issue to investigate:
-- SEARCH_DEPTH is read as high byte ($00) instead of low byte in TT_PROBE/TT_STORE
-- This makes depth check always pass (0 >= 0), but shouldn't prevent TT hits
+Files:
+- makemove.asm: Hash update code removed (simplified)
+- negamax.asm: Added ply checks for TT_PROBE and TT_STORE
+- transposition.asm: TT functions (unchanged, but incremental helpers unused)

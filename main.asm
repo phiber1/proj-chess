@@ -55,6 +55,9 @@ MAIN_CONTINUE:
     ; Initialize move history
     CALL INIT_MOVE_HISTORY
 
+    ; Clear transposition table (once at startup)
+    CALL TT_CLEAR
+
     ; Send startup message
     LDI HIGH(MSG_STARTUP)
     PHI 15

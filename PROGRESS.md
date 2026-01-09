@@ -10,19 +10,68 @@ This file contains current session notes. For historical sessions and reference 
 
 ---
 
-## Current Status (January 7, 2026 - End of Day)
+## Current Status (January 9, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
-- **Depth 2:** Working correctly, ~38 seconds when out of book
-- **Depth 3:** Works but very slow (search is correct, just time-consuming)
+- **Depth 2:** Working correctly, ~61 seconds when out of book
+- **Transposition Table:** Working! Root-only probe/store for position caching
 - **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 20,636 bytes
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering (prepared for deeper searches)
+- **Engine size:** 26,590 bytes (includes TT infrastructure + Zobrist keys)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, TT (root only)
 
 ### Recent Milestones
-- Opening book support added - instant moves in known positions
-- Search optimizations added (killer moves, QS pruning, capture ordering)
-- Note: Optimizations don't speed up depth 2 but will help at depth 4+
+- Transposition Table working - second search of same position is instant
+- Zobrist hashing implemented (16-bit keys, 256-entry TT)
+- Root-only TT simplification for correctness (incremental updates deferred)
+
+---
+
+## Session: January 9, 2026 - Transposition Table Fix
+
+### Summary
+Fixed TT implementation that was broken from previous session. Simplified to root-only probe/store for correctness.
+
+### Problem Identified
+Previous session added TT with incremental hash updates in MAKE_MOVE/UNMAKE_MOVE. Multiple bugs:
+1. Hash updates in MAKE/UNMAKE were complex and error-prone
+2. Internal TT probes were corrupting search (all nodes had same hash as root)
+3. Opening book (ply 0-7) was masking the bug - "instant" responses were book hits, not TT hits
+
+### Solution: Simplify to Root-Only TT
+1. **Removed** incremental hash updates from MAKE_MOVE and UNMAKE_MOVE
+2. **Added** ply check to TT_PROBE - only probe at ply 0 (root)
+3. **Added** ply check to TT_STORE - only store at ply 0 (root)
+4. Hash computed once via HASH_INIT at start of SEARCH_POSITION
+
+### How It Works Now
+- HASH_INIT computes Zobrist hash from current board position
+- Hash stays constant during search (no incremental updates)
+- TT probe/store only at root - caches root position results
+- Same position searched twice = instant TT hit
+- Different positions get different hashes (verified: "D" vs "O")
+
+### Test Results
+```
+position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 g8f6
+go depth 2  -> "D", 61 seconds, bestmove f3g5
+go depth 2  -> "D", instant, bestmove f3g5  (TT hit!)
+
+position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 a7a6
+go depth 2  -> "O", 61 seconds, bestmove f3g5  (different hash)
+go depth 2  -> "O", instant, bestmove f3g5  (TT hit!)
+```
+
+### Limitations
+- TT only caches root positions (no internal transposition detection)
+- Incremental hash updates can be added later as an optimization
+- Current implementation is simple and correct - good foundation
+
+### Files Modified
+- `makemove.asm` - Removed hash update sections (~150 lines)
+- `negamax.asm` - Added ply checks for TT_PROBE and TT_STORE
+
+### Commit
+- W12: Fix TT to root-only probe/store (simplified, working)
 
 ---
 
