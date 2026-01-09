@@ -151,6 +151,12 @@ cat opening-book-lookup.asm >> "$OUTPUT"
 echo "  - opening-book.asm (opening book data)"
 cat opening-book.asm >> "$OUTPUT"
 
+echo "  - transposition.asm (TT probe/store/hash)"
+cat transposition.asm >> "$OUTPUT"
+
+echo "  - zobrist-keys.asm (Zobrist hash keys)"
+cat zobrist-keys.asm >> "$OUTPUT"
+
 # Preprocess main.asm with -DBIOS in BIOS mode
 if grep -q "^USE_BIOS.*EQU 1" "$CONFIG_FILE" 2>/dev/null; then
     echo "  - main.asm (BIOS mode)"

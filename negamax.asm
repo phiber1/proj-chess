@@ -73,6 +73,72 @@ NEGAMAX:
 
 NEGAMAX_NOT_FIFTY:
     ; -----------------------------------------------
+    ; Transposition Table Probe
+    ; -----------------------------------------------
+    ; Check if this position is already in the TT
+    ; Load current search depth for comparison
+    LDI HIGH(SEARCH_DEPTH)
+    PHI 13
+    LDI LOW(SEARCH_DEPTH)
+    PLO 13
+    LDN 13              ; D = depth low byte (depth is small, ignore high)
+    CALL TT_PROBE       ; D = required depth, returns D = 1 if hit
+    LBZ NEGAMAX_TT_MISS ; No hit, continue with search
+
+    ; TT hit - check if it's usable (EXACT bound)
+    LDI HIGH(TT_FLAG)
+    PHI 10
+    LDI LOW(TT_FLAG)
+    PLO 10
+    LDN 10              ; D = TT flag
+    XRI TT_FLAG_EXACT
+    LBNZ NEGAMAX_TT_MISS    ; Not exact, can't use directly (for now)
+
+    ; EXACT hit - use the stored score and move
+    ; Only copy TT_MOVE to BEST_MOVE if we're at root (ply 0)!
+    ; Otherwise internal TT hits would corrupt the root's best move.
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    LBNZ NEGAMAX_TT_SKIP_MOVE  ; Not root, skip BEST_MOVE update
+
+    ; At root - copy TT_MOVE to BEST_MOVE
+    LDI HIGH(TT_MOVE_HI)
+    PHI 10
+    LDI LOW(TT_MOVE_HI)
+    PLO 10
+    LDA 10              ; move_hi
+    PHI 9               ; temp in R9.1
+    LDN 10              ; move_lo
+    PLO 8               ; temp in R8.0
+    LDI HIGH(BEST_MOVE)
+    PHI 10
+    LDI LOW(BEST_MOVE)
+    PLO 10
+    GHI 9               ; move_hi
+    STR 10
+    INC 10
+    GLO 8               ; move_lo
+    STR 10
+
+NEGAMAX_TT_SKIP_MOVE:
+
+    ; Now get the score
+    LDI HIGH(TT_SCORE_HI)
+    PHI 10
+    LDI LOW(TT_SCORE_HI)
+    PLO 10
+    LDA 10              ; score_hi
+    PHI 9
+    LDN 10              ; score_lo
+    PLO 9               ; R9 = stored score
+    CALL RESTORE_PLY_STATE
+    RETN                ; Return TT score
+
+NEGAMAX_TT_MISS:
+    ; -----------------------------------------------
     ; Check if we're at a leaf node (depth == 0)
     ; -----------------------------------------------
     ; Load depth from memory (SEARCH_DEPTH)
@@ -806,6 +872,20 @@ NEGAMAX_RETURN:
     INC 10
     GLO 8               ; Best score low byte
     STR 10
+
+    ; -----------------------------------------------
+    ; Store result in Transposition Table
+    ; -----------------------------------------------
+    ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
+    ; For now, always store as EXACT (we're returning a real score)
+    LDI TT_FLAG_EXACT
+    PLO 8               ; R8.0 = flag
+    LDI HIGH(SEARCH_DEPTH)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH)
+    PLO 10
+    LDN 10              ; D = depth low byte
+    CALL TT_STORE
 
     ; Restore caller's context (clobbers R7, R8, R9, R11, R12)
     CALL RESTORE_PLY_STATE
@@ -1978,6 +2058,26 @@ SEARCH_POSITION:
     STR 11
     INC 11
     STR 11
+
+    ; Initialize Zobrist hash for current position
+    CALL HASH_INIT
+
+    ; DEBUG: Print hash_lo as single char (A-P for 0-F high nibble)
+    LDI HIGH(HASH_LO)
+    PHI 10
+    LDI LOW(HASH_LO)
+    PLO 10
+    LDN 10              ; D = HASH_LO
+    SHR
+    SHR
+    SHR
+    SHR                 ; D = high nibble (0-15)
+    ADI 'A'             ; Convert to A-P
+    CALL SERIAL_WRITE_CHAR
+
+    ; NOTE: TT_CLEAR removed - don't clear between searches!
+    ; Hash uniquely identifies positions, so old entries are still valid.
+    ; Clear TT only at game start (ucinewgame) or engine init.
 
     ; Call negamax
     CALL NEGAMAX

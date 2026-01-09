@@ -65,7 +65,7 @@ QS_MOVE_LIST EQU $6500  ; Quiescence moves (256 bytes) ($6500-$65FF)
 HISTORY_PTR EQU $6400   ; 2 bytes - current history pointer ($6400-$6401)
 MOVE_FROM   EQU $6402   ; 1 byte - move from square (temp)
 MOVE_TO     EQU $6403   ; 1 byte - move to square (temp)
-CASTLING    EQU $6404   ; 1 byte - temp castling storage
+; NOTE: $6404 unused - castling state is at GAME_STATE + STATE_CASTLING ($6081)
 
 ; Move encoding temps (avoiding R14 - BIOS uses it)
 DECODED_FLAGS   EQU $6405   ; 1 byte - flags from DECODE_MOVE_16BIT
@@ -150,6 +150,52 @@ MAX_PLY         EQU 8       ; Maximum search depth supported
 ; ------------------------------------------------------------------------------
 UCI_BUFFER      EQU $6500   ; 256 bytes - input buffer ($6500-$65FF)
 UCI_STATE       EQU $6600   ; 1 byte - UCI state
+
+; ------------------------------------------------------------------------------
+; Transposition Table: $6700-$6EFF (256 entries × 8 bytes = 2KB)
+; ------------------------------------------------------------------------------
+; Current position hash (updated incrementally by MAKE_MOVE/UNMAKE_MOVE)
+HASH_HI         EQU $6601   ; 1 byte - hash high byte
+HASH_LO         EQU $6602   ; 1 byte - hash low byte
+
+; TT lookup result (set by TT_PROBE)
+TT_HIT          EQU $6603   ; 1 byte - 0=miss, 1=hit
+TT_SCORE_HI     EQU $6604   ; 1 byte - stored score high
+TT_SCORE_LO     EQU $6605   ; 1 byte - stored score low
+TT_DEPTH        EQU $6606   ; 1 byte - stored depth
+TT_FLAG         EQU $6607   ; 1 byte - stored flag (EXACT/ALPHA/BETA)
+TT_MOVE_HI      EQU $6608   ; 1 byte - stored best move high
+TT_MOVE_LO      EQU $6609   ; 1 byte - stored best move low
+
+; TT table base address and sizing
+TT_TABLE        EQU $6700   ; 256 entries × 8 bytes = 2KB ($6700-$6EFF)
+TT_ENTRIES      EQU 256     ; Number of entries (power of 2 for masking)
+TT_ENTRY_SIZE   EQU 8       ; Bytes per entry
+TT_INDEX_MASK   EQU $FF     ; Mask for 256 entries (hash_lo & $FF)
+
+; TT entry structure (8 bytes per entry):
+;   Offset 0: hash_verify_hi  - Upper hash bits for collision detection
+;   Offset 1: hash_verify_lo  - (we store full hash, index with low bits)
+;   Offset 2: score_hi        - Stored score high byte
+;   Offset 3: score_lo        - Stored score low byte
+;   Offset 4: depth           - Search depth when stored
+;   Offset 5: flag            - Bound type (EXACT/ALPHA/BETA)
+;   Offset 6: best_move_hi    - Best move high byte
+;   Offset 7: best_move_lo    - Best move low byte
+TT_OFF_HASH_HI  EQU 0
+TT_OFF_HASH_LO  EQU 1
+TT_OFF_SCORE_HI EQU 2
+TT_OFF_SCORE_LO EQU 3
+TT_OFF_DEPTH    EQU 4
+TT_OFF_FLAG     EQU 5
+TT_OFF_MOVE_HI  EQU 6
+TT_OFF_MOVE_LO  EQU 7
+
+; TT flag values
+TT_FLAG_NONE    EQU 0       ; Empty/invalid entry
+TT_FLAG_EXACT   EQU 1       ; Exact score (PV node)
+TT_FLAG_ALPHA   EQU 2       ; Upper bound (fail-low)
+TT_FLAG_BETA    EQU 3       ; Lower bound (fail-high)
 
 ; History entry size
 HIST_ENTRY_SIZE EQU 8   ; 8 bytes per history entry

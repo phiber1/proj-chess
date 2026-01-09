@@ -11,7 +11,7 @@
 ; ==============================================================================
 ; MAKE_MOVE - Apply move to the board
 ; Input: MOVE_FROM, MOVE_TO contain the move
-; Output: Board updated, undo info saved
+; Output: Board updated, undo info saved, hash updated
 ;         D = 0 if success
 ; ==============================================================================
 MAKE_MOVE:
@@ -36,23 +36,23 @@ MAKE_MOVE:
     STR 8
     INC 8
     
-    ; Save castling rights
-    LDI HIGH(CASTLING)
+    ; Save castling rights from GAME_STATE + STATE_CASTLING
+    LDI HIGH(GAME_STATE)
     PHI 9
-    LDI LOW(CASTLING)
+    LDI LOW(GAME_STATE + STATE_CASTLING)
     PLO 9
     LDN 9
     STR 8
     INC 8
-    
-    ; Save en passant square
-    INC 9               ; EP_SQUARE
+
+    ; Save en passant square from GAME_STATE + STATE_EP_SQUARE
+    INC 9
     LDN 9
     STR 8
     INC 8
-    
-    ; Save halfmove clock
-    INC 9               ; HALFMOVE
+
+    ; Save halfmove clock from GAME_STATE + STATE_HALFMOVE
+    INC 9
     LDN 9
     STR 8
 
@@ -139,8 +139,9 @@ MAKE_MOVE:
     STR 8
 
     ; Clear en passant square (simplified - proper handling later)
-    INC 8               ; Point to CASTLING
-    INC 8               ; Point to EP_SQUARE
+    ; R8 is at SIDE ($6080), increment to reach EP_SQUARE ($6082)
+    INC 8               ; $6081 = STATE_CASTLING
+    INC 8               ; $6082 = STATE_EP_SQUARE
     LDI NO_EP
     STR 8
 
@@ -175,6 +176,83 @@ MM_RESET_HALFMOVE:
     STR 8
 
 MM_DONE:
+    ; ===========================================
+    ; HASH UPDATE: Update Zobrist hash
+    ; ===========================================
+    ; Read piece info from UNDO_* memory (not stack - CALL clobbers stack!)
+    ; HASH_XOR_PIECE_SQ expects: R8.0 = piece, R8.1 = square
+    ; HASH_XOR_PIECE_SQ clobbers: R7, R9, R10, R13
+    ; Use COMPARE_TEMP to save moving piece (registers get clobbered)
+
+    ; 1. XOR out moving piece from origin square
+    ; Read piece from BOARD[UNDO_TO] (where it moved to)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    ADI LOW(BOARD)
+    PLO 8
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 8               ; R8 = BOARD + to_square
+    LDN 8               ; D = moving piece (now at destination)
+    PLO 11              ; R11.0 = moving piece (temp save, D about to be clobbered)
+
+    ; Save moving piece to COMPARE_TEMP (R13 gets clobbered by HASH_XOR_PIECE_SQ!)
+    LDI HIGH(COMPARE_TEMP)
+    PHI 9
+    LDI LOW(COMPARE_TEMP)
+    PLO 9
+    GLO 11              ; D = moving piece
+    STR 9               ; COMPARE_TEMP = moving piece
+
+    ; Set up R8 for HASH_XOR_PIECE_SQ: R8.0 = piece, R8.1 = square
+    PLO 8               ; R8.0 = moving piece
+    LDI HIGH(UNDO_FROM)
+    PHI 9
+    LDI LOW(UNDO_FROM)
+    PLO 9
+    LDN 9               ; D = from square
+    PHI 8               ; R8.1 = from square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; 2. XOR out captured piece from destination (if any)
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 9
+    LDI LOW(UNDO_CAPTURED)
+    PLO 9
+    LDN 9               ; D = captured piece
+    LBZ MM_HASH_NO_CAP  ; Skip if empty (no capture)
+    PLO 8               ; R8.0 = captured piece
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    PHI 8               ; R8.1 = to square
+    CALL HASH_XOR_PIECE_SQ
+MM_HASH_NO_CAP:
+
+    ; 3. XOR in moving piece at destination
+    ; Reload moving piece from COMPARE_TEMP
+    LDI HIGH(COMPARE_TEMP)
+    PHI 9
+    LDI LOW(COMPARE_TEMP)
+    PLO 9
+    LDN 9               ; D = moving piece
+    PLO 8               ; R8.0 = moving piece
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    PHI 8               ; R8.1 = to square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; 4. XOR side to move
+    CALL HASH_XOR_SIDE
+
     LDI 0               ; Return success
     SEP 5
 
@@ -233,37 +311,37 @@ UNMAKE_MOVE:
     GLO 10              ; Get moving piece
     STR 8               ; Put back at from square
 
-    ; Restore castling rights
+    ; Restore castling rights to GAME_STATE + STATE_CASTLING
     LDI HIGH(UNDO_CASTLING)
     PHI 9
     LDI LOW(UNDO_CASTLING)
     PLO 9
     LDN 9
     PHI 10              ; Save in R10.1
-    
-    LDI HIGH(CASTLING)
+
+    LDI HIGH(GAME_STATE)
     PHI 8
-    LDI LOW(CASTLING)
+    LDI LOW(GAME_STATE + STATE_CASTLING)
     PLO 8
     GHI 10
     STR 8
 
-    ; Restore en passant square
+    ; Restore en passant square to GAME_STATE + STATE_EP_SQUARE
     LDI HIGH(UNDO_EP)
     PHI 9
     LDI LOW(UNDO_EP)
     PLO 9
     LDN 9
-    INC 8               ; Point to EP_SQUARE
+    INC 8               ; Point to EP_SQUARE ($6082)
     STR 8
 
-    ; Restore halfmove clock
+    ; Restore halfmove clock to GAME_STATE + STATE_HALFMOVE
     LDI HIGH(UNDO_HALFMOVE)
     PHI 9
     LDI LOW(UNDO_HALFMOVE)
     PLO 9
     LDN 9
-    INC 8               ; Point to HALFMOVE
+    INC 8               ; Point to HALFMOVE ($6083)
     STR 8
 
     ; Toggle side to move back
@@ -274,6 +352,82 @@ UNMAKE_MOVE:
     LDN 8
     XRI BLACK           ; Toggle between 0 and 8
     STR 8
+
+    ; ===========================================
+    ; HASH UPDATE: Update Zobrist hash (reverse)
+    ; ===========================================
+    ; Read piece info from memory (not stack - CALL clobbers stack!)
+    ; HASH_XOR_PIECE_SQ clobbers: R7, R9, R10, R13
+    ; Use COMPARE_TEMP to save moving piece
+    ; Moving piece is now back at BOARD[UNDO_FROM]
+
+    ; Get moving piece from BOARD[UNDO_FROM]
+    LDI HIGH(UNDO_FROM)
+    PHI 9
+    LDI LOW(UNDO_FROM)
+    PLO 9
+    LDN 9               ; D = from square
+    ADI LOW(BOARD)
+    PLO 8
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 8               ; R8 = BOARD + from_square
+    LDN 8               ; D = moving piece (now back at origin)
+    PLO 11              ; R11.0 = moving piece (temp save, D about to be clobbered)
+
+    ; Save moving piece to COMPARE_TEMP (R13 gets clobbered!)
+    LDI HIGH(COMPARE_TEMP)
+    PHI 9
+    LDI LOW(COMPARE_TEMP)
+    PLO 9
+    GLO 11              ; D = moving piece
+    STR 9               ; COMPARE_TEMP = moving piece
+
+    ; 1. XOR out moving piece from destination (where it was before unmake)
+    PLO 8               ; R8.0 = moving piece
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    PHI 8               ; R8.1 = to square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; 2. XOR in captured piece at destination (if any)
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 9
+    LDI LOW(UNDO_CAPTURED)
+    PLO 9
+    LDN 9               ; D = captured piece
+    LBZ UM_HASH_NO_CAP  ; Skip if empty
+    PLO 8               ; R8.0 = captured piece
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    PHI 8               ; R8.1 = to square
+    CALL HASH_XOR_PIECE_SQ
+UM_HASH_NO_CAP:
+
+    ; 3. XOR in moving piece at origin (where it is now)
+    ; Reload moving piece from COMPARE_TEMP
+    LDI HIGH(COMPARE_TEMP)
+    PHI 9
+    LDI LOW(COMPARE_TEMP)
+    PLO 9
+    LDN 9               ; D = moving piece
+    PLO 8               ; R8.0 = moving piece
+    LDI HIGH(UNDO_FROM)
+    PHI 9
+    LDI LOW(UNDO_FROM)
+    PLO 9
+    LDN 9               ; D = from square
+    PHI 8               ; R8.1 = from square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; 4. XOR side to move
+    CALL HASH_XOR_SIDE
 
     SEP 5
 

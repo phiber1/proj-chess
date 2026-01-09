@@ -1,0 +1,43 @@
+TT Debugging Status - January 8, 2026
+
+Current Bug: TT doesn't work for real searches (only appeared to work because opening book was answering)
+
+Key Discovery:
+- Opening book covers ply 0-7, so "instant" responses were book hits, not TT hits
+- At 8 ply, book has no entry, so real search happens
+- TT should cache the result, but second search is also slow (~61 seconds)
+
+What we've verified:
+- 0-7 moves: Book hit → instant (TT never tested)
+- 8+ moves: Book miss → full search, TT not working
+
+Current debug build:
+- Added single-character hash output before search
+- Prints high nibble of HASH_LO as letter A-P
+- If both searches print same letter → hash is consistent
+- If different letters → hash is computed differently (bug in HASH_INIT or state)
+
+Test to run:
+  position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 g8f6
+  go depth 2
+  go depth 2
+
+Look for: The letter printed before each search (e.g., "K" or "M")
+- Same letter both times → hash is consistent, bug is elsewhere (TT_STORE/TT_PROBE)
+- Different letters → hash is different, bug is in HASH_INIT or board state
+
+Fixes made this session:
+1. Fixed TT_PROBE to only update BEST_MOVE at root (ply 0)
+2. Fixed MAKE_MOVE/UNMAKE_MOVE to save/restore from GAME_STATE+STATE_* instead of CASTLING ($6404)
+3. Removed unused CASTLING variable from $6404
+4. Clarified memory layout comments
+
+Files modified:
+- negamax.asm (TT probe fix, debug output)
+- makemove.asm (GAME_STATE address fix)
+- board-0x88.asm (removed CASTLING, added note)
+- transposition.asm (reverted to use GAME_STATE+STATE_CASTLING)
+
+Known issue to investigate:
+- SEARCH_DEPTH is read as high byte ($00) instead of low byte in TT_PROBE/TT_STORE
+- This makes depth check always pass (0 >= 0), but shouldn't prevent TT hits
