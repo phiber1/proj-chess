@@ -75,6 +75,69 @@ go depth 2  -> "O", instant, bestmove f3g5  (TT hit!)
 
 ---
 
+## Session: January 8, 2026 - Transposition Table Implementation (WIP)
+
+### Summary
+Implemented transposition table infrastructure with Zobrist hashing. TT appeared to work but was actually broken - opening book was masking the bug.
+
+### Components Added
+
+**1. Zobrist Key Generator (`tools/gen_zobrist.py`)**
+- Generates 16-bit Zobrist keys for piece-square combinations
+- Uses seed 0x1802CAFE for reproducibility
+- 781 keys total: 12 pieces × 64 squares + side + 4 castling + 8 EP files
+
+**2. Zobrist Keys (`zobrist-keys.asm`)**
+- 1,562 bytes of key data
+- Labels: ZOBRIST_PIECE_SQ, ZOBRIST_SIDE, ZOBRIST_CASTLE, ZOBRIST_EP
+
+**3. TT Variables (`board-0x88.asm`)**
+- HASH_HI/LO at $6601-$6602 (current position hash)
+- TT_TABLE at $6700 (256 entries × 8 bytes = 2KB)
+- TT entry: hash_hi, hash_lo, score_hi, score_lo, depth, flag, move_hi, move_lo
+
+**4. TT Functions (`transposition.asm`)**
+- HASH_INIT: Compute full hash from board position
+- TT_CLEAR: Zero all TT entries
+- TT_PROBE: Look up position, return hit/miss
+- TT_STORE: Store search result in TT
+- HASH_XOR_PIECE_SQ: XOR piece-square key into hash
+- HASH_XOR_SIDE: Toggle side-to-move in hash
+
+**5. Incremental Hash Updates (`makemove.asm`)**
+- Added hash XOR updates in MAKE_MOVE and UNMAKE_MOVE
+- XOR out piece from origin, XOR in at destination
+- XOR captured piece, XOR side-to-move
+
+### Bug Discovery
+Opening book covers ply 0-7, so "instant" responses were book hits, not TT hits. At 8+ ply (out of book), TT didn't work - both searches took ~61 seconds.
+
+### Bugs Found (not fully fixed this session)
+1. Internal TT probes corrupted BEST_MOVE (fixed: only update at ply 0)
+2. MAKE_MOVE used wrong address for castling state (fixed: use GAME_STATE+STATE_CASTLING)
+3. Hash updates in MAKE/UNMAKE had register clobbering issues
+4. All internal nodes had same hash as root (search corruption)
+
+### Debug Output Added
+- Single character (A-P) printed before search showing hash high nibble
+- Helps verify hash consistency between searches
+
+### Files Added/Modified
+- `tools/gen_zobrist.py` (new)
+- `zobrist-keys.asm` (new)
+- `transposition.asm` (new)
+- `board-0x88.asm` (TT variables)
+- `makemove.asm` (hash updates - later removed)
+- `negamax.asm` (TT integration)
+
+### Commit
+- W11: Add transposition table infrastructure (WIP)
+
+### Status
+TT infrastructure in place but not working correctly. Deferred to next session.
+
+---
+
 ## Session: January 7, 2026 - Search Optimizations
 
 ### Summary
