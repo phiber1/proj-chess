@@ -593,7 +593,7 @@ TT_STORE:
 ; Input:  R8.0 = piece (1-6 white, 9-14 black, or EMPTY=0 for no-op)
 ;         R8.1 = square (0x88 format)
 ; Output: HASH_HI/LO updated
-; Uses:   R7, R9, R10, R13
+; Uses:   R7, R9, R10, R11, R13
 ; ==============================================================================
 HASH_XOR_PIECE_SQ:
     ; Skip if piece is EMPTY
@@ -634,10 +634,10 @@ HXPS_WHITE:
     GHI 8
     ANI $70             ; rank * 16
     SHR                 ; rank * 8
-    PLO 7               ; R7.0 = rank*8 (temp, don't use STR 2 - corrupts stack!)
+    PLO 11              ; R11.0 = rank*8 (use R11, NOT R7 - R7 has hash!)
     GLO 9               ; file
-    STR 2               ; OK to use stack briefly here
-    GLO 7               ; rank*8
+    STR 2               ; temp store on stack
+    GLO 11              ; rank*8
     ADD                 ; rank*8 + file = sq64
     PLO 9               ; R9.0 = sq64
 

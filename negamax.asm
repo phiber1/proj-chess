@@ -900,6 +900,19 @@ NEGAMAX_RETURN:
     LBNZ NEGAMAX_SKIP_TT_STORE  ; Not root, skip TT store
 
     ; At root - store result
+    ; DEBUG: Print hash at TT_STORE time (should match search start)
+    LDI HIGH(HASH_LO)
+    PHI 10
+    LDI LOW(HASH_LO)
+    PLO 10
+    LDN 10              ; D = HASH_LO
+    SHR
+    SHR
+    SHR
+    SHR                 ; D = high nibble (0-15)
+    ADI 'a'             ; Convert to a-p (lowercase to distinguish from start)
+    CALL SERIAL_WRITE_CHAR
+
     ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
     LDI TT_FLAG_EXACT
     PLO 8               ; R8.0 = flag

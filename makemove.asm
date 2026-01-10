@@ -176,7 +176,72 @@ MM_RESET_HALFMOVE:
     STR 8
 
 MM_DONE:
-    ; Update hash: toggle side-to-move
+    ; =========================================
+    ; HASH UPDATE: XOR piece-square changes
+    ; =========================================
+    ; HASH_XOR_PIECE_SQ: R8.0 = piece, R8.1 = square
+    ; Clobbers: R7, R9, R10, R13. Preserves: R8
+    ; After each call, reload from memory (safe, no register deps)
+
+    ; --- Step 1: XOR out [moving piece, from] ---
+    ; Get moving piece from BOARD[UNDO_TO]
+    LDI HIGH(UNDO_TO)
+    PHI 10
+    LDI LOW(UNDO_TO)
+    PLO 10
+    LDN 10              ; D = to_square
+    ADI LOW(BOARD)
+    PLO 10
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 10              ; R10 = &BOARD[to_square]
+    LDN 10              ; D = moving piece
+    PLO 8               ; R8.0 = moving piece
+    ; Get from square
+    LDI HIGH(UNDO_FROM)
+    PHI 10
+    LDI LOW(UNDO_FROM)
+    PLO 10
+    LDN 10              ; D = from_square
+    PHI 8               ; R8.1 = from_square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; --- Step 2: XOR out [captured, to] ---
+    ; Get captured piece from UNDO_CAPTURED
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 10
+    LDI LOW(UNDO_CAPTURED)
+    PLO 10
+    LDN 10              ; D = captured piece
+    PLO 8               ; R8.0 = captured piece
+    ; Get to square
+    LDI HIGH(UNDO_TO)
+    PHI 10
+    LDI LOW(UNDO_TO)
+    PLO 10
+    LDN 10              ; D = to_square
+    PHI 8               ; R8.1 = to_square
+    CALL HASH_XOR_PIECE_SQ  ; skips if captured == EMPTY
+
+    ; --- Step 3: XOR in [moving piece, to] ---
+    ; Get to square first (need for R8.1 and BOARD index)
+    LDI HIGH(UNDO_TO)
+    PHI 10
+    LDI LOW(UNDO_TO)
+    PLO 10
+    LDN 10              ; D = to_square
+    PHI 8               ; R8.1 = to_square
+    ; Compute BOARD[to_square]
+    ADI LOW(BOARD)
+    PLO 10
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 10              ; R10 = &BOARD[to_square]
+    LDN 10              ; D = moving piece
+    PLO 8               ; R8.0 = moving piece
+    CALL HASH_XOR_PIECE_SQ
+
+    ; --- Step 4: XOR side ---
     CALL HASH_XOR_SIDE
 
     LDI 0               ; Return success
@@ -279,7 +344,72 @@ UNMAKE_MOVE:
     XRI BLACK           ; Toggle between 0 and 8
     STR 8
 
-    ; Update hash: toggle side-to-move (restores original hash)
+    ; =========================================
+    ; HASH UPDATE: XOR piece-square changes (reverse of MAKE_MOVE)
+    ; =========================================
+    ; HASH_XOR_PIECE_SQ: R8.0 = piece, R8.1 = square
+    ; Clobbers: R7, R9, R10, R13. Preserves: R8
+    ; Board is now restored: piece at UNDO_FROM, captured at UNDO_TO
+
+    ; --- Step 1: XOR out [moving piece, to] ---
+    ; Moving piece is now at BOARD[UNDO_FROM]
+    LDI HIGH(UNDO_FROM)
+    PHI 10
+    LDI LOW(UNDO_FROM)
+    PLO 10
+    LDN 10              ; D = from_square
+    ADI LOW(BOARD)
+    PLO 10
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 10              ; R10 = &BOARD[from_square]
+    LDN 10              ; D = moving piece
+    PLO 8               ; R8.0 = moving piece
+    ; Get to square
+    LDI HIGH(UNDO_TO)
+    PHI 10
+    LDI LOW(UNDO_TO)
+    PLO 10
+    LDN 10              ; D = to_square
+    PHI 8               ; R8.1 = to_square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; --- Step 2: XOR in [captured, to] ---
+    ; Captured piece is in UNDO_CAPTURED
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 10
+    LDI LOW(UNDO_CAPTURED)
+    PLO 10
+    LDN 10              ; D = captured piece
+    PLO 8               ; R8.0 = captured piece
+    ; Get to square
+    LDI HIGH(UNDO_TO)
+    PHI 10
+    LDI LOW(UNDO_TO)
+    PLO 10
+    LDN 10              ; D = to_square
+    PHI 8               ; R8.1 = to_square
+    CALL HASH_XOR_PIECE_SQ  ; skips if captured == EMPTY
+
+    ; --- Step 3: XOR in [moving piece, from] ---
+    ; Moving piece is at BOARD[UNDO_FROM]
+    LDI HIGH(UNDO_FROM)
+    PHI 10
+    LDI LOW(UNDO_FROM)
+    PLO 10
+    LDN 10              ; D = from_square
+    PHI 8               ; R8.1 = from_square
+    ; Compute BOARD[from_square]
+    ADI LOW(BOARD)
+    PLO 10
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 10              ; R10 = &BOARD[from_square]
+    LDN 10              ; D = moving piece
+    PLO 8               ; R8.0 = moving piece
+    CALL HASH_XOR_PIECE_SQ
+
+    ; --- Step 4: XOR side ---
     CALL HASH_XOR_SIDE
 
     SEP 5
