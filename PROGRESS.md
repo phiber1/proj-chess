@@ -10,23 +10,86 @@ This file contains current session notes. For historical sessions and reference 
 
 ---
 
-## Current Status (January 9, 2026)
+## Current Status (January 9, 2026 - End of Day)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~61 seconds when out of book
-- **Transposition Table:** Working! Root-only probe/store for position caching
+- **Transposition Table:** Working with incremental hash updates!
 - **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 26,590 bytes (includes TT infrastructure + Zobrist keys)
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, TT (root only)
+- **Engine size:** 26,990 bytes (includes TT + Zobrist + incremental hash)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, TT (root only, incremental hash ready)
 
 ### Recent Milestones
-- Transposition Table working - second search of same position is instant
-- Zobrist hashing implemented (16-bit keys, 256-entry TT)
-- Root-only TT simplification for correctness (incremental updates deferred)
+- Incremental Zobrist hash updates in MAKE_MOVE/UNMAKE_MOVE
+- Fixed critical R7 clobber bug in HASH_XOR_PIECE_SQ
+- Hash correctly updates during search and restores after unmake
+- TT still root-only, but ready for internal TT (Step 3)
 
 ---
 
-## Session: January 9, 2026 - Transposition Table Fix
+## Session: January 9, 2026 (Evening) - Incremental Hash Updates
+
+### Summary
+Added incremental Zobrist hash updates to MAKE_MOVE and UNMAKE_MOVE. Found and fixed a critical bug in HASH_XOR_PIECE_SQ that was clobbering the hash.
+
+### Approach: Careful, Incremental Steps
+After previous session's complexity caused bugs, took methodical approach:
+1. **Step 1:** Add HASH_XOR_SIDE only (simplest change) - tested, committed
+2. **Step 2:** Add piece-square XOR - tested, found bug, fixed, committed
+3. **Step 3:** Enable internal TT (deferred to next session)
+
+### Memory Audit
+Before adding piece-square XOR, conducted thorough audit:
+- Verified no duplicate/conflicting memory definitions
+- Confirmed UNDO_* locations distinct from MOVE_* locations
+- Separated QS_MOVE_LIST ($6F00) from UCI_BUFFER ($6500) for debugging
+
+### Bug Found: R7 Clobber in HASH_XOR_PIECE_SQ
+**Symptom:** Hash drifted during search (start "D", end "c")
+
+**Root cause:** Line 637 stored temp value in R7.0, but R7 held the hash!
+```asm
+PLO 7               ; R7.0 = rank*8 (WRONG - clobbers hash!)
+```
+
+**Fix:** Use R11.0 for temp instead of R7.0
+
+### Hash Update Logic
+
+**MAKE_MOVE (after board modified):**
+1. XOR [moving piece, from] - remove from origin
+2. XOR [captured piece, to] - remove captured (skips if EMPTY)
+3. XOR [moving piece, to] - add to destination
+4. XOR side
+
+**UNMAKE_MOVE (after board restored):**
+1. XOR [moving piece, to] - remove from destination
+2. XOR [captured piece, to] - restore captured (skips if EMPTY)
+3. XOR [moving piece, from] - restore to origin
+4. XOR side
+
+### Test Results
+- Same position twice: "D" start, "d" end (hash matches!), second search instant
+- Different position: "O" hash, works correctly
+- TT hit confirmed on repeated searches
+
+### Debug Output (still present)
+- Uppercase letter (A-P) at search start
+- Lowercase letter (a-p) at TT_STORE
+
+### Commits
+- W13: Add HASH_XOR_SIDE to MAKE_MOVE/UNMAKE_MOVE
+- W14: Add piece-square XOR + fix R7 clobber bug
+- Also: Separate QS_MOVE_LIST from UCI_BUFFER
+
+### Next Steps (for future session)
+1. Remove debug output
+2. Enable internal TT probe/store (remove ply==0 checks)
+3. Test for speedup from transposition detection
+
+---
+
+## Session: January 9, 2026 (Morning) - Transposition Table Fix
 
 ### Summary
 Fixed TT implementation that was broken from previous session. Simplified to root-only probe/store for correctness.
