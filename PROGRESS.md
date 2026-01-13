@@ -10,20 +10,32 @@ This file contains current session notes. For historical sessions and reference 
 
 ---
 
-## Current Status (January 9, 2026 - End of Day)
+## Current Status (January 13, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
-- **Depth 2:** Working correctly, ~61 seconds when out of book
-- **Transposition Table:** Working with incremental hash updates!
+- **Depth 2:** Working correctly, ~57 seconds when out of book
+- **Transposition Table:** Full internal TT enabled at all nodes!
 - **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 26,990 bytes (includes TT + Zobrist + incremental hash)
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, TT (root only, incremental hash ready)
+- **Engine size:** 26,938 bytes (includes TT + Zobrist + incremental hash)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT
 
 ### Recent Milestones
-- Incremental Zobrist hash updates in MAKE_MOVE/UNMAKE_MOVE
-- Fixed critical R7 clobber bug in HASH_XOR_PIECE_SQ
-- Hash correctly updates during search and restores after unmake
-- TT still root-only, but ready for internal TT (Step 3)
+- **W15:** Internal TT enabled - TT probe/store at all nodes (~7% speedup)
+- **W14:** Incremental Zobrist hash updates in MAKE_MOVE/UNMAKE_MOVE
+- **W13:** Fixed critical R7 clobber bug in HASH_XOR_PIECE_SQ
+
+### Test Results (Internal TT)
+```
+position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 g8f6
+go depth 2 -> 57s, "D" + 40 internal stores, bestmove f3g5
+go depth 2 -> instant, "D", bestmove f3g5 (root TT hit)
+
+position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 a7a6
+go depth 2 -> 57s, "O" + 40 internal stores, bestmove f3g5
+go depth 2 -> instant, "O", bestmove f3g5 (root TT hit)
+```
+
+Debug output: uppercase = root hash at start, lowercase = TT_STORE at internal nodes
 
 ---
 

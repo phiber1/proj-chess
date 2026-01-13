@@ -73,22 +73,11 @@ NEGAMAX:
 
 NEGAMAX_NOT_FIFTY:
     ; -----------------------------------------------
-    ; Transposition Table Probe (ROOT ONLY)
+    ; Transposition Table Probe
     ; -----------------------------------------------
-    ; NOTE: Without incremental hash updates in MAKE/UNMAKE_MOVE,
-    ; the hash stays constant throughout search. So we can ONLY
-    ; probe TT at ply 0 (root). Internal nodes would all have the
-    ; same hash and corrupt the search.
+    ; Hash is updated incrementally in MAKE/UNMAKE_MOVE,
+    ; so TT works correctly at all nodes.
     ;
-    ; Check if we're at root (ply 0)
-    LDI HIGH(CURRENT_PLY)
-    PHI 13
-    LDI LOW(CURRENT_PLY)
-    PLO 13
-    LDN 13              ; D = current ply
-    LBNZ NEGAMAX_TT_MISS    ; Not root, skip TT probe entirely
-
-    ; At root - check TT
     ; Load current search depth for comparison
     LDI HIGH(SEARCH_DEPTH)
     PHI 13
@@ -887,20 +876,12 @@ NEGAMAX_RETURN:
     STR 10
 
     ; -----------------------------------------------
-    ; Store result in Transposition Table (ROOT ONLY)
+    ; Store result in Transposition Table
     ; -----------------------------------------------
-    ; NOTE: Without incremental hash updates, only store at root.
-    ; Internal nodes all have the same hash, so storing would
-    ; overwrite the root entry with garbage.
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
-    LDN 10              ; D = current ply
-    LBNZ NEGAMAX_SKIP_TT_STORE  ; Not root, skip TT store
-
-    ; At root - store result
-    ; DEBUG: Print hash at TT_STORE time (should match search start)
+    ; Hash is updated incrementally in MAKE/UNMAKE_MOVE,
+    ; so TT works correctly at all nodes.
+    ;
+    ; DEBUG: Print hash at TT_STORE time
     LDI HIGH(HASH_LO)
     PHI 10
     LDI LOW(HASH_LO)
@@ -922,8 +903,6 @@ NEGAMAX_RETURN:
     PLO 10
     LDN 10              ; D = depth low byte
     CALL TT_STORE
-
-NEGAMAX_SKIP_TT_STORE:
 
     ; Restore caller's context (clobbers R7, R8, R9, R11, R12)
     CALL RESTORE_PLY_STATE
