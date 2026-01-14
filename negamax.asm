@@ -267,6 +267,51 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     LDI $00
     STR 10              ; BEST_SCORE_LO = $00 (best = $8000 = -32768)
 
+    ; -----------------------------------------------
+    ; Futility Pruning Setup (depth 1 only)
+    ; -----------------------------------------------
+    ; Clear futility flag first
+    LDI HIGH(FUTILITY_OK)
+    PHI 10
+    LDI LOW(FUTILITY_OK)
+    PLO 10
+    LDI 0
+    STR 10              ; FUTILITY_OK = 0 (disabled by default)
+
+    ; Check if depth == 1 (frontier node)
+    LDI HIGH(SEARCH_DEPTH)
+    PHI 13
+    LDI LOW(SEARCH_DEPTH)
+    PLO 13
+    LDA 13              ; D = depth high byte
+    LBNZ NEGAMAX_SKIP_FUTILITY  ; depth > 255, skip
+    LDN 13              ; D = depth low byte
+    XRI 1               ; Check if depth == 1
+    LBNZ NEGAMAX_SKIP_FUTILITY  ; Not depth 1, skip
+
+    ; Depth == 1: Cache static eval for futility pruning
+    CALL EVALUATE       ; Returns score in R9
+    ; Store in STATIC_EVAL (big-endian)
+    LDI HIGH(STATIC_EVAL_HI)
+    PHI 10
+    LDI LOW(STATIC_EVAL_HI)
+    PLO 10
+    GHI 9
+    STR 10              ; STATIC_EVAL_HI
+    INC 10
+    GLO 9
+    STR 10              ; STATIC_EVAL_LO
+
+    ; Enable futility pruning for this node
+    LDI HIGH(FUTILITY_OK)
+    PHI 10
+    LDI LOW(FUTILITY_OK)
+    PLO 10
+    LDI 1
+    STR 10              ; FUTILITY_OK = 1
+
+NEGAMAX_SKIP_FUTILITY:
+
     ; Check if there are any legal moves
     INC 2               ; Point R2 at move count
     LDN 2               ; Peek at move count
@@ -312,6 +357,70 @@ NEGAMAX_MOVE_LOOP:
     INC 10
     GLO 13              ; to
     STR 10
+
+    ; -----------------------------------------------
+    ; Futility Pruning Check (depth 1 quiet moves)
+    ; -----------------------------------------------
+    ; Check if futility pruning is enabled for this node
+    LDI HIGH(FUTILITY_OK)
+    PHI 10
+    LDI LOW(FUTILITY_OK)
+    PLO 10
+    LDN 10
+    LBZ NEGAMAX_NOT_FUTILE  ; Futility not enabled, skip check
+
+    ; Check if move is a capture (target square non-empty)
+    LDI HIGH(MOVE_TO)
+    PHI 10
+    LDI LOW(MOVE_TO)
+    PLO 10
+    LDN 10              ; D = to square
+    PLO 10              ; R10.0 = to square
+    LDI HIGH(BOARD)
+    PHI 10              ; R10 = BOARD + to_square
+    LDN 10              ; D = piece at target
+    LBNZ NEGAMAX_NOT_FUTILE  ; Non-empty = capture, don't prune
+
+    ; Not a capture - check if static_eval + margin < alpha
+    ; Load STATIC_EVAL into R11
+    LDI HIGH(STATIC_EVAL_HI)
+    PHI 10
+    LDI LOW(STATIC_EVAL_HI)
+    PLO 10
+    LDA 10              ; STATIC_EVAL_HI
+    PHI 11
+    LDN 10              ; STATIC_EVAL_LO
+    PLO 11              ; R11 = static eval
+
+    ; Add FUTILITY_MARGIN (300 = $012C)
+    GLO 11
+    ADI FUTILITY_MARGIN_LO  ; Add low byte
+    PLO 11
+    GHI 11
+    ADCI FUTILITY_MARGIN_HI ; Add high byte with carry
+    PHI 11              ; R11 = static_eval + margin
+
+    ; Futility: prune if static_eval is very negative (losing badly)
+    ; Simple check: if static_eval < -MARGIN, prune quiet moves
+    ; This avoids the alpha comparison complexity in negamax
+    ; Check if R11 (static_eval + margin) high byte has sign bit set
+    ; If static_eval + margin < 0, we're down by more than margin, prune
+    GHI 11              ; (eval+margin) high byte
+    ANI $80             ; Check sign bit
+    LBZ NEGAMAX_NOT_FUTILE  ; Sign bit clear = positive, don't prune
+
+    ; Futile! Skip this move
+    ; Pop R9 from stack (was pushed at start of loop)
+    IRX                 ; Point to R9.hi
+    LDXA                ; Load R9.hi, advance
+    PHI 9
+    LDX                 ; Load R9.lo (R2 now below move_count)
+    PLO 9               ; R9 = move list pointer restored
+
+    ; Jump to decrement move count and continue loop
+    LBR NEGAMAX_NEXT_MOVE
+
+NEGAMAX_NOT_FUTILE:
 
     ; Make the move on the board
     CALL MAKE_MOVE

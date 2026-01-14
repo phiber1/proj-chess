@@ -145,6 +145,18 @@ PLY_FRAME_SIZE  EQU 10      ; Bytes per ply frame
 MAX_PLY         EQU 8       ; Maximum search depth supported
 
 ; ------------------------------------------------------------------------------
+; Futility Pruning: $64A0-$64A3
+; ------------------------------------------------------------------------------
+; At depth 1, skip quiet moves where static_eval + margin < alpha
+STATIC_EVAL_HI  EQU $64A0   ; 1 byte - cached static eval high byte
+STATIC_EVAL_LO  EQU $64A1   ; 1 byte - cached static eval low byte
+FUTILITY_OK     EQU $64A2   ; 1 byte - 1 if futility pruning enabled this node
+
+; Futility margin: 150 centipawns (1.5 pawns) = $0096
+FUTILITY_MARGIN_HI  EQU $00
+FUTILITY_MARGIN_LO  EQU $96
+
+; ------------------------------------------------------------------------------
 ; UCI state: $6500-$6600
 ; ------------------------------------------------------------------------------
 UCI_BUFFER      EQU $6500   ; 256 bytes - input buffer ($6500-$65FF)
