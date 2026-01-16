@@ -5,7 +5,7 @@
 > 2. `PROGRESS-platform.md` - Register allocation, memory map, BIOS info
 > 3. This file - Current status and recent sessions
 
-**Archived:** Historical session logs (Dec 2025) moved to `docs/archive/`
+**Documentation policy:** This file uses a sliding window - keep Current Status + last 2-3 sessions. When adding a new session, archive older ones to `docs/archive/sessions-WXX-WYY.md` grouped by milestone. Archives are for regression debugging, not normal operation.
 
 ---
 
