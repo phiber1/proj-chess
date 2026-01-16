@@ -1,0 +1,157 @@
+; XMODEM receive for ELPH
+; 2026 Mark Abene
+
+SOH		equ	1
+EOT		equ	4
+ACK		equ	6
+NAK		equ	21
+warmstart 	equ	$8003
+rxbuf		equ	$7100
+
+bufptr		equ	10
+blkcnt		equ	11	; high = byte count, low = block count
+chksum		equ	12
+nakflag		equ	8
+
+f_read		equ $ff06
+f_type		equ $ff03
+f_msg		equ $ff09
+
+		org	$7000
+start:
+		ldi high(startmsg)
+		phi 15
+		ldi	low(startmsg)
+		plo 15
+		
+		call	f_msg
+		
+		ldi	0
+		plo	blkcnt		; clear block counter
+		plo	nakflag		; clear NAK flag
+		ldi high(rxbuf)	; initialize buffer pointer
+		phi bufptr
+		ldi low(rxbuf)
+		plo bufptr
+
+		ldi	00	; wait 10 seconds
+		phi 9
+		ldi $20
+		plo 9
+delayloop1:
+		call	delayloop2
+		dec	9
+		glo	9
+		bnz	delayloop1
+
+		ldi	NAK		; ask for a start
+		call f_type
+
+blkloop:
+		call f_read		; read header byte
+;		nop
+;		str	bufptr
+;		inc	bufptr
+		smi	EOT		; end of file?
+		bz	done
+		adi	EOT
+		smi	SOH		; start of block?
+		bnz	error		; if not then error
+
+ 		glo	blkcnt		; get last block count
+ 		stxd
+		call	f_read	; read blocks so far
+;		str	bufptr
+;		inc	bufptr
+		plo	blkcnt		; remember block number
+		irx
+		sm			; same block?
+		bnz	continue	; if not, continue as normal
+		glo	nakflag		; same block because of NAK?
+		ani	$ff
+		bnz	continue	; if so, continue to re-recv
+		glo	nakflag
+		sdi	$ff
+		plo	nakflag		; flag block as repeat
+continue:
+		call f_read		; consume inverse block counter
+;		str	bufptr
+;		inc	bufptr
+
+		ldi	0		; clear checksum
+		plo	chksum
+		
+		ldi	128		; 128 bytes per block
+		phi	blkcnt
+byteloop:
+		glo	chksum		; get checksum
+		stxd
+		call f_read		; read next byte in block
+		str	bufptr		; store into receive buffer
+		inc	bufptr
+		irx
+		add			; add received byte to checksum
+		plo	chksum		; update checksum
+		ghi	blkcnt
+		smi	1		; decrement byte counter
+		phi	blkcnt
+		bnz	byteloop	; loop until block received
+
+		glo	chksum		; get our computed checksum
+		stxd
+		call f_read		; read checksum from sender
+		irx
+		sm			; check against computed checksum
+		bnz	badblock	; mismatch? handle it
+		ldi	ACK		; otherwise, it is good!
+		call	f_type		; ACK the block
+		glo	nakflag		; flagged as repeat?
+		shl
+		bdf	rewind		; yes, rewind buffer
+		lbr	blkloop		; get next block
+
+badblock:
+		glo	nakflag		; handle bad block
+		adi	1
+		plo	nakflag
+		ldi	NAK
+		call f_type		; send NAK to request resend
+rewind:
+		ldi	128		; roll back receive buffer
+rewloop:
+		dec	bufptr
+		smi	1
+		bnz	rewloop
+		plo	nakflag		; clear NAK flag
+		lbr	blkloop		; retry block
+
+done:
+		ldi	ACK		; end of file
+		call f_type		; ACK the whole xfer
+		lbr	warmstart	; exit to monitor
+
+error:
+		ldi high(errormsg)
+		phi 15
+		ldi low(errormsg)
+		plo 15
+		call f_msg
+		lbr	warmstart	; exit to monitor
+		
+delayloop2:
+		ldi $ff
+		phi 15
+		plo 15
+delaylp2:
+		dec	15
+		ghi	15
+		bnz	delaylp2
+		glo	15
+		bnz	delaylp2
+		retn
+
+startmsg:
+		db	'Start XMODEM send...',13,10,0
+errormsg:
+		db	'Fatal error in xfer!',13,10,0
+
