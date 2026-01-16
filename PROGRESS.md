@@ -1,12 +1,11 @@
 # RCA 1802 Chess Engine - Progress Log
 
-> **CLAUDE: If context was compacted, re-read this file and the related documentation files before continuing work.**
+> **CLAUDE: If context was compacted, read these files before continuing:**
+> 1. `docs/1802-ESSENTIALS.md` - Critical 1802 gotchas (D register, SCRT, branches, stack)
+> 2. `PROGRESS-platform.md` - Register allocation, memory map, BIOS info
+> 3. This file - Current status and recent sessions
 
-This file contains current session notes. For historical sessions and reference documentation, see:
-
-- `PROGRESS-platform.md` - Platform documentation, register allocation, memory map
-- `PROGRESS-movegen.md` - Move generation phase (Dec 11-17, 2025)
-- `PROGRESS-search.md` - Search implementation phase (Dec 18-28, 2025)
+**Archived:** Historical session logs (Dec 2025) moved to `docs/archive/`
 
 ---
 
