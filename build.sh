@@ -13,6 +13,7 @@ echo ""
 OUTPUT="chess-engine.asm"
 PREPROCESSED="chess-engine-pp.asm"
 HEXFILE="chess-engine.hex"
+BINFILE="chess-engine.bin"
 
 echo "Step 1: Preprocessing configuration..."
 
@@ -195,6 +196,7 @@ elif command -v a18 &> /dev/null; then
         if command -v srec_cat &> /dev/null; then
             srec_cat "$HEXFILE" -intel -o "$HEXFILE" -intel -line-length=57
             echo "  ✓ Reformatted with 24-byte records"
+            srec_cat "$HEXFILE" -intel -o "$BINFILE" -binary
         fi
 
         echo "  Size: $(wc -c < "$HEXFILE") bytes"

@@ -68,7 +68,7 @@ Some earlier debug sessions (Dec 11-20) mention "SERIAL_WRITE_CHAR clobbers R11.
 
 # Register Allocation
 
-**Last Updated:** January 5, 2026
+**Last Updated:** January 15, 2026
 
 ## System Reserved (NEVER touch)
 
@@ -188,7 +188,7 @@ All 16-bit values use **big-endian** layout: high byte at lower address.
 | $6090-$618F | MOVE_HIST | Move history for undo (256 bytes) |
 | $6200-$63FF | MOVE_LIST | Ply-indexed move buffers (128 bytes/ply, 4 plies max) |
 | $6400-$64FF | Engine vars | See below |
-| $6500-$65FF | QS_MOVE_LIST | Quiescence move buffer (overlays UCI_BUFFER during search) |
+| $6500-$65FF | UCI_BUFFER | UCI input buffer (256 bytes) |
 | $6400   | HISTORY_PTR | Move history pointer (2 bytes) |
 | $6408   | UNDO_CAPTURED | Captured piece for unmake |
 | $6409   | UNDO_FROM | From square for unmake |
@@ -202,6 +202,15 @@ All 16-bit values use **big-endian** layout: high byte at lower address.
 | $6446   | SCORE_HI/LO | Current score (2 bytes, big-endian) |
 | $6448   | CURRENT_PLY | Current ply depth (1 byte, 0-7) |
 | $6450   | PLY_STATE_BASE | Ply-indexed state (80 bytes, 10/ply) |
+| $64A0   | STATIC_EVAL_HI/LO | Cached static eval for futility (2 bytes) |
+| $64A2   | FUTILITY_OK | Futility pruning enabled flag (1 byte) |
+| $64A3   | LMR_MOVE_INDEX | Moves searched at current node (1 byte) |
+| $64A4   | LMR_REDUCED | Flag: move searched at reduced depth (1 byte) |
+| $64A5   | LMR_IS_CAPTURE | Flag: current move is a capture (1 byte) |
+| $6500   | UCI_BUFFER | UCI input buffer (256 bytes) |
+| $6601   | HASH_HI/LO | Current position Zobrist hash (2 bytes) |
+| $6700   | TT_TABLE | Transposition table (256 entries × 8 bytes = 2KB) |
+| $6F00   | QS_MOVE_LIST | Quiescence search moves (256 bytes) |
 
 ---
 

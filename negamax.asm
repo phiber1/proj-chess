@@ -312,6 +312,14 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
 
 NEGAMAX_SKIP_FUTILITY:
 
+    ; Initialize LMR move counter to 0
+    LDI HIGH(LMR_MOVE_INDEX)
+    PHI 10
+    LDI LOW(LMR_MOVE_INDEX)
+    PLO 10
+    LDI 0
+    STR 10              ; LMR_MOVE_INDEX = 0
+
     ; Check if there are any legal moves
     INC 2               ; Point R2 at move count
     LDN 2               ; Peek at move count
@@ -357,6 +365,29 @@ NEGAMAX_MOVE_LOOP:
     INC 10
     GLO 13              ; to
     STR 10
+
+    ; -----------------------------------------------
+    ; Set LMR_IS_CAPTURE flag based on target square
+    ; -----------------------------------------------
+    ; R13.0 still has 'to' square from DECODE_MOVE_16BIT
+    LDI HIGH(BOARD)
+    PHI 10
+    GLO 13              ; D = to square
+    PLO 10              ; R10 = BOARD + to_square
+    LDN 10              ; D = piece at target (0 if empty)
+    PLO 7               ; Save piece in R7.0 (temp)
+    LDI HIGH(LMR_IS_CAPTURE)
+    PHI 10
+    LDI LOW(LMR_IS_CAPTURE)
+    PLO 10
+    GLO 7               ; Restore piece
+    LBZ LMR_NOT_CAPTURE
+    LDI 1               ; Non-empty = capture
+    BR LMR_CAPTURE_DONE
+LMR_NOT_CAPTURE:
+    LDI 0               ; Empty = not capture
+LMR_CAPTURE_DONE:
+    STR 10              ; Store flag
 
     ; -----------------------------------------------
     ; Futility Pruning Check (depth 1 quiet moves)
@@ -426,6 +457,57 @@ NEGAMAX_NOT_FUTILE:
     CALL MAKE_MOVE
 
     ; -----------------------------------------------
+    ; LMR Check: Should we reduce this move's search?
+    ; -----------------------------------------------
+    ; Clear LMR_REDUCED flag first
+    LDI HIGH(LMR_REDUCED)
+    PHI 10
+    LDI LOW(LMR_REDUCED)
+    PLO 10
+    LDI 0
+    STR 10              ; LMR_REDUCED = 0 (default)
+
+    ; Condition 1: LMR_MOVE_INDEX >= 4?
+    LDI HIGH(LMR_MOVE_INDEX)
+    PHI 10
+    LDI LOW(LMR_MOVE_INDEX)
+    PLO 10
+    LDN 10              ; D = moves searched so far
+    SMI 4               ; D = index - 4
+    LBNF LMR_SKIP       ; < 4, skip LMR
+
+    ; Condition 2: SEARCH_DEPTH >= 3?
+    LDI HIGH(SEARCH_DEPTH + 1)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH + 1)
+    PLO 10
+    LDN 10              ; D = depth low byte
+    SMI 3               ; D = depth - 3
+    LBNF LMR_SKIP       ; < 3, skip LMR
+
+    ; Condition 3: Not a capture?
+    LDI HIGH(LMR_IS_CAPTURE)
+    PHI 10
+    LDI LOW(LMR_IS_CAPTURE)
+    PLO 10
+    LDN 10              ; D = capture flag
+    LBNZ LMR_SKIP       ; Is capture, skip LMR
+
+    ; All conditions met - set LMR_REDUCED = 1
+    LDI HIGH(LMR_REDUCED)
+    PHI 10
+    LDI LOW(LMR_REDUCED)
+    PLO 10
+    LDI 1
+    STR 10              ; LMR_REDUCED = 1
+
+    ; DEBUG: Print 'L' when LMR would apply
+    LDI 'L'
+    CALL SERIAL_WRITE_CHAR
+
+LMR_SKIP:
+
+    ; -----------------------------------------------
     ; Save depth to stack and decrement for recursive call
     ; (PUSH ORDER: R9/R8, depth, alpha/beta, UNDO_* - pop in reverse!)
     ; -----------------------------------------------
@@ -451,6 +533,31 @@ NEGAMAX_NOT_FUTILE:
     LDN 13              ; D = depth high
     SMBI 0              ; Subtract borrow
     STR 13              ; Store decremented high byte
+
+    ; -----------------------------------------------
+    ; LMR: Extra depth decrement if flag is set
+    ; -----------------------------------------------
+    LDI HIGH(LMR_REDUCED)
+    PHI 10
+    LDI LOW(LMR_REDUCED)
+    PLO 10
+    LDN 10              ; D = LMR_REDUCED flag
+    LBZ LMR_NO_EXTRA_DEC ; Not reduced, skip extra decrement
+
+    ; LMR applies - decrement depth by 1 MORE (depth now = original - 2)
+    LDI HIGH(SEARCH_DEPTH + 1)
+    PHI 13
+    LDI LOW(SEARCH_DEPTH + 1)
+    PLO 13              ; Point to low byte
+    LDN 13              ; D = depth low
+    SMI 1
+    STR 13              ; depth_lo--
+    DEC 13              ; Point to high byte
+    LDN 13              ; D = depth high
+    SMBI 0              ; Subtract borrow
+    STR 13              ; depth_hi-- (with borrow)
+
+LMR_NO_EXTRA_DEC:
 
     ; -----------------------------------------------
     ; Negate and swap alpha/beta (memory-based - R6 is SCRT linkage!)
@@ -614,6 +721,214 @@ NEGAMAX_NOT_FUTILE:
     INC 10
     GLO 9               ; Low byte second
     STR 10              ; SCORE_HI/LO = negated score
+
+    ; -----------------------------------------------
+    ; LMR Re-search Check: Did reduced search beat alpha?
+    ; -----------------------------------------------
+    LDI HIGH(LMR_REDUCED)
+    PHI 10
+    LDI LOW(LMR_REDUCED)
+    PLO 10
+    LDN 10              ; D = LMR_REDUCED flag
+    LBZ LMR_NO_RESEARCH ; Not reduced, skip re-search check
+
+    ; Peek alpha from stack (alpha_hi at R2+12, alpha_lo at R2+11)
+    GLO 2
+    ADI 12              ; Calculate offset to alpha_hi
+    PLO 10
+    GHI 2
+    ADCI 0
+    PHI 10              ; R10 = address of alpha_hi on stack
+    LDN 10              ; D = alpha_hi
+    PHI 7               ; R7.1 = alpha_hi
+    DEC 10              ; Point to alpha_lo (R2+11)
+    LDN 10              ; D = alpha_lo
+    PLO 7               ; R7 = parent's alpha (big-endian)
+
+    ; Load score from SCORE_HI/LO
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    LDA 10              ; D = score_hi
+    PHI 13
+    LDN 10              ; D = score_lo
+    PLO 13              ; R13 = score
+
+    ; Signed comparison: score (R13) > alpha (R7)?
+    ; Use COMPARE_TEMP for scratch
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10              ; X = R10 for comparisons
+
+    ; Check if signs differ
+    GHI 13              ; score_hi
+    STR 10
+    GHI 7               ; alpha_hi
+    XOR
+    ANI $80             ; Check sign bits differ
+    SEX 2               ; Restore X = R2
+    LBNZ LMR_RESEARCH_DIFF_SIGN
+
+    ; Same sign: score > alpha if score - alpha > 0 (positive, no borrow)
+    SEX 10
+    GLO 7               ; alpha_lo
+    STR 10
+    GLO 13              ; score_lo
+    SM                  ; D = score_lo - alpha_lo
+    PHI 8               ; Save low result in R8.1
+    GHI 7               ; alpha_hi
+    STR 10
+    GHI 13              ; score_hi
+    SMB                 ; D = score_hi - alpha_hi - borrow
+    SEX 2               ; Restore X = R2
+    LBNF LMR_NO_RESEARCH ; Borrow = score <= alpha, no re-search
+    LBNZ LMR_DO_RESEARCH ; High bytes differ and positive
+    GHI 8               ; Check saved low result
+    LBZ LMR_NO_RESEARCH  ; Equal (both zero), no re-search
+    LBR LMR_DO_RESEARCH
+
+LMR_RESEARCH_DIFF_SIGN:
+    ; Different signs: positive > negative
+    GHI 13              ; score_hi
+    ANI $80
+    LBNZ LMR_NO_RESEARCH ; score negative, alpha positive: score < alpha
+
+LMR_DO_RESEARCH:
+    ; Re-search needed! Score beat alpha on reduced search.
+    ; DEBUG: Print 'R' for re-search
+    LDI 'R'
+    CALL SERIAL_WRITE_CHAR
+
+    ; Clear LMR_REDUCED so we don't re-search again
+    LDI HIGH(LMR_REDUCED)
+    PHI 10
+    LDI LOW(LMR_REDUCED)
+    PLO 10
+    LDI 0
+    STR 10
+
+    ; Increment SEARCH_DEPTH by 1 (undo the extra LMR reduction)
+    ; Current depth = original - 2, we want original - 1
+    LDI HIGH(SEARCH_DEPTH + 1)
+    PHI 13
+    LDI LOW(SEARCH_DEPTH + 1)
+    PLO 13
+    LDN 13              ; D = depth_lo
+    ADI 1
+    STR 13              ; depth_lo++
+    DEC 13              ; Point to high byte
+    LDN 13              ; D = depth_hi
+    ADCI 0              ; Add carry
+    STR 13              ; depth_hi++ (with carry)
+
+    ; Re-setup alpha/beta for child (same swap as original)
+    ; Peek parent's beta from stack (beta_hi at R2+10, beta_lo at R2+9)
+    GLO 2
+    ADI 10
+    PLO 10
+    GHI 2
+    ADCI 0
+    PHI 10              ; R10 = address of beta_hi on stack
+    LDN 10              ; D = beta_hi
+    PHI 8
+    DEC 10              ; Point to beta_lo
+    LDN 10              ; D = beta_lo
+    PLO 8               ; R8 = parent's beta
+
+    ; new_alpha = -beta (negate R8)
+    GLO 8
+    SDI 0
+    PLO 7               ; R7.0 = -beta_lo
+    GHI 8
+    SDBI 0
+    PHI 7               ; R7 = -beta = new_alpha
+
+    ; Peek parent's alpha again (R2+12, R2+11)
+    GLO 2
+    ADI 12
+    PLO 10
+    GHI 2
+    ADCI 0
+    PHI 10
+    LDN 10              ; D = alpha_hi
+    PHI 8
+    DEC 10
+    LDN 10              ; D = alpha_lo
+    PLO 8               ; R8 = parent's alpha
+
+    ; new_beta = -alpha (negate R8)
+    GLO 8
+    SDI 0
+    PLO 8               ; R8.0 = -alpha_lo
+    GHI 8
+    SDBI 0
+    PHI 8               ; R8 = -alpha = new_beta
+
+    ; Store new alpha/beta to memory
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    GHI 7               ; new_alpha_hi
+    STR 10
+    INC 10
+    GLO 7               ; new_alpha_lo
+    STR 10              ; ALPHA = -beta
+
+    LDI HIGH(BETA_HI)
+    PHI 10
+    LDI LOW(BETA_HI)
+    PLO 10
+    GHI 8               ; new_beta_hi
+    STR 10
+    INC 10
+    GLO 8               ; new_beta_lo
+    STR 10              ; BETA = -alpha
+
+    ; Increment ply for recursive call
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10
+    ADI 1
+    STR 10              ; CURRENT_PLY++
+
+    ; Call NEGAMAX again (full depth this time)
+    CALL NEGAMAX
+
+    ; Decrement ply
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10
+    SMI 1
+    STR 10              ; CURRENT_PLY--
+
+    ; Negate returned score
+    GLO 9
+    SDI 0
+    PLO 9
+    GHI 9
+    SDBI 0
+    PHI 9               ; R9 = -score
+
+    ; Save to SCORE_HI/LO
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    GHI 9               ; High byte
+    STR 10
+    INC 10
+    GLO 9               ; Low byte
+    STR 10              ; SCORE_HI/LO = re-search score
+
+LMR_NO_RESEARCH:
 
     ; -----------------------------------------------
     ; Restore BEST_SCORE from stack FIRST (it was pushed last - LIFO!)
@@ -939,6 +1254,17 @@ NEGAMAX_SCORE_BETTER:
     ; TODO: Properly track alpha if needed for deeper search improvement
 
 NEGAMAX_NEXT_MOVE:
+    ; -----------------------------------------------
+    ; Increment LMR move counter (move was processed)
+    ; -----------------------------------------------
+    LDI HIGH(LMR_MOVE_INDEX)
+    PHI 10
+    LDI LOW(LMR_MOVE_INDEX)
+    PLO 10
+    LDN 10
+    ADI 1
+    STR 10              ; LMR_MOVE_INDEX++
+
     ; -----------------------------------------------
     ; Decrement move counter and continue loop
     ; -----------------------------------------------

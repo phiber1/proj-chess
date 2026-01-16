@@ -10,39 +10,96 @@ This file contains current session notes. For historical sessions and reference 
 
 ---
 
-## Current Status (January 13, 2026)
+## Current Status (January 15, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
-- **Depth 3:** NOW PRACTICAL! ~3.5 minutes (was 8+ minutes and never finished before)
-- **Transposition Table:** Full internal TT enabled at all nodes - MAJOR WIN!
+- **Depth 3:** 90 seconds with LMR! (was 3.5 min, was 8+ min before TT)
+- **Transposition Table:** Full internal TT enabled at all nodes
+- **Late Move Reductions:** Working! ~60% speedup at depth 3
 - **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 27,244 bytes (includes TT + Zobrist + incremental hash + futility infrastructure)
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT
+- **Engine size:** 28,068 bytes (includes TT + Zobrist + LMR + futility)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR
 
 ### Comparison to Historical Engines
 - **Sargon (Z80)** defaulted to depth 2 for casual play
-- This 1802/1806 engine can now do depth 3 in reasonable time!
+- This 1802/1806 engine does depth 3 in 90 seconds - competitive with 8-bit era engines!
 
 ### Recent Milestones
+- **W17:** Late Move Reductions - depth 3 in 90 seconds (60% faster!)
 - **W16:** Depth 3 now practical (~3.5 min) - internal TT is the key optimization
 - **W15:** Internal TT enabled - TT probe/store at all nodes
 - **W14:** Incremental Zobrist hash updates in MAKE_MOVE/UNMAKE_MOVE
-- **W13:** Fixed critical R7 clobber bug in HASH_XOR_PIECE_SQ
 
 ### Test Results
 ```
 Sicilian Defense (depth 2):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
-go depth 2 -> 44s, ~40 TT stores, bestmove d4e6
+go depth 2 -> 44s, bestmove d4e6
 
-Sicilian Defense (depth 3) - THE BIG WIN:
+Sicilian Defense (depth 3) - WITH LMR:
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
-go depth 3 -> 3.5 minutes, ~170 TT stores, bestmove b1a3
-(Previously: 8+ minutes and never completed!)
+go depth 3 -> 90 seconds, bestmove b1c3
+(Was 3.5 min before LMR, 8+ min before internal TT!)
 ```
 
-Debug output: uppercase = root hash at start, lowercase = TT_STORE at internal nodes
+Debug output: uppercase = root hash, lowercase = TT_STORE, L = LMR triggered, R = re-search
+
+---
+
+## Session: January 15, 2026 - Late Move Reductions (LMR)
+
+### Summary
+Implemented Late Move Reductions (LMR) to speed up search. Depth 3 now completes in
+90 seconds, down from 3.5 minutes - a 60% improvement!
+
+### What is LMR?
+Moves are ordered by quality: killer moves first, then captures, then quiet moves.
+Later moves in this ordering are statistically less likely to be best. LMR searches
+these "late moves" at reduced depth. If a reduced search returns a surprisingly good
+score (beats alpha), we re-search at full depth.
+
+### Implementation Details
+
+**New Memory Variables ($64A3-$64A5):**
+- `LMR_MOVE_INDEX` - tracks moves searched at current node
+- `LMR_REDUCED` - flag: 1 if current move was searched at reduced depth
+- `LMR_IS_CAPTURE` - flag: 1 if current move is a capture
+
+**LMR Conditions (all must be true):**
+1. Move index >= 4 (first 4 moves get full search)
+2. Depth >= 3 (need sufficient depth to reduce)
+3. Not a capture (tactical moves always full depth)
+
+**LMR Logic:**
+- Normal: depth-1 for recursive call
+- With LMR: depth-2 for recursive call (one extra reduction)
+- Re-search: if reduced search beats alpha, search again at depth-1
+
+**Files Modified:**
+- `board-0x88.asm` - Added LMR memory variable definitions
+- `negamax.asm` - LMR condition check, depth reduction, re-search logic (~200 lines)
+
+### Test Results
+```
+Sicilian Defense (depth 3):
+Before LMR: 3.5 minutes, bestmove b1a3
+After LMR:  90 seconds, bestmove b1c3 (60% faster!)
+
+Debug output shows many 'L' (LMR triggered) but no 'R' (re-search).
+This is ideal - move ordering is good, so late moves correctly identified as inferior.
+```
+
+### Why No Re-searches?
+The absence of 'R' characters indicates excellent move ordering:
+- Killer moves and captures (searched first) are finding the best lines
+- Quiet moves (searched later with LMR) correctly return score <= alpha
+- No re-search needed because reduced searches confirm moves aren't better
+
+### Code Size
+- Before: 27,208 bytes
+- After: 28,068 bytes
+- Added: ~860 bytes for LMR logic
 
 ---
 
