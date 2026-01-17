@@ -686,10 +686,33 @@ LMR_NO_EXTRA_DEC:
     STR 10              ; CURRENT_PLY++
 
     ; -----------------------------------------------
+    ; Push LMR_REDUCED to stack (will be overwritten by recursive call)
+    ; -----------------------------------------------
+    LDI HIGH(LMR_REDUCED)
+    PHI 10
+    LDI LOW(LMR_REDUCED)
+    PLO 10
+    LDN 10              ; D = LMR_REDUCED flag
+    STXD                ; Push to stack
+
+    ; -----------------------------------------------
     ; Recursive call to NEGAMAX
     ; -----------------------------------------------
     CALL NEGAMAX
     ; Returns score in R9 (R6 is SCRT linkage - off limits!)
+
+    ; -----------------------------------------------
+    ; Pop LMR_REDUCED immediately and save to LMR_OUTER
+    ; -----------------------------------------------
+    IRX
+    LDX                 ; D = saved LMR_REDUCED (R2 stays at this slot)
+    PLO 7               ; Save in R7.0 (temp)
+    LDI HIGH(LMR_OUTER)
+    PHI 10
+    LDI LOW(LMR_OUTER)
+    PLO 10
+    GLO 7               ; Restore LMR_REDUCED value
+    STR 10              ; LMR_OUTER = saved LMR_REDUCED
 
     ; Decrement ply counter after recursion
     LDI HIGH(CURRENT_PLY)
@@ -725,11 +748,12 @@ LMR_NO_EXTRA_DEC:
     ; -----------------------------------------------
     ; LMR Re-search Check: Did reduced search beat alpha?
     ; -----------------------------------------------
-    LDI HIGH(LMR_REDUCED)
+    ; Read LMR_OUTER from memory (LMR_REDUCED was cleared by recursive call)
+    LDI HIGH(LMR_OUTER)
     PHI 10
-    LDI LOW(LMR_REDUCED)
+    LDI LOW(LMR_OUTER)
     PLO 10
-    LDN 10              ; D = LMR_REDUCED flag
+    LDN 10              ; D = LMR_OUTER flag
     LBZ LMR_NO_RESEARCH ; Not reduced, skip re-search check
 
     ; Peek alpha from stack (alpha_hi at R2+12, alpha_lo at R2+11)

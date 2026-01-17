@@ -157,12 +157,13 @@ FUTILITY_MARGIN_HI  EQU $00
 FUTILITY_MARGIN_LO  EQU $96
 
 ; ------------------------------------------------------------------------------
-; Late Move Reductions: $64A3-$64A5
+; Late Move Reductions: $64A3-$64A6
 ; ------------------------------------------------------------------------------
 ; At depth >= 3, reduce search depth for later quiet moves
 LMR_MOVE_INDEX    EQU $64A3   ; 1 byte - moves searched so far at this node
 LMR_REDUCED       EQU $64A4   ; 1 byte - flag: 1=current move searched at reduced depth
 LMR_IS_CAPTURE    EQU $64A5   ; 1 byte - flag: 1=current move is a capture
+LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive calls)
 
 ; ------------------------------------------------------------------------------
 ; UCI state: $6500-$6600

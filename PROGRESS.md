@@ -9,26 +9,26 @@
 
 ---
 
-## Current Status (January 15, 2026)
+## Current Status (January 16, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
-- **Depth 3:** 90 seconds with LMR! (was 3.5 min, was 8+ min before TT)
+- **Depth 3:** ~44-90 seconds with LMR! (was 3.5 min, was 8+ min before TT)
 - **Transposition Table:** Full internal TT enabled at all nodes
-- **Late Move Reductions:** Working! ~60% speedup at depth 3
+- **Late Move Reductions:** Working with verified re-search! Bug fixed Jan 16.
 - **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 28,068 bytes (includes TT + Zobrist + LMR + futility)
+- **Engine size:** 28,118 bytes (includes TT + Zobrist + LMR + futility)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR
 
 ### Comparison to Historical Engines
 - **Sargon (Z80)** defaulted to depth 2 for casual play
-- This 1802/1806 engine does depth 3 in 90 seconds - competitive with 8-bit era engines!
+- This 1802/1806 engine does depth 3 in 44-90 seconds - competitive with 8-bit era engines!
 
 ### Recent Milestones
+- **W18:** LMR re-search bug fixed - LMR_REDUCED must be pushed/popped around recursion
 - **W17:** Late Move Reductions - depth 3 in 90 seconds (60% faster!)
 - **W16:** Depth 3 now practical (~3.5 min) - internal TT is the key optimization
 - **W15:** Internal TT enabled - TT probe/store at all nodes
-- **W14:** Incremental Zobrist hash updates in MAKE_MOVE/UNMAKE_MOVE
 
 ### Test Results
 ```
@@ -36,13 +36,55 @@ Sicilian Defense (depth 2):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 2 -> 44s, bestmove d4e6
 
-Sicilian Defense (depth 3) - WITH LMR:
+Sicilian Defense (depth 3) - WITH LMR + re-search fix:
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
-go depth 3 -> 90 seconds, bestmove b1c3
-(Was 3.5 min before LMR, 8+ min before internal TT!)
+go depth 3 -> 44 seconds, bestmove b1a3 (3 re-searches triggered!)
+(Was 90s before re-search fix, 3.5 min before LMR, 8+ min before TT!)
 ```
 
 Debug output: uppercase = root hash, lowercase = TT_STORE, L = LMR triggered, R = re-search
+
+---
+
+## Session: January 16, 2026 - LMR Re-search Bug Fix
+
+### Summary
+Fixed critical bug in LMR re-search logic. The `LMR_REDUCED` flag was being cleared by
+recursive calls, so re-searches never triggered. Solution: push/pop around CALL NEGAMAX.
+
+### The Bug
+`LMR_REDUCED` is a global memory variable set when LMR conditions are met. However, when
+the recursive NEGAMAX call processes its own moves, it clears `LMR_REDUCED` at the start
+of each move. When the recursive call returns, `LMR_REDUCED` is always 0.
+
+**Symptom:** Lots of 'L' (LMR applied) but no 'R' (re-search) even when testing with
+threshold=1, which should force re-searches on almost every move.
+
+### The Fix
+Push `LMR_REDUCED` to stack immediately before `CALL NEGAMAX`, pop immediately after.
+Store the popped value in `LMR_OUTER` (new memory variable) for the re-search check.
+
+**Key insight:** Global state that needs to survive recursive calls must either:
+1. Be pushed/popped around the call (stack-based)
+2. Use per-ply indexing (array-based)
+
+### Verification
+With threshold=1 (forcing LMR on all moves after the first):
+- Before fix: No 'R' characters (re-search never triggered)
+- After fix: Multiple 'R' characters (re-search working correctly)
+
+With threshold=4 (production setting):
+- Before fix: 90 seconds, no re-searches
+- After fix: 44 seconds, 3 re-searches (50% additional speedup!)
+
+### Files Modified
+- `board-0x88.asm` - Added `LMR_OUTER` variable at $64A6
+- `negamax.asm` - Push/pop LMR_REDUCED around CALL, check LMR_OUTER for re-search
+
+### Code Size
+- Before: 28,068 bytes
+- After: 28,118 bytes
+- Added: ~50 bytes for stack save/restore
 
 ---
 
@@ -110,10 +152,10 @@ Move ordering (killers + captures first) is effective enough that late quiet mov
 genuinely don't beat alpha even on reduced search. Re-search is a safety net that
 rarely triggers - which is actually optimal for performance.
 
-### TODO: Verify Re-search Code Path
-To confirm re-search logic works, temporarily set `LMR_MOVE_THRESHOLD` from 4 to 1.
-This forces LMR on almost all moves, making re-searches likely. Then revert to 4.
-Location: negamax.asm line ~476 (`SMI 4` → `SMI 1`)
+### DONE: Re-search Code Path Verified (Jan 16)
+Bug found and fixed! `LMR_REDUCED` was being cleared by recursive calls. Now uses
+stack push/pop around `CALL NEGAMAX`. Re-search verified working with threshold=1.
+See Session: January 16, 2026 for details.
 
 ### Code Size
 - Before: 27,208 bytes

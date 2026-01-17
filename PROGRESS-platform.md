@@ -207,6 +207,7 @@ All 16-bit values use **big-endian** layout: high byte at lower address.
 | $64A3   | LMR_MOVE_INDEX | Moves searched at current node (1 byte) |
 | $64A4   | LMR_REDUCED | Flag: move searched at reduced depth (1 byte) |
 | $64A5   | LMR_IS_CAPTURE | Flag: current move is a capture (1 byte) |
+| $64A6   | LMR_OUTER | Saved LMR_REDUCED, survives recursion (1 byte) |
 | $6500   | UCI_BUFFER | UCI input buffer (256 bytes) |
 | $6601   | HASH_HI/LO | Current position Zobrist hash (2 bytes) |
 | $6700   | TT_TABLE | Transposition table (256 entries × 8 bytes = 2KB) |

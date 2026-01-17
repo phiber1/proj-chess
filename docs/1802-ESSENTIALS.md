@@ -259,13 +259,32 @@ When P=3, R3 is the active program counter. Modifying it changes where code exec
 
 ## Recursion and Global State
 
-Global variables (like UNDO_CAPTURED, UNDO_FROM) don't work with recursion - each depth level overwrites the same memory.
+Global variables don't survive recursion - each depth level overwrites the same memory.
+
+**Examples that FAIL:**
+- `UNDO_CAPTURED`, `UNDO_FROM` - child calls overwrite parent's undo info
+- `LMR_REDUCED` - child's move loop clears parent's flag (W18 bug)
 
 **Solutions:**
 1. **Stack-based:** Push/pop state around recursive calls
 2. **Ply-indexed arrays:** `state[ply]` accessed via `PLY_STATE_BASE + (ply × frame_size)`
 
-This engine uses ply-indexed arrays at $6450 (10 bytes per ply, 8 plies max).
+```asm
+; Stack-based example (LMR_REDUCED fix):
+    LDN 10              ; D = LMR_REDUCED
+    STXD                ; Push to stack
+    CALL NEGAMAX        ; Child can clobber LMR_REDUCED safely
+    IRX
+    LDX                 ; Pop saved value
+    PLO 7               ; Save to register before LDI clobbers D
+    ; ... load LMR_OUTER address ...
+    GLO 7
+    STR 10              ; LMR_OUTER = original LMR_REDUCED
+```
+
+This engine uses:
+- Stack save/restore for `LMR_REDUCED`, `UNDO_*`, `BEST_SCORE`
+- Ply-indexed arrays at $6450 for killer moves (10 bytes per ply, 8 plies max)
 
 ---
 
