@@ -77,6 +77,18 @@ With threshold=4 (production setting):
 - Before fix: 90 seconds, no re-searches
 - After fix: 44 seconds, 3 re-searches (50% additional speedup!)
 
+### Extended Position Testing (with fix)
+| Position | Before Fix | After Fix | Re-searches | Bestmove |
+|----------|------------|-----------|-------------|----------|
+| Sicilian Defense | 90s | 44s | 3 | b1a3 |
+| Ruy Lopez Mainline | 144s | 151s | ~35 | f6g8 |
+| Exchange Ruy Lopez | 147s | 116s (-21%) | ~40 | f3h4 |
+| Italian Game (extended) | N/A | 269s | ~50 | c5b6 |
+
+**Observation:** Re-search now triggers heavily in complex positions. Some positions
+are slightly slower (more thorough), others faster (better pruning from accurate scores).
+The search is now **correct** - previous times had broken re-search.
+
 ### Files Modified
 - `board-0x88.asm` - Added `LMR_OUTER` variable at $64A6
 - `negamax.asm` - Push/pop LMR_REDUCED around CALL, check LMR_OUTER for re-search
