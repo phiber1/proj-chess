@@ -501,10 +501,6 @@ NEGAMAX_NOT_FUTILE:
     LDI 1
     STR 10              ; LMR_REDUCED = 1
 
-    ; DEBUG: Print 'L' when LMR would apply
-    LDI 'L'
-    CALL SERIAL_WRITE_CHAR
-
 LMR_SKIP:
 
     ; -----------------------------------------------
@@ -822,9 +818,6 @@ LMR_RESEARCH_DIFF_SIGN:
 
 LMR_DO_RESEARCH:
     ; Re-search needed! Score beat alpha on reduced search.
-    ; DEBUG: Print 'R' for re-search
-    LDI 'R'
-    CALL SERIAL_WRITE_CHAR
 
     ; Clear LMR_REDUCED so we don't re-search again
     LDI HIGH(LMR_REDUCED)
@@ -1339,19 +1332,6 @@ NEGAMAX_RETURN:
     ; -----------------------------------------------
     ; Hash is updated incrementally in MAKE/UNMAKE_MOVE,
     ; so TT works correctly at all nodes.
-    ;
-    ; DEBUG: Print hash at TT_STORE time
-    LDI HIGH(HASH_LO)
-    PHI 10
-    LDI LOW(HASH_LO)
-    PLO 10
-    LDN 10              ; D = HASH_LO
-    SHR
-    SHR
-    SHR
-    SHR                 ; D = high nibble (0-15)
-    ADI 'a'             ; Convert to a-p (lowercase to distinguish from start)
-    CALL SERIAL_WRITE_CHAR
 
     ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
     LDI TT_FLAG_EXACT
@@ -2537,19 +2517,6 @@ SEARCH_POSITION:
 
     ; Initialize Zobrist hash for current position
     CALL HASH_INIT
-
-    ; DEBUG: Print hash_lo as single char (A-P for 0-F high nibble)
-    LDI HIGH(HASH_LO)
-    PHI 10
-    LDI LOW(HASH_LO)
-    PLO 10
-    LDN 10              ; D = HASH_LO
-    SHR
-    SHR
-    SHR
-    SHR                 ; D = high nibble (0-15)
-    ADI 'A'             ; Convert to A-P
-    CALL SERIAL_WRITE_CHAR
 
     ; NOTE: TT_CLEAR removed - don't clear between searches!
     ; Hash uniquely identifies positions, so old entries are still valid.
