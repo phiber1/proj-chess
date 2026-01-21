@@ -10,15 +10,13 @@
 
 #ifdef BIOS
 ; ------------------------------------------------------------------------------
-; BIOS Mode Entry - SCRT set up by BIOS, but we set our own stack
+; BIOS Mode Entry - SCRT set up by BIOS, use BIOS stack
 ; ------------------------------------------------------------------------------
 START:
-    ; BIOS has set up R4=CALL, R5=RET but stack may not be at $7FFF
-    ; Explicitly set stack to $7FFF to avoid corrupting our variables
-    LDI $7F
-    PHI 2
-    LDI $FF
-    PLO 2               ; R2 = $7FFF (stack top)
+    ; BIOS has set up R4=CALL, R5=RET, R2=stack (at $7F77)
+    ; DO NOT reset R2! Monitor uses $7F78-$7FFF for static variables.
+    ; If we set R2=$7FFF, our stack would overwrite monitor variables,
+    ; breaking warm start at $8003.
     SEX 2               ; Ensure X = R2 for stack operations
     ; Serial I/O uses BIOS entry points, no init needed
 #else
