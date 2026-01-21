@@ -166,6 +166,12 @@ LMR_IS_CAPTURE    EQU $64A5   ; 1 byte - flag: 1=current move is a capture
 LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive calls)
 
 ; ------------------------------------------------------------------------------
+; Null Move Pruning: $64A7-$64A8
+; ------------------------------------------------------------------------------
+NULL_MOVE_OK      EQU $64A7   ; 1 byte - flag: 1=can try null move, 0=cannot (prevents double-null)
+NULL_SAVED_EP     EQU $64A8   ; 1 byte - saved EP square before null move
+
+; ------------------------------------------------------------------------------
 ; UCI state: $6500-$6600
 ; ------------------------------------------------------------------------------
 UCI_BUFFER      EQU $6500   ; 256 bytes - input buffer ($6500-$65FF)

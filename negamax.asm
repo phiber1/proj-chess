@@ -156,6 +156,319 @@ NEGAMAX_TT_MISS:
     LBR NEGAMAX_LEAF
 
 NEGAMAX_CONTINUE:
+    ; ===============================================
+    ; NULL MOVE PRUNING CHECK
+    ; ===============================================
+    ; If position is so strong that passing still beats beta, prune.
+    ; Conditions: depth >= 3, not in check, NULL_MOVE_OK, ply > 0
+
+    ; Condition 1: depth >= 3?
+    LDI HIGH(SEARCH_DEPTH + 1)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH + 1)
+    PLO 10
+    LDN 10              ; D = depth low byte
+    SMI 3               ; D = depth - 3
+    LBNF NMP_SKIP       ; depth < 3, skip null move
+
+    ; Condition 2: ply > 0? (don't do at root)
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    LBZ NMP_SKIP        ; ply == 0, skip null move
+
+    ; Condition 3: NULL_MOVE_OK?
+    LDI HIGH(NULL_MOVE_OK)
+    PHI 10
+    LDI LOW(NULL_MOVE_OK)
+    PLO 10
+    LDN 10
+    LBZ NMP_SKIP        ; null move not allowed (already did one)
+
+    ; Condition 4: NOT in check?
+    CALL IS_IN_CHECK
+    ; D = 1 if in check, 0 if safe
+    LBNZ NMP_SKIP       ; in check, can't pass
+
+    ; --- All conditions met, try null move ---
+
+    ; Disable null move for child (prevent consecutive)
+    LDI HIGH(NULL_MOVE_OK)
+    PHI 10
+    LDI LOW(NULL_MOVE_OK)
+    PLO 10
+    LDI 0
+    STR 10              ; NULL_MOVE_OK = 0
+
+    ; Save depth to stack
+    LDI HIGH(SEARCH_DEPTH)
+    PHI 13
+    LDI LOW(SEARCH_DEPTH)
+    PLO 13
+    LDA 13              ; depth_hi
+    STXD
+    LDN 13              ; depth_lo
+    STXD
+
+    ; Save alpha/beta to stack
+    LDI HIGH(ALPHA_HI)
+    PHI 13
+    LDI LOW(ALPHA_HI)
+    PLO 13
+    LDA 13              ; alpha_hi
+    STXD
+    LDN 13              ; alpha_lo
+    STXD
+    LDI HIGH(BETA_HI)
+    PHI 13
+    LDI LOW(BETA_HI)
+    PLO 13
+    LDA 13              ; beta_hi
+    STXD
+    LDN 13              ; beta_lo
+    STXD
+
+    ; Make null move (toggle side, update hash, clear EP)
+    CALL NULL_MAKE_MOVE
+
+    ; Set child depth = depth - 3 (R=2 reduction + normal -1)
+    ; Peek depth from stack (at R2+5, R2+6)
+    GLO 2
+    ADI 6
+    PLO 10
+    GHI 2
+    ADCI 0
+    PHI 10              ; R10 = &depth_hi on stack
+    LDN 10              ; depth_hi
+    PHI 7               ; R7.1 = depth_hi
+    DEC 10
+    LDN 10              ; depth_lo
+    SMI 3               ; depth_lo - 3
+    PLO 7
+    GHI 7
+    SMBI 0              ; depth_hi - borrow
+    PHI 7               ; R7 = depth - 3
+
+    ; Store child depth to memory
+    LDI HIGH(SEARCH_DEPTH)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH)
+    PLO 10
+    GHI 7
+    STR 10
+    INC 10
+    GLO 7
+    STR 10              ; SEARCH_DEPTH = depth - 3
+
+    ; Set child alpha = -beta (zero window)
+    ; Peek beta from stack (at R2+1, R2+2)
+    GLO 2
+    ADI 2
+    PLO 10
+    GHI 2
+    ADCI 0
+    PHI 10              ; R10 = &beta_hi on stack
+    LDN 10              ; beta_hi
+    PHI 7
+    DEC 10
+    LDN 10              ; beta_lo
+    PLO 7               ; R7 = beta
+
+    ; Negate beta for child alpha
+    GLO 7
+    SDI 0               ; -beta_lo
+    PLO 8
+    GHI 7
+    SDBI 0              ; -beta_hi
+    PHI 8               ; R8 = -beta = child alpha
+
+    ; Store as new alpha
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    GHI 8
+    STR 10
+    INC 10
+    GLO 8
+    STR 10              ; ALPHA = -beta
+
+    ; Set child beta = -beta + 1 (zero window)
+    GLO 8
+    ADI 1
+    PLO 8
+    GHI 8
+    ADCI 0
+    PHI 8               ; R8 = -beta + 1
+
+    LDI HIGH(BETA_HI)
+    PHI 10
+    LDI LOW(BETA_HI)
+    PLO 10
+    GHI 8
+    STR 10
+    INC 10
+    GLO 8
+    STR 10              ; BETA = -beta + 1
+
+    ; Toggle color for child
+    GLO 12
+    XRI $08
+    PLO 12
+
+    ; Increment ply
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10
+    ADI 1
+    STR 10              ; CURRENT_PLY++
+
+    ; Recursive call
+    CALL NEGAMAX
+    ; R9 = score
+
+    ; Decrement ply
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10
+    SMI 1
+    STR 10              ; CURRENT_PLY--
+
+    ; Toggle color back
+    GLO 12
+    XRI $08
+    PLO 12
+
+    ; Negate score: score = -score
+    GLO 9
+    SDI 0
+    PLO 9
+    GHI 9
+    SDBI 0
+    PHI 9               ; R9 = -score
+
+    ; Unmake null move (toggle side back, restore EP, update hash)
+    CALL NULL_UNMAKE_MOVE
+
+    ; Re-enable null move for this level
+    LDI HIGH(NULL_MOVE_OK)
+    PHI 10
+    LDI LOW(NULL_MOVE_OK)
+    PLO 10
+    LDI 1
+    STR 10              ; NULL_MOVE_OK = 1
+
+    ; Pop beta from stack into R7
+    IRX
+    LDXA                ; beta_lo
+    PLO 7
+    LDX                 ; beta_hi (R2 now at beta_hi slot)
+    PHI 7               ; R7 = original beta
+
+    ; Pop alpha from stack (discard, just need to advance R2)
+    IRX
+    IRX                 ; Skip alpha_lo, alpha_hi
+
+    ; Pop depth from stack and restore to memory
+    IRX
+    LDXA                ; depth_lo
+    PLO 8
+    LDX                 ; depth_hi
+    PHI 8               ; R8 = original depth
+
+    LDI HIGH(SEARCH_DEPTH)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH)
+    PLO 10
+    GHI 8
+    STR 10
+    INC 10
+    GLO 8
+    STR 10              ; SEARCH_DEPTH restored
+
+    ; Restore alpha/beta to memory (we still have them from before)
+    ; Actually we discarded alpha - need to restore from scratch
+    ; For now, alpha doesn't matter - we only compare score vs beta
+
+    ; Compare: score (R9) >= beta (R7)? If so, prune!
+    ; Signed 16-bit comparison
+
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+
+    ; Check if signs differ
+    GHI 9               ; score_hi
+    STR 10
+    GHI 7               ; beta_hi
+    XOR
+    ANI $80             ; Check sign bit difference
+    SEX 2
+    LBNZ NMP_CHECK_SIGN
+
+    ; Same sign: score >= beta if (score - beta) has no borrow
+    SEX 10
+    GLO 7               ; beta_lo
+    STR 10
+    GLO 9               ; score_lo
+    SM                  ; score_lo - beta_lo
+    GHI 7               ; beta_hi
+    STR 10
+    GHI 9               ; score_hi
+    SMB                 ; score_hi - beta_hi - borrow
+    SEX 2
+    LBNF NMP_NO_CUTOFF  ; Borrow set = score < beta
+    LBR NMP_CUTOFF      ; No borrow = score >= beta
+
+NMP_CHECK_SIGN:
+    ; Different signs: positive >= negative always
+    ; If score positive (hi bit 0) and beta negative (hi bit 1): score >= beta
+    GHI 9               ; score_hi
+    ANI $80
+    LBNZ NMP_NO_CUTOFF  ; score negative, beta positive: score < beta
+    ; score positive, beta negative: score >= beta
+    ; Fall through to cutoff
+
+NMP_CUTOFF:
+    ; Null move cutoff! Return beta
+    GHI 7
+    PHI 9
+    GLO 7
+    PLO 9               ; R9 = beta
+
+    ; Need to restore alpha/beta to memory before returning
+    ; Beta is in R7, but alpha was discarded...
+    ; Actually for return we don't need them in memory.
+    ; Just restore ply state and return.
+
+    CALL RESTORE_PLY_STATE
+    RETN
+
+NMP_NO_CUTOFF:
+    ; Null move didn't cause cutoff, need to restore alpha/beta to memory
+    ; We have beta in R7 but discarded alpha from stack
+    ; Recalculate: we saved alpha at stack offset +3,+4 from beta
+    ; Actually we already popped everything. Need to re-read from saved state.
+    ;
+    ; Simpler approach: alpha/beta were saved by SAVE_PLY_STATE at entry.
+    ; We can restore them from ply state. But that's expensive.
+    ;
+    ; Better: we should have kept alpha. Let me fix this by peeking instead of popping.
+    ; For now, use ply state restoration (it's only on NMP miss path)
+
+    CALL RESTORE_PLY_STATE
+    CALL SAVE_PLY_STATE     ; Re-save to get fresh state
+    ; Fall through to normal move generation
+
+NMP_SKIP:
     ; -----------------------------------------------
     ; Generate moves for current position
     ; -----------------------------------------------
@@ -178,9 +491,9 @@ NEGAMAX_CONTINUE:
     ; Calculate low byte: (ply & 1) << 7 = $00 or $80
     LDN 10              ; D = ply (reload)
     ANI $01             ; D = ply & 1
-    BZ NEGAMAX_PLY_EVEN
+    LBZ NEGAMAX_PLY_EVEN
     LDI $80             ; Odd ply: low byte = $80
-    BR NEGAMAX_PLY_DONE
+    LBR NEGAMAX_PLY_DONE
 NEGAMAX_PLY_EVEN:
     LDI $00             ; Even ply: low byte = $00
 NEGAMAX_PLY_DONE:
@@ -2480,6 +2793,14 @@ SEARCH_POSITION:
     PLO 10
     LDI 0
     STR 10              ; CURRENT_PLY = 0
+
+    ; Initialize null move pruning flag (allow null move at start)
+    LDI HIGH(NULL_MOVE_OK)
+    PHI 10
+    LDI LOW(NULL_MOVE_OK)
+    PLO 10
+    LDI 1
+    STR 10              ; NULL_MOVE_OK = 1
 
     ; Get side to move
     CALL GET_SIDE_TO_MOVE
