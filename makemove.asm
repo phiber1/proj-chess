@@ -415,5 +415,86 @@ UNMAKE_MOVE:
     SEP 5
 
 ; ==============================================================================
+; NULL_MAKE_MOVE - Make a null move (pass - just toggle side)
+; ==============================================================================
+; Used by null move pruning. No actual piece moves.
+; Input: None
+; Output: Side toggled, hash updated, EP cleared
+; Saves: EP square to NULL_SAVED_EP for unmake
+; ==============================================================================
+NULL_MAKE_MOVE:
+    ; Save EP square to NULL_SAVED_EP
+    LDI HIGH(GAME_STATE + STATE_EP_SQUARE)
+    PHI 10
+    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
+    PLO 10
+    LDN 10              ; D = current EP square
+    PLO 7               ; Save in R7.0
+    LDI HIGH(NULL_SAVED_EP)
+    PHI 10
+    LDI LOW(NULL_SAVED_EP)
+    PLO 10
+    GLO 7
+    STR 10              ; NULL_SAVED_EP = old EP
+
+    ; Clear EP square (no EP after null move)
+    LDI HIGH(GAME_STATE + STATE_EP_SQUARE)
+    PHI 10
+    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
+    PLO 10
+    LDI $FF             ; Invalid EP
+    STR 10
+
+    ; Toggle side to move
+    LDI HIGH(GAME_STATE + STATE_SIDE_TO_MOVE)
+    PHI 10
+    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
+    PLO 10
+    LDN 10
+    XRI $08             ; Toggle 0 <-> 8
+    STR 10
+
+    ; Update hash for side change
+    CALL HASH_XOR_SIDE
+
+    RETN
+
+; ==============================================================================
+; NULL_UNMAKE_MOVE - Undo a null move
+; ==============================================================================
+; Restores state from before null move
+; Input: None
+; Output: Side toggled back, hash restored, EP restored
+; ==============================================================================
+NULL_UNMAKE_MOVE:
+    ; Toggle side back
+    LDI HIGH(GAME_STATE + STATE_SIDE_TO_MOVE)
+    PHI 10
+    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
+    PLO 10
+    LDN 10
+    XRI $08             ; Toggle 8 <-> 0
+    STR 10
+
+    ; Restore EP square from NULL_SAVED_EP
+    LDI HIGH(NULL_SAVED_EP)
+    PHI 10
+    LDI LOW(NULL_SAVED_EP)
+    PLO 10
+    LDN 10              ; D = saved EP
+    PLO 7               ; Save in R7.0
+    LDI HIGH(GAME_STATE + STATE_EP_SQUARE)
+    PHI 10
+    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
+    PLO 10
+    GLO 7
+    STR 10              ; Restore EP
+
+    ; Update hash for side change (XOR again = restore)
+    CALL HASH_XOR_SIDE
+
+    RETN
+
+; ==============================================================================
 ; END OF MAKE/UNMAKE MODULE
 ; ==============================================================================

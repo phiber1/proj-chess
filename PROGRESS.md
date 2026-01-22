@@ -9,40 +9,135 @@
 
 ---
 
-## Current Status (January 16, 2026)
+## Current Status (January 20, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
-- **Depth 3:** ~44-90 seconds with LMR! (was 3.5 min, was 8+ min before TT)
+- **Depth 3:** ~1 min 30 sec with LMR + NMP
+- **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
 - **Transposition Table:** Full internal TT enabled at all nodes
-- **Late Move Reductions:** Working with verified re-search! Bug fixed Jan 16.
+- **Late Move Reductions:** Working with verified re-search
+- **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
 - **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 28,118 bytes (includes TT + Zobrist + LMR + futility)
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR
+- **Engine size:** 28,926 bytes (includes TT + Zobrist + LMR + futility + NMP)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
 - **Sargon (Z80)** defaulted to depth 2 for casual play
-- This 1802/1806 engine does depth 3 in 44-90 seconds - competitive with 8-bit era engines!
+- This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
+- **W19:** Null Move Pruning - depth 4 now playable! 8.5x speedup (6:07 → 0:43)
 - **W18:** LMR re-search bug fixed - LMR_REDUCED must be pushed/popped around recursion
 - **W17:** Late Move Reductions - depth 3 in 90 seconds (60% faster!)
 - **W16:** Depth 3 now practical (~3.5 min) - internal TT is the key optimization
-- **W15:** Internal TT enabled - TT probe/store at all nodes
+
+### Depth 4 Test Results (with NMP)
+```
+All positions tested at depth 4, out of book:
+
+| Position              | Time  | Bestmove | Notes                    |
+|-----------------------|-------|----------|--------------------------|
+| Sicilian (8 ply)      | 43s   | b1c3     | Open, tactical           |
+| Ruy Lopez (10 ply)    | 36s   | b1c3     | Main line                |
+| Italian Game (8 ply)  | 30s   | b1a3     | Giuoco Piano             |
+| QGD (10 ply)          | 19s   | a1b1     | Closed, NMP prunes well  |
+| French Defense (8 ply)| 18s   | a1b1     | Semi-closed              |
+
+Baseline before NMP: Sicilian depth 4 = 6 min 7 sec
+After NMP: 43 seconds = 8.5x speedup!
+```
+
+### Depth 3 Baseline (reference)
+```
+Sicilian Defense (depth 3):
+position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
+go depth 3 -> 1:29, bestmove b1a3
+```
+
+---
+
+## Session: January 20, 2026 - Null Move Pruning (Depth 4 Achievement!)
+
+### Summary
+Implemented Null Move Pruning (NMP) to make depth 4 search playable. Achieved 8.5x speedup
+at depth 4 (6:07 → 0:43). Depth 4 now completes in 18-43 seconds across various positions.
+
+### What is Null Move Pruning?
+If our position is so strong that even "passing" (letting opponent move twice) still beats
+beta, we can prune the entire subtree without searching moves. This works because:
+- Most positions aren't zugzwang (passing hurts in chess)
+- Strong positions remain strong even after passing
+- We use a reduced depth search (R=2) to verify quickly
+
+### Implementation Details
+
+**New Memory Variables ($64A7-$64A8):**
+- `NULL_MOVE_OK` - flag: 1=can try null move, 0=prevent consecutive null moves
+- `NULL_SAVED_EP` - saved EP square for null unmake
+
+**New Routines (makemove.asm):**
+- `NULL_MAKE_MOVE` - Toggle side, update hash, clear EP square
+- `NULL_UNMAKE_MOVE` - Toggle side back, restore EP, update hash
+
+**NMP Conditions (all must be true):**
+1. Depth >= 3 (need sufficient depth for R=2 reduction)
+2. Not in check (can't pass when in check!)
+3. NULL_MOVE_OK = 1 (prevent consecutive null moves)
+4. Ply > 0 (don't do at root)
+
+**NMP Logic:**
+1. Set NULL_MOVE_OK = 0 (prevent child from doing null move)
+2. Call NULL_MAKE_MOVE
+3. Search with depth-3 (R=2 reduction) and zero window (-beta, -beta+1)
+4. Call NULL_UNMAKE_MOVE
+5. Restore NULL_MOVE_OK = 1
+6. If score >= beta, return beta (prune!)
 
 ### Test Results
-```
-Sicilian Defense (depth 2):
-position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
-go depth 2 -> 44s, bestmove d4e6
 
-Sicilian Defense (depth 3) - WITH LMR + re-search fix:
-position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
-go depth 3 -> 44 seconds, bestmove b1a3 (3 re-searches triggered!)
-(Was 90s before re-search fix, 3.5 min before LMR, 8+ min before TT!)
-```
+**Depth 4 with NMP (all positions out of book):**
 
-Debug output: uppercase = root hash, lowercase = TT_STORE, L = LMR triggered, R = re-search
+| Position              | Time  | Bestmove | Notes                    |
+|-----------------------|-------|----------|--------------------------|
+| Sicilian (8 ply)      | 43s   | b1c3     | Was 6:07 before NMP!     |
+| Ruy Lopez (10 ply)    | 36s   | b1c3     | Open e4/e5               |
+| Italian Game (8 ply)  | 30s   | b1a3     | Open e4/e5               |
+| QGD (10 ply)          | 19s   | a1b1     | Closed position          |
+| French Defense (8 ply)| 18s   | a1b1     | Semi-closed              |
+
+**Observations:**
+- Closed positions (QGD, French) search faster - NMP prunes more aggressively
+- Open e4/e5 positions take longer but still well under a minute
+- No crashes, hangs, or quit issues across all tests
+- All moves are reasonable/standard opening responses
+
+**Depth 3 Regression:**
+- Before NMP: 1:35
+- After NMP: 1:29
+- Slight improvement, no regression
+
+### Why NMP is So Effective
+At depth 4, the search tree is enormous. NMP can cut off entire subtrees early:
+- If we're winning by enough that passing still beats beta → skip all moves
+- The R=2 reduction means we verify with a depth-1 search (very fast)
+- Zero window (-beta, -beta+1) makes the verification even faster
+
+### Files Modified
+- `board-0x88.asm` - Added NULL_MOVE_OK, NULL_SAVED_EP variables (+6 lines)
+- `makemove.asm` - Added NULL_MAKE_MOVE, NULL_UNMAKE_MOVE routines (+81 lines)
+- `negamax.asm` - Added NMP check at NEGAMAX_CONTINUE, init in SEARCH_POSITION (+325 lines)
+
+### Code Size
+- Before: 28,118 bytes
+- After: 28,926 bytes
+- Added: ~808 bytes for NMP logic
+
+### Bug Fix: Stack Init in BIOS Mode
+Also fixed a critical bug discovered during depth 4 testing: stack pointer was being
+set to $7FFF in BIOS mode, but monitor reserves $7F78-$7FFF for static variables.
+Deep recursion was overwriting monitor state, causing hangs on "quit" command.
+Fix: Don't reset R2 in BIOS mode - use BIOS-initialized stack position ($7F77).
 
 ---
 
