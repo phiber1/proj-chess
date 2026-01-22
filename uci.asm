@@ -24,6 +24,7 @@ STR_POSITION    DB "position", 0
 STR_GO          DB "go", 0
 STR_QUIT        DB "quit", 0
 STR_UCINEWGAME  DB "ucinewgame", 0
+STR_STOP        DB "stop", 0
 
 ; Response strings (CR+LF for terminal display)
 STR_ID_NAME     DB "id name RCA-Chess-1806", 13, 10, 0
@@ -197,6 +198,34 @@ UCI_PROCESS_COMMAND:
 
     CALL STRCMP
     LBZ UCI_CMD_QUIT
+
+    ; Check "ucinewgame"
+    LDI HIGH(UCI_BUFFER)
+    PHI 10
+    LDI LOW(UCI_BUFFER)
+    PLO 10
+
+    LDI HIGH(STR_UCINEWGAME)
+    PHI 11
+    LDI LOW(STR_UCINEWGAME)
+    PLO 11
+
+    CALL STRCMP
+    LBZ UCI_CMD_UCINEWGAME
+
+    ; Check "stop"
+    LDI HIGH(UCI_BUFFER)
+    PHI 10
+    LDI LOW(UCI_BUFFER)
+    PLO 10
+
+    LDI HIGH(STR_STOP)
+    PHI 11
+    LDI LOW(STR_STOP)
+    PLO 11
+
+    CALL STRCMP
+    LBZ UCI_CMD_STOP
 
     ; Unknown command - ignore
     RETN
@@ -554,6 +583,43 @@ UCI_GO_SEND_MOVE:
 UCI_CMD_QUIT:
     ; Return to monitor at $8000
     LBR $8003
+
+; ------------------------------------------------------------------------------
+; UCI_CMD_UCINEWGAME - Prepare for a new game
+; ------------------------------------------------------------------------------
+; Clears transposition table and resets game state
+; ------------------------------------------------------------------------------
+UCI_CMD_UCINEWGAME:
+    ; Clear transposition table
+    CALL TT_CLEAR
+
+    ; Reset game ply counter
+    LDI HIGH(GAME_PLY)
+    PHI 10
+    LDI LOW(GAME_PLY)
+    PLO 10
+    LDI 0
+    STR 10
+
+    ; Clear move history
+    CALL INIT_MOVE_HISTORY
+
+    ; Initialize board to starting position
+    CALL INIT_BOARD
+
+    RETN
+
+; ------------------------------------------------------------------------------
+; UCI_CMD_STOP - Stop calculating (no-op for now)
+; ------------------------------------------------------------------------------
+; On a single-threaded system we cannot interrupt search.
+; GUI should wait for bestmove response.
+; This is here for protocol compatibility.
+; ------------------------------------------------------------------------------
+UCI_CMD_STOP:
+    ; No-op - search completes naturally
+    ; GUI will receive bestmove when search finishes
+    RETN
 
 ; ------------------------------------------------------------------------------
 ; UCI_SEND_BEST_MOVE - Send best move in algebraic notation
