@@ -73,9 +73,7 @@ MAIN_CONTINUE:
 ; Main Loop
 ; ==============================================================================
 MAIN_LOOP:
-    ; Debug: show we reached main loop
-    LDI '>'
-    CALL SERIAL_WRITE_CHAR
+    ; UCI: No prompt - engine waits silently for commands
     ; Read and process UCI commands
     CALL UCI_READ_LINE
     CALL UCI_PROCESS_COMMAND
