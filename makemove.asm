@@ -166,7 +166,20 @@ MM_CLEAR_BLACK_CASTLE:
     LDI $0C             ; CASTLE_BK ($04) + CASTLE_BQ ($08)
 
 MM_DO_CLEAR_CASTLE:
+    ; Save R10 (moving piece, captured piece) - CLEAR_CASTLING_RIGHT clobbers it
+    GLO 10
+    STXD
+    GHI 10
+    STXD
+
     CALL CLEAR_CASTLING_RIGHT
+
+    ; Restore R10
+    IRX
+    LDXA
+    PHI 10
+    LDX
+    PLO 10
 
 MM_NOT_KING:
     ; Clear the from square
