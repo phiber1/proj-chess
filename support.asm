@@ -242,7 +242,7 @@ MIN16_S:
 
     ; Check sign of result
     ANI $80             ; Mask high bit (sign)
-    BNZ MIN16_R7        ; If negative, 6 < 7, use 7
+    LBNZ MIN16_R7       ; If negative, 6 < 7, use 7
 
     ; 6 >= 7, restore 6 from stack
     IRX

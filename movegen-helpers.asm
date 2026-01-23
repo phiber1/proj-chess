@@ -17,7 +17,7 @@ CHECK_TARGET_SQUARE:
     ; First check if square is valid
     GLO 11
     ANI $88
-    BNZ CHECK_TARGET_INVALID
+    LBNZ CHECK_TARGET_INVALID
 
     ; Get piece at target square (use R7, not R13 - R13 is loop counter!)
     LDI HIGH(BOARD)
@@ -26,14 +26,14 @@ CHECK_TARGET_SQUARE:
     PLO 7               ; R7 = BOARD + target square
 
     LDN 7               ; Load piece at target
-    BZ CHECK_TARGET_EMPTY
+    LBZ CHECK_TARGET_EMPTY
 
     ; Square occupied - check color
     ANI COLOR_MASK
     STR 2
     GLO 12              ; Side to move
     XOR                 ; D = side XOR piece_color (0 if same color)
-    BZ CHECK_TARGET_FRIENDLY
+    LBZ CHECK_TARGET_FRIENDLY
 
     ; Enemy piece - capture
     LDI 2
@@ -82,7 +82,7 @@ ENCODE_MOVE_16BIT:
 
     GLO 13              ; To square
     ANI $01             ; Get bit 0 of to
-    BZ ENCODE_LOW_DONE  ; If to.0 = 0, R8.0 already correct
+    LBZ ENCODE_LOW_DONE ; If to.0 = 0, R8.0 already correct
     ; to.0 = 1, need to set bit 7
     GLO 8
     ORI $80

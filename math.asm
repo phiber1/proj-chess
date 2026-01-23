@@ -315,7 +315,7 @@ DIV16_NO_BIT:
     PHI 9
     LDX
     PLO 9
-    BR DIV16_SHIFT_QUOT
+    LBR DIV16_SHIFT_QUOT
 
 DIV16_SUBTRACT_OK:
     ; Clean up stack (discard saved remainder)

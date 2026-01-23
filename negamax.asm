@@ -439,17 +439,29 @@ NMP_CHECK_SIGN:
 
 NMP_CUTOFF:
     ; Null move cutoff! Return beta
-    GHI 7
-    PHI 9
-    GLO 7
-    PLO 9               ; R9 = beta
-
-    ; Need to restore alpha/beta to memory before returning
-    ; Beta is in R7, but alpha was discarded...
-    ; Actually for return we don't need them in memory.
-    ; Just restore ply state and return.
+    ; Save beta to SCORE memory (same pattern as NEGAMAX_RETURN)
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    GHI 7               ; beta_hi
+    STR 10
+    INC 10
+    GLO 7               ; beta_lo
+    STR 10              ; SCORE = beta
 
     CALL RESTORE_PLY_STATE
+
+    ; Load return value from SCORE memory into R9 (after restore)
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    LDA 10              ; SCORE_HI
+    PHI 9
+    LDN 10              ; SCORE_LO
+    PLO 9               ; R9 = beta
+
     RETN
 
 NMP_NO_CUTOFF:
@@ -769,6 +781,33 @@ NEGAMAX_NOT_FUTILE:
     ; Make the move on the board
     CALL MAKE_MOVE
 
+    ; -----------------------------------------------
+    ; LEGALITY CHECK: Does this move leave our king in check?
+    ; MAKE_MOVE does NOT toggle R12 - only SIDE in memory.
+    ; R12 still contains our color (the side that just moved).
+    ; -----------------------------------------------
+    CALL IS_IN_CHECK
+    ; D = 1 if our king is in check (illegal move), 0 if safe
+
+    ; If in check, this move is illegal - unmake and skip
+    LBZ NEGAMAX_MOVE_LEGAL  ; D=0 means not in check, move is legal
+
+    ; ILLEGAL MOVE: Our king is in check after this move
+    ; Unmake the move and continue to next move
+    CALL UNMAKE_MOVE
+
+    ; R12 stays as our color (UNMAKE_MOVE doesn't toggle R12)
+
+    ; Pop R9 from stack (was pushed at start of loop) and skip to next move
+    IRX                 ; Point to R9.hi
+    LDXA                ; Load R9.hi, advance
+    PHI 9
+    LDX                 ; Load R9.lo (R2 now below move_count)
+    PLO 9               ; R9 = move list pointer restored
+
+    LBR NEGAMAX_NEXT_MOVE   ; Skip this illegal move
+
+NEGAMAX_MOVE_LEGAL:
     ; -----------------------------------------------
     ; LMR Check: Should we reduce this move's search?
     ; -----------------------------------------------
@@ -2100,6 +2139,28 @@ QS_LOOP:
     ; Make move
     CALL MAKE_MOVE
 
+    ; -----------------------------------------------
+    ; LEGALITY CHECK: Does this capture leave our king in check?
+    ; MAKE_MOVE does NOT toggle R12 - only SIDE in memory.
+    ; R12 still contains our color (the side that just moved).
+    ; -----------------------------------------------
+    CALL IS_IN_CHECK
+    ; D = 1 if our king is in check (illegal), 0 if safe
+
+    LBZ QS_CAPTURE_LEGAL  ; D=0 means not in check, capture is legal
+
+    ; ILLEGAL CAPTURE: Unmake and skip to next capture
+    CALL UNMAKE_MOVE
+
+    ; R12 stays as our color (UNMAKE_MOVE doesn't toggle R12)
+
+    ; Restore move count from stack and continue loop
+    IRX
+    LDX
+    PLO 15              ; R15 = move count restored
+    LBR QS_LOOP         ; Skip this illegal capture, try next
+
+QS_CAPTURE_LEGAL:
     ; Evaluate position after capture
     CALL EVALUATE
     ; Score in R9 (from white's perspective)

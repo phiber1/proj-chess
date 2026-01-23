@@ -109,6 +109,47 @@ MAKE_MOVE:
     GLO 10              ; Get moving piece
     STR 8               ; Store at to square (R8 still points there)
 
+    ; =========================================
+    ; KING POSITION UPDATE
+    ; =========================================
+    ; If moving piece is a king, update GAME_STATE king position
+    ; R10.0 = moving piece
+    GLO 10              ; Get moving piece
+    ANI PIECE_MASK      ; Get piece type (0-6)
+    XRI KING_TYPE       ; Is it a king?
+    LBNZ MM_NOT_KING    ; Not a king, skip
+
+    ; It's a king - update king position in GAME_STATE
+    ; Check color of king (R10.0 has full piece)
+    GLO 10
+    ANI COLOR_MASK      ; Get color (0=white, 8=black)
+    BNZ MM_BLACK_KING
+
+MM_WHITE_KING:
+    ; Update STATE_W_KING_SQ with MOVE_TO
+    LDI HIGH(GAME_STATE)
+    PHI 9
+    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
+    PLO 9
+    BR MM_STORE_KING
+
+MM_BLACK_KING:
+    ; Update STATE_B_KING_SQ with MOVE_TO
+    LDI HIGH(GAME_STATE)
+    PHI 9
+    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
+    PLO 9
+
+MM_STORE_KING:
+    ; Get MOVE_TO and store as new king square
+    LDI HIGH(MOVE_TO)
+    PHI 8
+    LDI LOW(MOVE_TO)
+    PLO 8
+    LDN 8               ; D = to square
+    STR 9               ; Store as new king position
+
+MM_NOT_KING:
     ; Clear the from square
     LDI HIGH(BOARD)
     PHI 8
@@ -302,6 +343,47 @@ UNMAKE_MOVE:
     GLO 10              ; Get moving piece
     STR 8               ; Put back at from square
 
+    ; =========================================
+    ; KING POSITION RESTORE
+    ; =========================================
+    ; If moving piece is a king, restore GAME_STATE king position to from square
+    ; R10.0 = moving piece
+    GLO 10              ; Get moving piece
+    ANI PIECE_MASK      ; Get piece type (0-6)
+    XRI KING_TYPE       ; Is it a king?
+    LBNZ UM_NOT_KING    ; Not a king, skip
+
+    ; It's a king - restore king position in GAME_STATE
+    ; Check color of king (R10.0 has full piece)
+    GLO 10
+    ANI COLOR_MASK      ; Get color (0=white, 8=black)
+    BNZ UM_BLACK_KING
+
+UM_WHITE_KING:
+    ; Update STATE_W_KING_SQ with UNDO_FROM
+    LDI HIGH(GAME_STATE)
+    PHI 9
+    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
+    PLO 9
+    BR UM_STORE_KING
+
+UM_BLACK_KING:
+    ; Update STATE_B_KING_SQ with UNDO_FROM
+    LDI HIGH(GAME_STATE)
+    PHI 9
+    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
+    PLO 9
+
+UM_STORE_KING:
+    ; Get UNDO_FROM and store as restored king square
+    LDI HIGH(UNDO_FROM)
+    PHI 8
+    LDI LOW(UNDO_FROM)
+    PLO 8
+    LDN 8               ; D = from square
+    STR 9               ; Restore king position
+
+UM_NOT_KING:
     ; Restore castling rights to GAME_STATE + STATE_CASTLING
     LDI HIGH(UNDO_CASTLING)
     PHI 9

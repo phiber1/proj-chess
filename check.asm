@@ -30,7 +30,7 @@ IS_CHECK_BLACK:
     PLO 13
     LDN 13
     PLO 11              ; B.0 = black king square
-    BR IS_CHECK_TEST
+    LBR IS_CHECK_TEST
 
 IS_CHECK_WHITE:
     ; Get white king position
@@ -80,7 +80,7 @@ IS_SQUARE_ATTACKED:
     GLO 12
     XRI BLACK           ; Flip color (0 -> 8, 8 -> 0)
     STXD               ; Push enemy color to stack
-    ; Now: M[R2] = enemy_color, M[R2+1] = C, M[R2+2] = B.0
+    ; Now: M[R2+1] = enemy_color, M[R2+2] = C, M[R2+3] = B.0
 
     ; -----------------------------------------------
     ; 1. Check for enemy pawn attacks
@@ -450,8 +450,8 @@ ATTACK_SLIDE_LOOP:
     STR 2              ; Save piece color
 
     ; Get enemy color from deeper in stack
-    ; Stack: [ret_addr_hi, ret_addr_lo, enemy_color, ...]
-    ; We need to go up 3 bytes from current R2
+    ; Stack: [R6.lo, R6.hi, enemy_color, our_color, target_sq]
+    ; SCRT CALL pushes R6 (2 bytes), so enemy color is at R2+3
     LDI 3
     STR 2              ; Temp save
     GLO 2
@@ -468,10 +468,11 @@ ATTACK_SLIDE_LOOP:
 
     ; Now compare: D = enemy_color, need piece_color from M[R2]
     ; Actually let's simplify - put piece color in D and enemy in M[R2]
+    SEX 2              ; Ensure X=2 for XOR instruction
     STR 2              ; M[R2] = enemy_color
     GHI 15              ; D = piece
     ANI COLOR_MASK     ; D = piece_color
-    XOR                 ; D = piece_color XOR enemy_color
+    XOR                 ; D = piece_color XOR M[R(X)] = piece_color XOR enemy_color
     LBNZ ATTACK_SLIDE_NONE ; Wrong color, blocked by friendly
 
     ; Right color - check piece type
