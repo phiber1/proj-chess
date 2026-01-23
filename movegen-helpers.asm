@@ -36,25 +36,24 @@ CHECK_TARGET_SQUARE:
     LBZ CHECK_TARGET_FRIENDLY
 
     ; Enemy piece - capture
-    LDI 2
-    SHL                 ; Set DF
+    LDI 1
+    SHL                 ; Set DF (D becomes 2, which we want)
     RETN
 
 CHECK_TARGET_FRIENDLY:
     ; Friendly piece - can't move here
-    LDI 0
-    SHR                 ; Clear DF
+    LDI 0               ; D = 0, DF unchanged
     RETN
 
 CHECK_TARGET_EMPTY:
     ; Empty square - can move
-    LDI 1
-    SHL                 ; Set DF
+    LDI 0
+    SHL                 ; Set DF, D stays 0
+    LDI 1               ; D = 1
     RETN
 
 CHECK_TARGET_INVALID:
-    LDI 0
-    SHR
+    LDI 0               ; D = 0, DF unchanged
     RETN
 
 ; MOVE_FLAGS_TEMP defined in board-0x88.asm ($6806)

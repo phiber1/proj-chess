@@ -65,22 +65,29 @@ IS_CHECK_TEST:
 ;      - Rook/Queen on orthogonals
 ;
 ; Stack layout after prologue:
-;   M[R2]   = enemy color
 ;   M[R2+1] = C (our color)
 ;   M[R2+2] = B.0 (target square)
+;   ENEMY_COLOR_TEMP = enemy color (in memory, not stack)
 ; ------------------------------------------------------------------------------
 IS_SQUARE_ATTACKED:
+    ; Ensure X=2 for all stack operations in this function
+    SEX 2
+
     ; Save context
     GLO 11
     STXD
     GLO 12
     STXD
 
-    ; Calculate and push enemy color
+    ; Calculate enemy color and store in memory (NOT stack!)
+    ; This avoids complex stack offset calculations in nested calls
+    LDI HIGH(ENEMY_COLOR_TEMP)
+    PHI 10
+    LDI LOW(ENEMY_COLOR_TEMP)
+    PLO 10
     GLO 12
     XRI BLACK           ; Flip color (0 -> 8, 8 -> 0)
-    STXD               ; Push enemy color to stack
-    ; Now: M[R2+1] = enemy_color, M[R2+2] = C, M[R2+3] = B.0
+    STR 10              ; Store enemy color at ENEMY_COLOR_TEMP
 
     ; -----------------------------------------------
     ; 1. Check for enemy pawn attacks
@@ -215,21 +222,18 @@ ATTACK_KNIGHT_LOOP:
 
     ; It's a knight - check if enemy color
     GLO 15              ; Get piece back
-    ANI COLOR_MASK     ; Get piece color
+    ANI COLOR_MASK     ; D = piece color
     STR 2              ; Store piece color at M[R2]
 
-    ; Get enemy color from stack (at offset: 2 bytes for table ptr + 1 for counter)
-    IRX
-    IRX
-    IRX
-    IRX                ; Point to enemy color
-    LDN 2              ; D = enemy color
-    DEC 2
-    DEC 2
-    DEC 2
-    DEC 2              ; Restore R2
+    ; Get enemy color from memory (simple and reliable!)
+    LDI HIGH(ENEMY_COLOR_TEMP)
+    PHI 10
+    LDI LOW(ENEMY_COLOR_TEMP)
+    PLO 10
+    LDN 10              ; D = enemy color
 
     ; Now D = enemy color, M[R2] = piece color
+    SEX 2               ; Ensure X=2 for XOR
     XOR                 ; D = enemy_color XOR piece_color
     LBZ ATTACK_FOUND_POP3 ; If equal (XOR=0), it's an enemy knight!
 
@@ -296,20 +300,17 @@ ATTACK_KING_LOOP:
 
     ; It's a king - check color
     GLO 15
-    ANI COLOR_MASK
-    STR 2
+    ANI COLOR_MASK     ; D = piece color
+    STR 2              ; Store piece color at M[R2]
 
-    ; Get enemy color from stack (2 bytes table ptr + 1 byte counter)
-    IRX
-    IRX
-    IRX
-    IRX
-    LDN 2              ; Enemy color
-    DEC 2
-    DEC 2
-    DEC 2
-    DEC 2
+    ; Get enemy color from memory (simple and reliable!)
+    LDI HIGH(ENEMY_COLOR_TEMP)
+    PHI 10
+    LDI LOW(ENEMY_COLOR_TEMP)
+    PLO 10
+    LDN 10              ; D = enemy color
 
+    SEX 2               ; Ensure X=2 for XOR
     XOR
     LBZ ATTACK_FOUND_POP3
 
@@ -393,8 +394,7 @@ ATTACK_RESTORE:
     ; Save result
     PLO 15
 
-    ; Restore context (pop enemy_color, C, B)
-    IRX                ; Skip enemy color
+    ; Restore context (pop C, B - enemy_color now in memory, not stack)
     IRX
     LDXA               ; Pop C
     PLO 12
@@ -415,6 +415,9 @@ ATTACK_RESTORE:
 ; Uses:   A, R7, F (R14 is off-limits - BIOS uses it)
 ; ------------------------------------------------------------------------------
 ATTACK_CHECK_SLIDING:
+    ; Ensure X=2 for stack address calculations
+    SEX 2
+
     ; Save direction
     PLO 15              ; F.0 = direction
 
@@ -447,32 +450,18 @@ ATTACK_SLIDE_LOOP:
 
     ; Check if enemy color
     ANI COLOR_MASK     ; D = piece color
-    STR 2              ; Save piece color
+    STR 2              ; Save piece color at M[R2]
 
-    ; Get enemy color from deeper in stack
-    ; Stack: [R6.lo, R6.hi, enemy_color, our_color, target_sq]
-    ; SCRT CALL pushes R6 (2 bytes), so enemy color is at R2+3
-    LDI 3
-    STR 2              ; Temp save
-    GLO 2
-    ADD
-    PLO 10              ; Use A temporarily to access stack
-    GHI 2
-    ADCI 0
+    ; Get enemy color from memory (simple and reliable!)
+    LDI HIGH(ENEMY_COLOR_TEMP)
     PHI 10
+    LDI LOW(ENEMY_COLOR_TEMP)
+    PLO 10
     LDN 10              ; D = enemy color
 
-    ; Restore and compare
-    LDI HIGH(BOARD)    ; Restore A.1 (we clobbered it)
-    PHI 10
-
-    ; Now compare: D = enemy_color, need piece_color from M[R2]
-    ; Actually let's simplify - put piece color in D and enemy in M[R2]
-    SEX 2              ; Ensure X=2 for XOR instruction
-    STR 2              ; M[R2] = enemy_color
-    GHI 15              ; D = piece
-    ANI COLOR_MASK     ; D = piece_color
-    XOR                 ; D = piece_color XOR M[R(X)] = piece_color XOR enemy_color
+    ; Compare: D = enemy_color, M[R2] = piece_color
+    SEX 2               ; Ensure X=2 for XOR instruction
+    XOR                 ; D = enemy_color XOR piece_color
     LBNZ ATTACK_SLIDE_NONE ; Wrong color, blocked by friendly
 
     ; Right color - check piece type

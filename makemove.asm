@@ -149,6 +149,25 @@ MM_STORE_KING:
     LDN 8               ; D = to square
     STR 9               ; Store as new king position
 
+    ; =========================================
+    ; CASTLING RIGHTS UPDATE (king moved)
+    ; =========================================
+    ; King has moved - clear both castling rights for this color
+    ; R10.0 still has moving piece
+    GLO 10              ; Get moving piece
+    ANI COLOR_MASK      ; Get color (0=white, 8=black)
+    BNZ MM_CLEAR_BLACK_CASTLE
+
+MM_CLEAR_WHITE_CASTLE:
+    LDI $03             ; CASTLE_WK ($01) + CASTLE_WQ ($02)
+    BR MM_DO_CLEAR_CASTLE
+
+MM_CLEAR_BLACK_CASTLE:
+    LDI $0C             ; CASTLE_BK ($04) + CASTLE_BQ ($08)
+
+MM_DO_CLEAR_CASTLE:
+    CALL CLEAR_CASTLING_RIGHT
+
 MM_NOT_KING:
     ; Clear the from square
     LDI HIGH(BOARD)

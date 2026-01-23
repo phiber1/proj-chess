@@ -172,6 +172,11 @@ NULL_MOVE_OK      EQU $64A7   ; 1 byte - flag: 1=can try null move, 0=cannot (pr
 NULL_SAVED_EP     EQU $64A8   ; 1 byte - saved EP square before null move
 
 ; ------------------------------------------------------------------------------
+; Check Detection: $64A9
+; ------------------------------------------------------------------------------
+ENEMY_COLOR_TEMP  EQU $64A9   ; 1 byte - enemy color for IS_SQUARE_ATTACKED
+
+; ------------------------------------------------------------------------------
 ; UCI state: $6500-$6600
 ; ------------------------------------------------------------------------------
 UCI_BUFFER      EQU $6500   ; 256 bytes - input buffer ($6500-$65FF)
