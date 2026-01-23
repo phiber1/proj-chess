@@ -73,8 +73,13 @@ SRL_READ_NEXT:
     SMI 0DH
     BZ SRL_DONE
 
-    ; Check for Backspace (08H)
+    ; Check for LF (0AH) - also treat as Enter (for GUI compatibility)
     ADI 0DH             ; Restore D
+    SMI 0AH
+    BZ SRL_DONE
+
+    ; Check for Backspace (08H)
+    ADI 0AH             ; Restore D
     SMI 08H
     BZ SRL_BACKSPACE
 
