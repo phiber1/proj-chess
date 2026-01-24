@@ -43,7 +43,8 @@ PIECE_VALUES:
 ;   5. Mobility (TODO)
 ; ------------------------------------------------------------------------------
 EVALUATE:
-    ; DEBUG WF: No debug output here - using breakpoint in negamax
+    ; Ensure X=2 for all stack/memory operations
+    SEX 2
 
     ; Initialize score to 0
     ; NOTE: Use R9 for score, NOT R6! R6 is SCRT linkage register!
@@ -146,9 +147,8 @@ EVAL_NEXT_SQUARE:
 
 EVAL_DONE:
     ; R9 contains material score
-    ; TEMPORARILY BYPASS PST/ENDGAME to isolate bug
-    ; CALL EVAL_PST
-    ; CALL EVAL_ENDGAME
+    ; Add piece-square table bonuses
+    CALL EVAL_PST
 
     RETN
 
@@ -268,6 +268,7 @@ EVAL_PST_NEXT:
 ; Output: D = 0-63 index
 ; Uses stack instead of R14
 SQUARE_0x88_TO_0x40:
+    SEX 2               ; Ensure X=2 for stack operations
     PLO 13              ; Save square
 
     ; Rank = square >> 4

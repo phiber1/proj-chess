@@ -46,6 +46,37 @@
 ; NOTE:   R6 is SCRT linkage register - never used for data!
 ; ------------------------------------------------------------------------------
 NEGAMAX:
+    ; Ensure X=2 for stack operations
+    SEX 2
+
+    ; -----------------------------------------------
+    ; PLY LIMIT CHECK: Prevent array overflow
+    ; -----------------------------------------------
+    ; If CURRENT_PLY >= MAX_PLY (8), return static eval
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    SMI 8               ; D = ply - MAX_PLY
+    LBNF NEGAMAX_PLY_OK ; ply < 8, continue
+
+    ; Ply limit reached - return static evaluation
+    CALL EVALUATE
+    ; R9 has score, negate if black
+    GLO 12
+    ANI $08
+    LBZ NEGAMAX_PLY_RET
+    GLO 9
+    SDI 0
+    PLO 9
+    GHI 9
+    SDBI 0
+    PHI 9
+NEGAMAX_PLY_RET:
+    RETN
+
+NEGAMAX_PLY_OK:
     ; Save context to ply-indexed state array (no stack manipulation!)
     CALL SAVE_PLY_STATE
 
@@ -1819,6 +1850,9 @@ NEGAMAX_STALEMATE:
 ; NOTE:   R6 is SCRT linkage register - off limits for application data!
 ; ==============================================================================
 QUIESCENCE_SEARCH:
+    ; Ensure X=2 for stack operations
+    SEX 2
+
     ; Stand-pat: evaluate current position
     CALL EVALUATE
     ; Returns score in R9 (from white's perspective)
@@ -2821,6 +2855,9 @@ INC_NODE_DONE:
 ; WARNING: R6 is SCRT linkage register - do NOT use for return values!
 ; ==============================================================================
 SEARCH_POSITION:
+    ; Ensure X=2 for stack operations
+    SEX 2
+
     ; Alpha = -INFINITY (to memory - R6 is SCRT linkage, off limits!)
     ; NOTE: Use $8001 (-32767) not $8000 (-32768) to avoid overflow when negating!
     ; -(-32768) overflows to -32768, causing invalid alpha-beta window in child
@@ -2907,6 +2944,56 @@ SEARCH_POSITION:
     ; Call negamax
     CALL NEGAMAX
 
+    ; -----------------------------------------------
+    ; SAFEGUARD: If BEST_MOVE is still $FF $FF, use first legal move
+    ; This should never happen, but prevents h@h@ crash
+    ; -----------------------------------------------
+    LDI HIGH(BEST_MOVE)
+    PHI 10
+    LDI LOW(BEST_MOVE)
+    PLO 10
+    LDA 10              ; BEST_MOVE[0]
+    XRI $FF
+    LBNZ SP_MOVE_OK     ; Not $FF, move is set
+    LDN 10              ; BEST_MOVE[1]
+    XRI $FF
+    LBNZ SP_MOVE_OK     ; Not $FF, move is set
+
+    ; BEST_MOVE is $FF $FF - BUG! Use first legal move as fallback
+    ; Generate moves at root
+    LDI HIGH(MOVE_LIST)
+    PHI 9
+    LDI LOW(MOVE_LIST)
+    PLO 9
+    CALL GENERATE_MOVES
+    ; D = move count
+    LBZ SP_NO_MOVES     ; No moves at all - stalemate/checkmate
+
+    ; Use first move: decode it
+    LDI HIGH(MOVE_LIST)
+    PHI 9
+    LDI LOW(MOVE_LIST)
+    PLO 9
+    LDA 9               ; Encoded move high
+    PHI 8
+    LDN 9               ; Encoded move low
+    PLO 8
+    CALL DECODE_MOVE_16BIT
+    ; R13.1 = from, R13.0 = to
+
+    ; Store to BEST_MOVE
+    LDI HIGH(BEST_MOVE)
+    PHI 10
+    LDI LOW(BEST_MOVE)
+    PLO 10
+    GHI 13              ; from
+    STR 10
+    INC 10
+    GLO 13              ; to
+    STR 10
+
+SP_NO_MOVES:
+SP_MOVE_OK:
     RETN
 
 ; ==============================================================================

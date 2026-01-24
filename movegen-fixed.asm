@@ -25,6 +25,9 @@
 ; Uses:   Memory at GM_SCAN_IDX, R11.1 for from square
 ; ==============================================================================
 GENERATE_MOVES:
+    ; Ensure X=2 for all stack/memory operations (XOR, ADD, etc.)
+    SEX 2
+
     GLO 9
     PLO 15
     GHI 9

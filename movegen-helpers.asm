@@ -14,6 +14,9 @@
 ; Uses:   Temp register
 ; ------------------------------------------------------------------------------
 CHECK_TARGET_SQUARE:
+    ; Ensure X=2 for XOR instruction
+    SEX 2
+
     ; First check if square is valid
     GLO 11
     ANI $88
@@ -190,6 +193,9 @@ DECODE_TO_DONE:
 ; NOTE: R14 is off-limits (BIOS uses it for serial baud rate)
 ; ------------------------------------------------------------------------------
 ADD_MOVE_ENCODED:
+    ; Ensure X=2 for stack operations
+    SEX 2
+
     ; Save R7 (used by slider loops for current position!)
     GLO 7
     STXD
@@ -282,6 +288,9 @@ GEN_PAWN_PROMOTION:
 ; Output: D = 1 if legal en passant, 0 otherwise
 ; ------------------------------------------------------------------------------
 CHECK_EN_PASSANT:
+    ; Ensure X=2 for XOR instruction
+    SEX 2
+
     ; Get en passant square from game state
     LDI HIGH(GAME_STATE)
     PHI 13
@@ -311,6 +320,9 @@ CHECK_EP_NO:
 ; Output: Castling moves added if legal
 ; ------------------------------------------------------------------------------
 GEN_CASTLING_MOVES:
+    ; Ensure X=2 for stack operations
+    SEX 2
+
     ; Save king square on stack
     STXD
 
@@ -333,11 +345,21 @@ GEN_CASTLE_BLACK:
     ANI CASTLE_BK
     LBZ GEN_CASTLE_BQ
 
-    ; Verify squares between king and rook are empty
-    ; King on e8 ($04), rook on h8 ($07) - in 0x88: e8=$74, g8=$76
-    ; Check f8 ($75) and g8 ($76)
-    ; TODO: Verify not in check and not moving through check
+    ; King on e8, rook on h8 - in 0x88: e8=$74, g8=$76
+    ; Must verify f8 ($75) and g8 ($76) are empty
+    LDI HIGH(BOARD)
+    PHI 7
+    LDI $75             ; f8
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_BQ  ; f8 occupied, can't castle
 
+    LDI $76             ; g8
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_BQ  ; g8 occupied, can't castle
+
+    ; Squares empty - generate castling move
     LDI $74
     PHI 13              ; From (e8)
     LDI $76
@@ -367,7 +389,20 @@ GEN_CASTLE_WHITE:
     LBZ GEN_CASTLE_WQ
 
     ; King on e1 ($04), rook on h1 ($07) - in 0x88: e1=$04, g1=$06
-    ; Check f1 ($05) and g1 ($06)
+    ; Must verify f1 ($05) and g1 ($06) are empty
+    LDI HIGH(BOARD)
+    PHI 7
+    LDI $05             ; f1
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_WQ  ; f1 occupied, can't castle
+
+    LDI $06             ; g1
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_WQ  ; g1 occupied, can't castle
+
+    ; Squares empty - generate castling move
     LDI $04
     PHI 13              ; From (e1)
     LDI $06

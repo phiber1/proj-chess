@@ -9,17 +9,17 @@
 
 ---
 
-## Current Status (January 20, 2026)
+## Current Status (January 23, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
-- **Depth 3:** ~1 min 30 sec with LMR + NMP
+- **Depth 3:** ~1 min 30 sec with LMR + NMP, stabilized with safeguards
 - **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
 - **Transposition Table:** Full internal TT enabled at all nodes
 - **Late Move Reductions:** Working with verified re-search
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
-- **Engine is functionally correct** - search, move generation, evaluation all working
-- **Engine size:** 28,926 bytes (includes TT + Zobrist + LMR + futility + NMP)
+- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches running
+- **Engine size:** 29,950 bytes (includes all optimizations + safeguards)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -27,6 +27,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
+- **Jan 23:** Multiple stability fixes, ply limit enforcement, BEST_MOVE safeguard
 - **W19:** Null Move Pruning - depth 4 now playable! 8.5x speedup (6:07 → 0:43)
 - **W18:** LMR re-search bug fixed - LMR_REDUCED must be pushed/popped around recursion
 - **W17:** Late Move Reductions - depth 3 in 90 seconds (60% faster!)
@@ -54,6 +55,71 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: January 23, 2026 - CuteChess Integration & Stability Fixes
+
+### Summary
+Fixed multiple stability bugs discovered during CuteChess tournament testing at depth 3.
+Engine now survives extended matches without h@h@ crashes, though underlying search bug
+remains under investigation.
+
+### Bugs Fixed
+
+**1. Castling After King Moved (makemove.asm)**
+- Engine tried O-O after king had already moved
+- Fix: Clear castling rights when king moves in MAKE_MOVE
+
+**2. R10 Clobbering in MAKE_MOVE (makemove.asm)**
+- CLEAR_CASTLING_RIGHT clobbers R10, but MAKE_MOVE uses R10 for piece/capture
+- Fix: Save/restore R10 around the CLEAR_CASTLING_RIGHT call
+
+**3. PST R15 Clobbering (pst.asm)**
+- EVAL_PST uses R15 but QUIESCENCE_SEARCH uses R15 for move count
+- Fix: Save/restore R15 in EVAL_PST
+- Also fixed LIFO violation in pop order
+
+**4. Castling Without Empty Square Check (movegen-helpers.asm)**
+- Engine generated O-O with piece on f1/g1
+- Fix: Added empty square checks for f1/g1 (white) and f8/g8 (black)
+
+**5. Multiple SEX 2 Bugs (various files)**
+- Functions using X-dependent instructions without SEX 2 first
+- Added SEX 2 to: EVAL_PST, GENERATE_MOVES, EVALUATE, SQUARE_0x88_TO_0x40,
+  CHECK_TARGET_SQUARE, ADD_MOVE_ENCODED, CHECK_EN_PASSANT, GEN_CASTLING_MOVES,
+  SEARCH_POSITION, NEGAMAX, QUIESCENCE_SEARCH
+- Also fixed short branches pushed out of range (BR→LBR, BZ→LBZ)
+
+**6. Ply Overflow at Ply 8 (negamax.asm)**
+- PLY_STATE array only supports 8 plies (80 bytes at $6450-$649F)
+- Deep searches exceeded this, overwriting variables at $64A0+
+- Fix: Added ply limit check at NEGAMAX entry - returns static eval if ply >= 8
+
+**7. BEST_MOVE Not Set Bug (negamax.asm) - WORKAROUND**
+- Search sometimes fails to update BEST_MOVE, leaving it at $FF $FF (outputs h@h@)
+- Root cause under investigation (CURRENT_PLY, score comparison, or move loop issue)
+- Safeguard: After NEGAMAX returns, if BEST_MOVE is $FF $FF, use first legal move
+
+### Files Modified
+- `makemove.asm` - King castling rights, R10 save/restore
+- `pst.asm` - SEX 2, R15 save/restore, LIFO fix, branch fixes
+- `movegen-helpers.asm` - SEX 2, castling empty checks
+- `movegen-fixed.asm` - SEX 2
+- `evaluate.asm` - SEX 2
+- `negamax.asm` - SEX 2, ply limit check, BEST_MOVE safeguard
+
+### Outstanding Issue
+The search sometimes fails to set BEST_MOVE at root. The safeguard prevents crashes
+but the root cause needs investigation. Possible causes:
+1. CURRENT_PLY not 0 at root
+2. Score comparison logic broken
+3. All moves pruned/filtered incorrectly
+4. TT returning corrupted data
+
+### TODO: Hash-Based Opening Book
+Current book uses exact move-sequence matching (limited transposition handling).
+Plan to use existing Zobrist hash infrastructure for position-based matching.
 
 ---
 

@@ -177,10 +177,19 @@ PST_TABLE_HI:
 ;     5. Add (white) or subtract (black) from score
 ; ==============================================================================
 EVAL_PST:
+    ; Ensure X=2 for all stack operations
+    SEX 2
+
     ; Save score (R9 is score accumulator, NOT R6 which is SCRT linkage!)
     GLO 9
     STXD
     GHI 9
+    STXD
+
+    ; Save R15 (used by caller for move count in quiescence search)
+    GLO 15
+    STXD
+    GHI 15
     STXD
 
     ; Initialize PST accumulator
@@ -301,10 +310,10 @@ EVAL_PST_WHITE:
     ; Extend sign to 16-bit
     PLO 13               ; D.0 = PST value
     ANI $80             ; Check sign bit
-    BZ EVAL_PST_POSITIVE
+    LBZ EVAL_PST_POSITIVE
     LDI $FF
     PHI 13               ; D = sign-extended negative
-    BR EVAL_PST_ADD
+    LBR EVAL_PST_ADD
 
 EVAL_PST_POSITIVE:
     LDI 0
@@ -353,7 +362,14 @@ EVAL_PST_NEXT_SQ:
     LBNZ EVAL_PST_LOOP
 
     ; Add PST accumulator to score
-    ; Restore material score (R9, not R6!)
+    ; Restore R15 first (LIFO - it was pushed last)
+    IRX
+    LDXA
+    PHI 15
+    LDX
+    PLO 15
+
+    ; Now restore material score (R9)
     IRX
     LDXA
     PHI 9
