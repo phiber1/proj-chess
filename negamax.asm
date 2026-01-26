@@ -748,13 +748,29 @@ LMR_CAPTURE_DONE:
     ; -----------------------------------------------
     ; Futility Pruning Check (depth 1 quiet moves)
     ; -----------------------------------------------
-    ; Check if futility pruning is enabled for this node
-    LDI HIGH(FUTILITY_OK)
+    ; BUG FIX: FUTILITY_OK is global and persists after recursion!
+    ; Must also verify we're actually at a frontier node (remaining depth == 1)
+    ; remaining_depth = SEARCH_DEPTH - CURRENT_PLY
+    ; Futility only applies when CURRENT_PLY == SEARCH_DEPTH - 1
+
+    ; First check: is CURRENT_PLY == SEARCH_DEPTH - 1?
+    LDI HIGH(SEARCH_DEPTH)
     PHI 10
-    LDI LOW(FUTILITY_OK)
+    LDI LOW(SEARCH_DEPTH)
     PLO 10
-    LDN 10
-    LBZ NEGAMAX_NOT_FUTILE  ; Futility not enabled, skip check
+    LDN 10              ; D = SEARCH_DEPTH (low byte, depth < 256)
+    SMI 1               ; D = SEARCH_DEPTH - 1
+    PLO 7               ; R7.0 = SEARCH_DEPTH - 1 (temp)
+
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = CURRENT_PLY
+    STR 2               ; M(R2) = CURRENT_PLY (use stack as temp)
+    GLO 7               ; D = SEARCH_DEPTH - 1
+    SM                  ; D = (SEARCH_DEPTH - 1) - CURRENT_PLY
+    LBNZ NEGAMAX_NOT_FUTILE  ; Not at frontier node, skip futility
 
     ; Check if move is a capture (target square non-empty)
     LDI HIGH(MOVE_TO)
@@ -2937,63 +2953,9 @@ SEARCH_POSITION:
     ; Initialize Zobrist hash for current position
     CALL HASH_INIT
 
-    ; NOTE: TT_CLEAR removed - don't clear between searches!
-    ; Hash uniquely identifies positions, so old entries are still valid.
-    ; Clear TT only at game start (ucinewgame) or engine init.
-
     ; Call negamax
     CALL NEGAMAX
 
-    ; -----------------------------------------------
-    ; SAFEGUARD: If BEST_MOVE is still $FF $FF, use first legal move
-    ; This should never happen, but prevents h@h@ crash
-    ; -----------------------------------------------
-    LDI HIGH(BEST_MOVE)
-    PHI 10
-    LDI LOW(BEST_MOVE)
-    PLO 10
-    LDA 10              ; BEST_MOVE[0]
-    XRI $FF
-    LBNZ SP_MOVE_OK     ; Not $FF, move is set
-    LDN 10              ; BEST_MOVE[1]
-    XRI $FF
-    LBNZ SP_MOVE_OK     ; Not $FF, move is set
-
-    ; BEST_MOVE is $FF $FF - BUG! Use first legal move as fallback
-    ; Generate moves at root
-    LDI HIGH(MOVE_LIST)
-    PHI 9
-    LDI LOW(MOVE_LIST)
-    PLO 9
-    CALL GENERATE_MOVES
-    ; D = move count
-    LBZ SP_NO_MOVES     ; No moves at all - stalemate/checkmate
-
-    ; Use first move: decode it
-    LDI HIGH(MOVE_LIST)
-    PHI 9
-    LDI LOW(MOVE_LIST)
-    PLO 9
-    LDA 9               ; Encoded move high
-    PHI 8
-    LDN 9               ; Encoded move low
-    PLO 8
-    CALL DECODE_MOVE_16BIT
-    ; R13.1 = from, R13.0 = to
-
-    ; Store to BEST_MOVE
-    LDI HIGH(BEST_MOVE)
-    PHI 10
-    LDI LOW(BEST_MOVE)
-    PLO 10
-    GHI 13              ; from
-    STR 10
-    INC 10
-    GLO 13              ; to
-    STR 10
-
-SP_NO_MOVES:
-SP_MOVE_OK:
     RETN
 
 ; ==============================================================================

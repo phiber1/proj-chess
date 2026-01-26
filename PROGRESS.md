@@ -9,17 +9,18 @@
 
 ---
 
-## Current Status (January 23, 2026)
+## Current Status (January 26, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
-- **Depth 3:** ~1 min 30 sec with LMR + NMP, stabilized with safeguards
+- **Depth 3:** ~2 min 30 sec with LMR + NMP, search now working correctly
 - **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
 - **Transposition Table:** Full internal TT enabled at all nodes
 - **Late Move Reductions:** Working with verified re-search
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
+- **Futility Pruning:** Fixed Jan 26 - was incorrectly pruning at root!
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches running
-- **Engine size:** 29,950 bytes (includes all optimizations + safeguards)
+- **Engine size:** 29,856 bytes (includes all optimizations)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -27,6 +28,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
+- **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
 - **Jan 23:** Multiple stability fixes, ply limit enforcement, BEST_MOVE safeguard
 - **W19:** Null Move Pruning - depth 4 now playable! 8.5x speedup (6:07 → 0:43)
 - **W18:** LMR re-search bug fixed - LMR_REDUCED must be pushed/popped around recursion
@@ -55,6 +57,69 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: January 26, 2026 - Critical Futility Pruning Bug Fix
+
+### Summary
+Fixed a critical bug where futility pruning was incorrectly applied at the root level,
+causing the engine to only evaluate the first move and skip all others. This was the
+root cause of the "rook shuffle" behavior (a1b1, b1a1 repeating) and many illegal moves.
+
+### The Bug
+`FUTILITY_OK` is a global flag set when the search reaches depth-1 (frontier) nodes.
+However, this flag persisted after recursive calls returned. When processing subsequent
+root moves, the stale `FUTILITY_OK=1` flag caused those moves to be futility-pruned
+even though we were at the root (depth 3), not at a frontier node.
+
+**Symptoms:**
+- Engine completed depth 3 search in ~3 seconds (should be ~2 minutes)
+- Only first move was evaluated, all others were skipped
+- Engine played nonsensical moves (rook shuffles)
+- Sometimes output stale/illegal moves from previous searches
+
+### The Fix
+Added a ply-depth check to the futility pruning logic. Futility pruning now only
+applies when `CURRENT_PLY == SEARCH_DEPTH - 1` (i.e., remaining depth == 1).
+
+```asm
+; BUG FIX: Must verify we're actually at a frontier node
+; Futility only applies when CURRENT_PLY == SEARCH_DEPTH - 1
+LDI HIGH(SEARCH_DEPTH)
+PHI 10
+LDI LOW(SEARCH_DEPTH)
+PLO 10
+LDN 10              ; D = SEARCH_DEPTH
+SMI 1               ; D = SEARCH_DEPTH - 1
+PLO 7               ; R7.0 = SEARCH_DEPTH - 1
+
+LDI HIGH(CURRENT_PLY)
+PHI 10
+LDI LOW(CURRENT_PLY)
+PLO 10
+LDN 10              ; D = CURRENT_PLY
+STR 2               ; temp
+GLO 7               ; D = SEARCH_DEPTH - 1
+SM                  ; D = (SEARCH_DEPTH - 1) - CURRENT_PLY
+LBNZ NEGAMAX_NOT_FUTILE  ; Not at frontier, skip futility
+```
+
+### Test Results
+**Before fix:**
+```
+position startpos moves e2e4 g8f6 g2g4 f6e4 b1c3 d7d5 c3a4 b8c6 a1b1 e7e6 b1a1 f8d6 a1b1 e8g8 b1a1 f8e8
+go depth 3 -> 3 seconds, bestmove a1b1 (rook shuffle - BAD)
+```
+
+**After fix:**
+```
+Same position
+go depth 3 -> 2:30, bestmove d1f3 (Queen development - GOOD!)
+```
+
+### Files Modified
+- `negamax.asm` - Added ply check to futility pruning condition
 
 ---
 
