@@ -701,11 +701,23 @@ NEGAMAX_MOVE_LOOP:
     LDA 9              ; Load low byte of move
     PLO 8              ; R8 = current move (16-bit encoded)
 
-    ; Save R9 (move pointer) to stack
-    GLO 9
-    STXD
+    ; Save R9 (move pointer) to ply-indexed memory (not stack!)
+    ; This avoids stack alignment bugs across the large move loop
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = ply
+    SHL                 ; D = ply * 2
+    ADI LOW(LOOP_MOVE_PTR)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_PTR)
+    PHI 10              ; R10 = LOOP_MOVE_PTR + ply*2
     GHI 9
-    STXD
+    STR 10              ; Save R9.hi
+    INC 10
+    GLO 9
+    STR 10              ; Save R9.lo
 
     ; Decode move: R8 → R13 (from/to)
     CALL DECODE_MOVE_16BIT
@@ -813,11 +825,20 @@ LMR_CAPTURE_DONE:
     LBZ NEGAMAX_NOT_FUTILE  ; Sign bit clear = positive, don't prune
 
     ; Futile! Skip this move
-    ; Pop R9 from stack (was pushed at start of loop)
-    IRX                 ; Point to R9.hi
-    LDXA                ; Load R9.hi, advance
-    PHI 9
-    LDX                 ; Load R9.lo (R2 now below move_count)
+    ; Restore R9 from ply-indexed memory
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = ply
+    SHL                 ; D = ply * 2
+    ADI LOW(LOOP_MOVE_PTR)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_PTR)
+    PHI 10              ; R10 = LOOP_MOVE_PTR + ply*2
+    LDA 10
+    PHI 9               ; R9.hi
+    LDN 10
     PLO 9               ; R9 = move list pointer restored
 
     ; Jump to decrement move count and continue loop
@@ -845,11 +866,20 @@ NEGAMAX_NOT_FUTILE:
 
     ; R12 stays as our color (UNMAKE_MOVE doesn't toggle R12)
 
-    ; Pop R9 from stack (was pushed at start of loop) and skip to next move
-    IRX                 ; Point to R9.hi
-    LDXA                ; Load R9.hi, advance
-    PHI 9
-    LDX                 ; Load R9.lo (R2 now below move_count)
+    ; Restore R9 from ply-indexed memory and skip to next move
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = ply
+    SHL                 ; D = ply * 2
+    ADI LOW(LOOP_MOVE_PTR)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_PTR)
+    PHI 10              ; R10 = LOOP_MOVE_PTR + ply*2
+    LDA 10
+    PHI 9               ; R9.hi
+    LDN 10
     PLO 9               ; R9 = move list pointer restored
 
     LBR NEGAMAX_NEXT_MOVE   ; Skip this illegal move
@@ -1431,9 +1461,10 @@ LMR_NO_RESEARCH:
 
     ; Pop depth from stack to SEARCH_DEPTH memory
     ; Stack has: depth_lo, depth_hi (depth_lo at lower addr)
-    LDXA                ; D = depth_lo
+    ; R9 no longer on stack - depth_hi is directly below move_count
+    LDXA                ; D = depth_lo, R2 advances to depth_hi
     PLO 7               ; Temp
-    LDXA                ; D = depth_hi
+    LDX                 ; D = depth_hi, R2 stays (one below move_count)
     PHI 7               ; R7 = depth (temp: hi.lo)
     LDI HIGH(SEARCH_DEPTH)
     PHI 13
@@ -1450,11 +1481,20 @@ LMR_NO_RESEARCH:
     XRI $08
     PLO 12              ; C = color restored
 
-    ; Restore R9 (move list pointer) from stack
-    ; Best score is in memory (BEST_SCORE_HI/LO), no R8 pop needed!
-    LDXA                ; D = R9.1
-    PHI 9
-    LDX                 ; D = R9.0, R2 stays at R9.0 (below move_count)
+    ; Restore R9 (move list pointer) from ply-indexed memory
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = ply
+    SHL                 ; D = ply * 2
+    ADI LOW(LOOP_MOVE_PTR)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_PTR)
+    PHI 10              ; R10 = LOOP_MOVE_PTR + ply*2
+    LDA 10
+    PHI 9               ; R9.hi
+    LDN 10
     PLO 9               ; R9 = move list pointer restored
 
     ; Load score from SCORE memory into R13 (R9 is move list pointer!)
@@ -1467,6 +1507,64 @@ LMR_NO_RESEARCH:
     PHI 13
     LDN 10              ; SCORE_LO -> low byte
     PLO 13              ; R13 = negated score from memory
+
+    ; DEBUG: At ply 0 and 1, print move and score
+    ; Ply 0 (root/white): [from-to:score]
+    ; Ply 1 (black response): {from-to:score}
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10
+    LBZ NEGAMAX_DBG_PLY0
+    XRI 1               ; Check if ply == 1
+    LBNZ NEGAMAX_DBG_SKIP  ; Skip if ply > 1
+    ; Ply 1 - use { }
+    LDI '{'
+    LBR NEGAMAX_DBG_PRINT
+NEGAMAX_DBG_PLY0:
+    ; Ply 0 - use [ ]
+    LDI '['
+NEGAMAX_DBG_PRINT:
+    CALL SERIAL_WRITE_CHAR
+    ; Print from square (UNDO_FROM)
+    LDI HIGH(UNDO_FROM)
+    PHI 10
+    LDI LOW(UNDO_FROM)
+    PLO 10
+    LDN 10
+    CALL SERIAL_PRINT_HEX
+    LDI '-'
+    CALL SERIAL_WRITE_CHAR
+    ; Print to square (UNDO_TO)
+    LDI HIGH(UNDO_TO)
+    PHI 10
+    LDI LOW(UNDO_TO)
+    PLO 10
+    LDN 10
+    CALL SERIAL_PRINT_HEX
+    LDI ':'
+    CALL SERIAL_WRITE_CHAR
+    ; Print score high byte
+    GHI 13
+    CALL SERIAL_PRINT_HEX
+    ; Print score low byte
+    GLO 13
+    CALL SERIAL_PRINT_HEX
+    ; Close bracket based on ply
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10
+    LBNZ NEGAMAX_DBG_PLY1_CLOSE
+    LDI ']'
+    LBR NEGAMAX_DBG_CLOSE
+NEGAMAX_DBG_PLY1_CLOSE:
+    LDI '}'
+NEGAMAX_DBG_CLOSE:
+    CALL SERIAL_WRITE_CHAR
+NEGAMAX_DBG_SKIP:
 
     ; -----------------------------------------------
     ; Beta Cutoff Check: if (score >= beta) return beta
@@ -1806,10 +1904,12 @@ NEGAMAX_NO_MOVES:
     ; Checkmate - return very low score (adjusted by depth for faster mates)
     ; Score = -MATE_SCORE + depth
     ; This makes shorter mates score higher
+    ; NOTE: Use $8001 (-32767) not $8000 (-32768) to avoid overflow when negating!
+    ; -(-32768) = -32768 due to two's complement overflow, breaking score propagation!
     LDI $80
     PHI 9
-    LDI $00
-    PLO 9              ; R9 = -32768 (R6 is SCRT linkage - off limits!)
+    LDI $01
+    PLO 9              ; R9 = -32767 (R6 is SCRT linkage - off limits!)
 
     ; Add depth to make closer mates better
     ; Load depth low byte from memory

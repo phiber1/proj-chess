@@ -48,6 +48,17 @@ Build configuration: `#define CFG_USE_BIOS` in config.asm
 
 ---
 
+## Build Verification
+
+**Always check for assembler errors after building:**
+```bash
+grep "^[A-Z]" chess-engine.lst
+```
+
+No output = no errors. The a18 assembler reports errors with uppercase prefixes (e.g., `UNDEFINED SYMBOL`). The build.sh script shows a count but checking the listing directly is more reliable.
+
+---
+
 ## Key Differences
 
 | Aspect | Standalone (Membership Card) | BIOS (ELPH) |
@@ -146,14 +157,14 @@ Despite older documentation, R10 is **NOT** a preserved "board pointer":
 
 ### GENERATE_MOVES (movegen-fixed.asm)
 - R7: Board lookup pointer (piece generators)
-- R8: Offset/direction table pointer
+- R8: GM_SCAN_IDX access pointer
 - R9: Move list pointer (IN: start, OUT: past end)
 - R10: Board scan pointer (local to function)
 - R11: R11.1=from square, R11.0=target square
 - R12: Side to move (MUST preserve)
 - R13: R13.0=loop counter, R13.1=direction
-- R14: R14.0=current square index
 - R15: R15.0=move count
+- GM_SCAN_IDX ($6407): Board scan index (replaces R14.0 for BIOS compatibility)
 
 ### EVALUATE (evaluate.asm)
 - R8: Piece type for table lookup
@@ -208,6 +219,7 @@ All 16-bit values use **big-endian** layout: high byte at lower address.
 | $64A4   | LMR_REDUCED | Flag: move searched at reduced depth (1 byte) |
 | $64A5   | LMR_IS_CAPTURE | Flag: current move is a capture (1 byte) |
 | $64A6   | LMR_OUTER | Saved LMR_REDUCED, survives recursion (1 byte) |
+| $64B0   | LOOP_MOVE_PTR | Ply-indexed R9 save for move loop (8 bytes, 2/ply) |
 | $6500   | UCI_BUFFER | UCI input buffer (256 bytes) |
 | $6601   | HASH_HI/LO | Current position Zobrist hash (2 bytes) |
 | $6700   | TT_TABLE | Transposition table (256 entries × 8 bytes = 2KB) |

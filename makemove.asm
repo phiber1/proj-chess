@@ -229,7 +229,7 @@ MM_NOT_KING:
 
     ; Check if capture occurred (R10.1 != EMPTY)
     GHI 10              ; Get captured piece
-    BNZ MM_RESET_HALFMOVE
+    LBNZ MM_RESET_HALFMOVE
 
     ; Check if pawn moved (piece type == PAWN_TYPE)
     GLO 10              ; Get moving piece

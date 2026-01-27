@@ -166,6 +166,16 @@ LMR_IS_CAPTURE    EQU $64A5   ; 1 byte - flag: 1=current move is a capture
 LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive calls)
 
 ; ------------------------------------------------------------------------------
+; Move Loop Pointer Save: $64B0-$64B7
+; ------------------------------------------------------------------------------
+; Ply-indexed save for R9 (move list pointer) during negamax move loop.
+; Avoids fragile stack save/restore across hundreds of instructions.
+; 2 bytes per ply (hi, lo), 4 plies max = 8 bytes.
+; NOTE: Must not overlap NULL_MOVE_OK ($64A7), NULL_SAVED_EP ($64A8),
+;       or ENEMY_COLOR_TEMP ($64A9)!
+LOOP_MOVE_PTR     EQU $64B0   ; 8 bytes - R9 save per ply ($64B0-$64B7)
+
+; ------------------------------------------------------------------------------
 ; Null Move Pruning: $64A7-$64A8
 ; ------------------------------------------------------------------------------
 NULL_MOVE_OK      EQU $64A7   ; 1 byte - flag: 1=can try null move, 0=cannot (prevents double-null)
