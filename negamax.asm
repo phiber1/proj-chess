@@ -441,30 +441,30 @@ NEGAMAX_CONTINUE:
     LDX                 ; beta_hi (R2 now at beta_hi slot)
     PHI 7               ; R7 = original beta
 
-    ; Pop alpha from stack (discard, just need to advance R2)
+    ; Pop alpha from stack into R8
     IRX
-    IRX                 ; Skip alpha_lo, alpha_hi
+    LDXA                ; alpha_lo
+    PLO 8
+    LDX                 ; alpha_hi
+    PHI 8               ; R8 = original alpha
 
     ; Pop depth from stack and restore to memory
     IRX
     LDXA                ; depth_lo
-    PLO 8
+    PLO 13
     LDX                 ; depth_hi
-    PHI 8               ; R8 = original depth
+    PHI 13              ; R13 = original depth
 
     LDI HIGH(SEARCH_DEPTH)
     PHI 10
     LDI LOW(SEARCH_DEPTH)
     PLO 10
-    GHI 8
+    GHI 13
     STR 10
     INC 10
-    GLO 8
+    GLO 13
     STR 10              ; SEARCH_DEPTH restored
-
-    ; Restore alpha/beta to memory (we still have them from before)
-    ; Actually we discarded alpha - need to restore from scratch
-    ; For now, alpha doesn't matter - we only compare score vs beta
+    ; R7 = original beta, R8 = original alpha (for NMP_NO_CUTOFF path)
 
     ; Compare: score (R9) >= beta (R7)? If so, prune!
     ; Signed 16-bit comparison
@@ -535,19 +535,27 @@ NMP_CUTOFF:
     RETN
 
 NMP_NO_CUTOFF:
-    ; Null move didn't cause cutoff, need to restore alpha/beta to memory
-    ; We have beta in R7 but discarded alpha from stack
-    ; Recalculate: we saved alpha at stack offset +3,+4 from beta
-    ; Actually we already popped everything. Need to re-read from saved state.
-    ;
-    ; Simpler approach: alpha/beta were saved by SAVE_PLY_STATE at entry.
-    ; We can restore them from ply state. But that's expensive.
-    ;
-    ; Better: we should have kept alpha. Let me fix this by peeking instead of popping.
-    ; For now, use ply state restoration (it's only on NMP miss path)
+    ; Null move didn't cause cutoff - restore alpha/beta to memory
+    ; R8 = original alpha, R7 = original beta
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    GHI 8
+    STR 10
+    INC 10
+    GLO 8
+    STR 10              ; ALPHA = original alpha
 
-    CALL RESTORE_PLY_STATE
-    CALL SAVE_PLY_STATE     ; Re-save to get fresh state
+    LDI HIGH(BETA_HI)
+    PHI 10
+    LDI LOW(BETA_HI)
+    PLO 10
+    GHI 7
+    STR 10
+    INC 10
+    GLO 7
+    STR 10              ; BETA = original beta
     ; Fall through to normal move generation
 
 NMP_SKIP:
@@ -659,8 +667,8 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     LDI $80
     STR 10              ; BEST_SCORE_HI = $80
     INC 10
-    LDI $00
-    STR 10              ; BEST_SCORE_LO = $00 (best = $8000 = -32768)
+    LDI $01
+    STR 10              ; BEST_SCORE_LO = $01 (best = $8001 = -32767, safe to negate)
 
     ; -----------------------------------------------
     ; Futility Pruning Setup (depth 1 only)
@@ -1150,8 +1158,16 @@ LMR_NO_EXTRA_DEC:
     STR 10              ; CURRENT_PLY++
 
     ; -----------------------------------------------
-    ; Push LMR_REDUCED to stack (will be overwritten by recursive call)
+    ; Push LMR state to stack (overwritten by recursive call)
     ; -----------------------------------------------
+    ; Push LMR_MOVE_INDEX first (popped last)
+    LDI HIGH(LMR_MOVE_INDEX)
+    PHI 10
+    LDI LOW(LMR_MOVE_INDEX)
+    PLO 10
+    LDN 10              ; D = LMR_MOVE_INDEX
+    STXD                ; Push to stack
+    ; Push LMR_REDUCED second (popped first)
     LDI HIGH(LMR_REDUCED)
     PHI 10
     LDI LOW(LMR_REDUCED)
@@ -1166,8 +1182,9 @@ LMR_NO_EXTRA_DEC:
     ; Returns score in R9 (R6 is SCRT linkage - off limits!)
 
     ; -----------------------------------------------
-    ; Pop LMR_REDUCED immediately and save to LMR_OUTER
+    ; Pop LMR state (reverse order)
     ; -----------------------------------------------
+    ; Pop LMR_REDUCED and save to LMR_OUTER
     IRX
     LDX                 ; D = saved LMR_REDUCED (R2 stays at this slot)
     PLO 7               ; Save in R7.0 (temp)
@@ -1177,6 +1194,16 @@ LMR_NO_EXTRA_DEC:
     PLO 10
     GLO 7               ; Restore LMR_REDUCED value
     STR 10              ; LMR_OUTER = saved LMR_REDUCED
+    ; Pop LMR_MOVE_INDEX and restore to memory
+    IRX
+    LDX                 ; D = saved LMR_MOVE_INDEX
+    PLO 7               ; Temp in R7.0
+    LDI HIGH(LMR_MOVE_INDEX)
+    PHI 10
+    LDI LOW(LMR_MOVE_INDEX)
+    PLO 10
+    GLO 7
+    STR 10              ; LMR_MOVE_INDEX restored
 
     ; Decrement ply counter after recursion
     LDI HIGH(CURRENT_PLY)
@@ -1547,64 +1574,6 @@ LMR_NO_RESEARCH:
     LDN 10              ; SCORE_LO -> low byte
     PLO 13              ; R13 = negated score from memory
 
-    ; DEBUG: At ply 0 and 1, print move and score
-    ; Ply 0 (root/white): [from-to:score]
-    ; Ply 1 (black response): {from-to:score}
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
-    LDN 10
-    LBZ NEGAMAX_DBG_PLY0
-    XRI 1               ; Check if ply == 1
-    LBNZ NEGAMAX_DBG_SKIP  ; Skip if ply > 1
-    ; Ply 1 - use { }
-    LDI '{'
-    LBR NEGAMAX_DBG_PRINT
-NEGAMAX_DBG_PLY0:
-    ; Ply 0 - use [ ]
-    LDI '['
-NEGAMAX_DBG_PRINT:
-    CALL SERIAL_WRITE_CHAR
-    ; Print from square (UNDO_FROM)
-    LDI HIGH(UNDO_FROM)
-    PHI 10
-    LDI LOW(UNDO_FROM)
-    PLO 10
-    LDN 10
-    CALL SERIAL_PRINT_HEX
-    LDI '-'
-    CALL SERIAL_WRITE_CHAR
-    ; Print to square (UNDO_TO)
-    LDI HIGH(UNDO_TO)
-    PHI 10
-    LDI LOW(UNDO_TO)
-    PLO 10
-    LDN 10
-    CALL SERIAL_PRINT_HEX
-    LDI ':'
-    CALL SERIAL_WRITE_CHAR
-    ; Print score high byte
-    GHI 13
-    CALL SERIAL_PRINT_HEX
-    ; Print score low byte
-    GLO 13
-    CALL SERIAL_PRINT_HEX
-    ; Close bracket based on ply
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
-    LDN 10
-    LBNZ NEGAMAX_DBG_PLY1_CLOSE
-    LDI ']'
-    LBR NEGAMAX_DBG_CLOSE
-NEGAMAX_DBG_PLY1_CLOSE:
-    LDI '}'
-NEGAMAX_DBG_CLOSE:
-    CALL SERIAL_WRITE_CHAR
-NEGAMAX_DBG_SKIP:
-
     ; -----------------------------------------------
     ; Beta Cutoff Check: if (score >= beta) return beta
     ; -----------------------------------------------
@@ -1798,13 +1767,81 @@ NEGAMAX_SCORE_BETTER:
     GLO 7
     STR 10              ; BEST_MOVE[1] = to
 
+    ; Alpha update disabled for testing - fall through to NEGAMAX_NEXT_MOVE
+    LBR NEGAMAX_NEXT_MOVE
+
+NEGAMAX_UPDATE_ALPHA:
     ; -----------------------------------------------
     ; Update alpha: if (score > alpha) alpha = score
     ; -----------------------------------------------
-    ; Compare score (R9) with alpha - alpha is currently unknown!
-    ; Alpha was restored but we used stack for score. Need to save score to memory.
-    ; For now, skip alpha update (alpha-beta pruning still works via beta cutoff)
-    ; TODO: Properly track alpha if needed for deeper search improvement
+    ; R13 = score (preserved from NEGAMAX_SCORE_BETTER entry)
+    ; Load alpha from memory into R8
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    LDA 10
+    PHI 8               ; R8.1 = alpha_hi
+    LDN 10
+    PLO 8               ; R8 = alpha
+
+    ; Signed compare: score (R13) > alpha (R8)?
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+
+    ; Check if signs differ
+    GHI 13              ; score_hi
+    STR 10
+    GHI 8               ; alpha_hi
+    XOR
+    ANI $80
+    SEX 2
+    LBNZ NEGAMAX_ALPHA_DIFF_SIGN
+
+    ; Same sign: score > alpha if (score - alpha) > 0
+    SEX 10
+    GHI 8               ; alpha_hi
+    STR 10
+    GHI 13              ; score_hi
+    SD                  ; D = score_hi - alpha_hi
+    SEX 2
+    LBNZ NEGAMAX_ALPHA_HI_DIFF
+    ; High bytes equal, compare low
+    SEX 10
+    GLO 8               ; alpha_lo
+    STR 10
+    GLO 13              ; score_lo
+    SD                  ; D = score_lo - alpha_lo
+    SEX 2
+    LBZ NEGAMAX_NEXT_MOVE           ; Equal, don't update
+    LBNF NEGAMAX_ALPHA_DO_UPDATE    ; DF=0: score > alpha
+    LBR NEGAMAX_NEXT_MOVE           ; DF=1: score < alpha
+
+NEGAMAX_ALPHA_HI_DIFF:
+    LBNF NEGAMAX_ALPHA_DO_UPDATE    ; DF=0: score > alpha
+    LBR NEGAMAX_NEXT_MOVE           ; DF=1: score < alpha
+
+NEGAMAX_ALPHA_DIFF_SIGN:
+    ; Different signs: positive > negative
+    GHI 13              ; score_hi
+    ANI $80
+    LBNZ NEGAMAX_NEXT_MOVE          ; Score negative, alpha positive - skip
+    ; Score positive, alpha negative - update (fall through)
+
+NEGAMAX_ALPHA_DO_UPDATE:
+    ; alpha = score
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    GHI 13
+    STR 10
+    INC 10
+    GLO 13
+    STR 10              ; ALPHA = score
 
 NEGAMAX_NEXT_MOVE:
     ; -----------------------------------------------
