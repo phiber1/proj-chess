@@ -99,7 +99,26 @@ NEGAMAX_PLY_OK:
     LDI 0
     PHI 9
     PLO 9               ; R9 = 0 (draw score) - R6 is SCRT linkage!
+    ; Save score to SCORE_HI/LO BEFORE restore (RESTORE clobbers R9!)
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    GHI 9
+    STR 10
+    INC 10
+    GLO 9
+    STR 10              ; SCORE_HI/LO = 0 (draw)
     CALL RESTORE_PLY_STATE
+    ; Reload R9 from SCORE_HI/LO AFTER restore
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9               ; R9 = draw score (0)
     RETN
 
 NEGAMAX_NOT_FIFTY:
@@ -158,7 +177,8 @@ NEGAMAX_NOT_FIFTY:
 
 NEGAMAX_TT_SKIP_MOVE:
 
-    ; Now get the score
+    ; Now get the score and save to SCORE_HI/LO BEFORE restore
+    ; (RESTORE_PLY_STATE clobbers R9!)
     LDI HIGH(TT_SCORE_HI)
     PHI 10
     LDI LOW(TT_SCORE_HI)
@@ -167,7 +187,26 @@ NEGAMAX_TT_SKIP_MOVE:
     PHI 9
     LDN 10              ; score_lo
     PLO 9               ; R9 = stored score
+    ; Save to SCORE_HI/LO so it survives RESTORE
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    GHI 9
+    STR 10
+    INC 10
+    GLO 9
+    STR 10              ; SCORE_HI/LO = TT score
     CALL RESTORE_PLY_STATE
+    ; Reload R9 from SCORE_HI/LO AFTER restore
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9               ; R9 = TT score (preserved through restore)
     RETN                ; Return TT score
 
 NEGAMAX_TT_MISS:
