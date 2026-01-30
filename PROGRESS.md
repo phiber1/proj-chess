@@ -9,18 +9,18 @@
 
 ---
 
-## Current Status (January 26, 2026)
+## Current Status (January 30, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
-- **Depth 3:** ~2 min 30 sec with LMR + NMP, search now working correctly
+- **Depth 3:** ~4 min 30 sec, search clean (board corruption fixed!)
 - **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
 - **Transposition Table:** Full internal TT enabled at all nodes
 - **Late Move Reductions:** Working with verified re-search
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
-- **Futility Pruning:** Fixed Jan 26 - was incorrectly pruning at root!
+- **Futility Pruning:** Fixed Jan 30 - R9 clobber caused board corruption at depth 1 nodes
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches running
-- **Engine size:** 29,856 bytes (includes all optimizations)
+- **Engine size:** 30,352 bytes (includes all optimizations)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -28,6 +28,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
+- **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.
 - **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
 - **Jan 23:** Multiple stability fixes, ply limit enforcement, BEST_MOVE safeguard
 - **W19:** Null Move Pruning - depth 4 now playable! 8.5x speedup (6:07 → 0:43)
@@ -57,6 +58,57 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: January 29-30, 2026 - Board Corruption Root Cause Found
+
+### Summary
+Investigated and fixed the root cause of board corruption during search, which caused
+the engine to play illegal moves (e.g., `c3d5` knight captures own pawn) during CuteChess
+matches. The bug was in the futility pruning setup: `CALL EVALUATE` at depth-1 nodes
+clobbered R9 (the move list pointer) with the evaluation score. The move loop then read
+moves from whatever address the score happened to encode (ROM at $FEC0), producing
+off-board squares that corrupted the board via MAKE_MOVE/UNMAKE_MOVE.
+
+### Root Cause: R9 Clobbered by EVALUATE (negamax.asm:700)
+At depth-1 frontier nodes, `CALL EVALUATE` returns the static eval score in R9. The code
+saved this to STATIC_EVAL but never re-initialized R9 to the move list pointer before
+falling through to `NEGAMAX_MOVE_LOOP`. The `LDA 9` instructions then read from ROM
+instead of the move list, producing encoded moves that decoded to off-board squares
+($28/$6F). These values were deterministic (same eval → same ROM address → same bytes).
+
+**Fix:** Re-initialize R9 to the ply-indexed move list start after the EVALUATE call
+and STATIC_EVAL save, before falling through to the move loop.
+
+### Also Fixed: Castling Mask Bug (makemove.asm)
+The `MM_DO_CLEAR_CASTLE` code saved R10 via STXD before `CALL CLEAR_CASTLING_RIGHT`,
+which clobbered D (the castling mask $03/$0C) with `GLO 10`. CLEAR_CASTLING_RIGHT
+received the captured piece value instead of the mask. King moves never properly revoked
+castling rights during search. Fixed by removing the STXD/IRX entirely and reloading R10
+from BOARD[MOVE_TO] and UNDO_CAPTURED after the call. D now carries the mask through
+SCRT (which preserves D via R7).
+
+### Also Fixed: Eliminated All R2 Direct Storage (makemove.asm)
+Converted 5 `STR 2` scratch sites and 1 `STXD/IRX` pair to memory-based operations.
+Since BOARD is at $6000 (LOW(BOARD) = $00), the BOARD address computation simplifies
+from 8 instructions to 3 per site. makemove.asm now has zero stack interactions, consistent
+with the memory-over-stack strategy adopted for negamax.asm.
+
+### Debug Methodology
+- BP11: UNMAKE_MOVE UNDO validation → caught UNDO_FROM=$28, UNDO_TO=$6F at ply 2
+- BP12: Same result after makemove.asm refactoring → ruled out R2/stack as cause
+- BP13: MAKE_MOVE entry validation → MOVE_FROM=$28, MOVE_TO=$6F before MAKE_MOVE
+  - R9=$FEC2 (ROM), R8=$B7A8 decoded to $28/$6F
+  - $B7A8 not in move list → R9 pointing to wrong memory
+  - Full R9 lifecycle trace identified the EVALUATE clobber
+
+### Files Changed
+- `negamax.asm`: R9 re-init after futility EVALUATE, removed all debug breakpoints, BZ→LBZ for page safety
+- `makemove.asm`: Castling mask fix, eliminated all R2 usage (STR 2, STXD, IRX)
+
+### Build
+30,352 bytes, clean (no assembly warnings)
 
 ---
 

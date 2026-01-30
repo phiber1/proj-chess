@@ -57,43 +57,26 @@ MAKE_MOVE:
     STR 8
 
     ; Get the piece being moved
-    LDI HIGH(BOARD)
-    PHI 8
-    LDI LOW(BOARD)
-    PLO 8
     LDI HIGH(MOVE_FROM)
     PHI 9
     LDI LOW(MOVE_FROM)
     PLO 9
-    LDN 9               ; Get from square index
-    SEX 2
-    STR 2
-    GLO 8
-    ADD
+    LDN 9               ; D = from square index
     PLO 8
-    GHI 8
-    ADCI 0
-    PHI 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[from]
     LDN 8               ; D = piece at from square
     PLO 10              ; Save moving piece in R10.0
 
     ; Get captured piece at destination
-    LDI HIGH(BOARD)
-    PHI 8
-    LDI LOW(BOARD)
-    PLO 8
     LDI HIGH(MOVE_TO)
     PHI 9
     LDI LOW(MOVE_TO)
     PLO 9
-    LDN 9               ; Get to square index
-    STR 2
-    GLO 8
-    ADD
+    LDN 9               ; D = to square index
     PLO 8
-    GHI 8
-    ADCI 0
-    PHI 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to]
     LDN 8               ; D = piece at to square (captured)
     
     ; Save captured piece
@@ -166,39 +149,39 @@ MM_CLEAR_BLACK_CASTLE:
     LDI $0C             ; CASTLE_BK ($04) + CASTLE_BQ ($08)
 
 MM_DO_CLEAR_CASTLE:
-    ; Save R10 (moving piece, captured piece) - CLEAR_CASTLING_RIGHT clobbers it
-    GLO 10
-    STXD
-    GHI 10
-    STXD
-
+    ; D = castling mask ($03 or $0C) — preserved through CALL via R7
     CALL CLEAR_CASTLING_RIGHT
 
-    ; Restore R10
-    IRX
-    LDXA
-    PHI 10
-    LDX
-    PLO 10
+    ; Reload R10 (clobbered by CLEAR_CASTLING_RIGHT)
+    ; R10.0 = moving piece from BOARD[MOVE_TO]
+    LDI HIGH(MOVE_TO)
+    PHI 9
+    LDI LOW(MOVE_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to]
+    LDN 8               ; D = moving piece (king)
+    PLO 10              ; R10.0 = moving piece
+    ; R10.1 = captured piece from UNDO_CAPTURED
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 9
+    LDI LOW(UNDO_CAPTURED)
+    PLO 9
+    LDN 9               ; D = captured piece
+    PHI 10              ; R10.1 = captured piece
 
 MM_NOT_KING:
     ; Clear the from square
-    LDI HIGH(BOARD)
-    PHI 8
-    LDI LOW(BOARD)
-    PLO 8
     LDI HIGH(MOVE_FROM)
     PHI 9
     LDI LOW(MOVE_FROM)
     PLO 9
-    LDN 9               ; Get from square
-    STR 2
-    GLO 8
-    ADD
+    LDN 9               ; D = from square
     PLO 8
-    GHI 8
-    ADCI 0
-    PHI 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[from]
     LDI EMPTY
     STR 8               ; Clear from square
 
@@ -327,23 +310,14 @@ MM_DONE:
 ; ==============================================================================
 UNMAKE_MOVE:
     ; Get moving piece from to square
-    LDI HIGH(BOARD)
-    PHI 8
-    LDI LOW(BOARD)
-    PLO 8
     LDI HIGH(UNDO_TO)
     PHI 9
     LDI LOW(UNDO_TO)
     PLO 9
-    LDN 9               ; Get to square
-    SEX 2
-    STR 2
-    GLO 8
-    ADD
+    LDN 9               ; D = to square
     PLO 8
-    GHI 8
-    ADCI 0
-    PHI 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to]
     LDN 8               ; D = piece at to square
     PLO 10              ; Save in R10.0
 
@@ -356,23 +330,15 @@ UNMAKE_MOVE:
     STR 8               ; Put back at to square
 
     ; Put moving piece back at from square
-    LDI HIGH(BOARD)
-    PHI 8
-    LDI LOW(BOARD)
-    PLO 8
     LDI HIGH(UNDO_FROM)
     PHI 9
     LDI LOW(UNDO_FROM)
     PLO 9
-    LDN 9               ; Get from square
-    STR 2
-    GLO 8
-    ADD
+    LDN 9               ; D = from square
     PLO 8
-    GHI 8
-    ADCI 0
-    PHI 8
-    GLO 10              ; Get moving piece
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[from]
+    GLO 10              ; D = moving piece
     STR 8               ; Put back at from square
 
     ; =========================================

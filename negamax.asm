@@ -611,9 +611,9 @@ NEGAMAX_PLY_DONE:
     ; Calculate low byte: (ply & 1) << 7
     LDN 10              ; D = ply (reload)
     ANI $01
-    BZ NEGAMAX_RESET_EVEN
+    LBZ NEGAMAX_RESET_EVEN
     LDI $80
-    BR NEGAMAX_RESET_DONE
+    LBR NEGAMAX_RESET_DONE
 NEGAMAX_RESET_EVEN:
     LDI $00
 NEGAMAX_RESET_DONE:
@@ -712,6 +712,26 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     PLO 10
     LDI 1
     STR 10              ; FUTILITY_OK = 1
+
+    ; FIX: EVALUATE clobbered R9 (move list pointer) with eval score.
+    ; Re-initialize R9 to move list start for this ply.
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    SHR                 ; D = ply >> 1
+    ADI HIGH(MOVE_LIST)
+    PHI 9               ; R9.1 = HIGH(MOVE_LIST) + (ply >> 1)
+    LDN 10              ; D = ply (reload)
+    ANI $01
+    LBZ NEGAMAX_FUTILITY_R9_EVEN
+    LDI $80
+    LBR NEGAMAX_FUTILITY_R9_DONE
+NEGAMAX_FUTILITY_R9_EVEN:
+    LDI $00
+NEGAMAX_FUTILITY_R9_DONE:
+    PLO 9               ; R9 = ply-indexed move list start
 
 NEGAMAX_SKIP_FUTILITY:
 
