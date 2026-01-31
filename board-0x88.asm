@@ -47,7 +47,7 @@ KING_TYPE   EQU 6
 ; ------------------------------------------------------------------------------
 ; Memory Layout - ALL engine data consolidated at $6000
 ; ------------------------------------------------------------------------------
-; Total: ~1536 bytes ($6000-$65FF)
+; Total: ~1792 bytes ($6000-$66FF)
 ;
 ; Board and game data: $6000-$63FF
 BOARD       EQU $6000   ; 128 bytes - 0x88 board array ($6000-$607F)
@@ -187,26 +187,28 @@ NULL_SAVED_EP     EQU $64A8   ; 1 byte - saved EP square before null move
 ENEMY_COLOR_TEMP  EQU $64A9   ; 1 byte - enemy color for IS_SQUARE_ATTACKED
 
 ; ------------------------------------------------------------------------------
-; UCI state: $6500-$6600
+; UCI/Hash/TT variables: $64B8-$64C1
 ; ------------------------------------------------------------------------------
-UCI_BUFFER      EQU $6500   ; 256 bytes - input buffer ($6500-$65FF)
-UCI_STATE       EQU $6600   ; 1 byte - UCI state
+; Relocated from $6600+ to free up space for larger UCI_BUFFER
+UCI_STATE       EQU $64B8   ; 1 byte - UCI state
+HASH_HI         EQU $64B9   ; 1 byte - hash high byte
+HASH_LO         EQU $64BA   ; 1 byte - hash low byte
+TT_HIT          EQU $64BB   ; 1 byte - 0=miss, 1=hit
+TT_SCORE_HI     EQU $64BC   ; 1 byte - stored score high
+TT_SCORE_LO     EQU $64BD   ; 1 byte - stored score low
+TT_DEPTH        EQU $64BE   ; 1 byte - stored depth
+TT_FLAG         EQU $64BF   ; 1 byte - stored flag (EXACT/ALPHA/BETA)
+TT_MOVE_HI      EQU $64C0   ; 1 byte - stored best move high
+TT_MOVE_LO      EQU $64C1   ; 1 byte - stored best move low
+
+; ------------------------------------------------------------------------------
+; UCI input buffer: $6500-$66FF (512 bytes)
+; ------------------------------------------------------------------------------
+UCI_BUFFER      EQU $6500   ; 512 bytes - input buffer ($6500-$66FF)
 
 ; ------------------------------------------------------------------------------
 ; Transposition Table: $6700-$6EFF (256 entries × 8 bytes = 2KB)
 ; ------------------------------------------------------------------------------
-; Current position hash (updated incrementally by MAKE_MOVE/UNMAKE_MOVE)
-HASH_HI         EQU $6601   ; 1 byte - hash high byte
-HASH_LO         EQU $6602   ; 1 byte - hash low byte
-
-; TT lookup result (set by TT_PROBE)
-TT_HIT          EQU $6603   ; 1 byte - 0=miss, 1=hit
-TT_SCORE_HI     EQU $6604   ; 1 byte - stored score high
-TT_SCORE_LO     EQU $6605   ; 1 byte - stored score low
-TT_DEPTH        EQU $6606   ; 1 byte - stored depth
-TT_FLAG         EQU $6607   ; 1 byte - stored flag (EXACT/ALPHA/BETA)
-TT_MOVE_HI      EQU $6608   ; 1 byte - stored best move high
-TT_MOVE_LO      EQU $6609   ; 1 byte - stored best move low
 
 ; TT table base address and sizing
 TT_TABLE        EQU $6700   ; 256 entries × 8 bytes = 2KB ($6700-$6EFF)

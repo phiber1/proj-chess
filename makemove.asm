@@ -172,6 +172,147 @@ MM_DO_CLEAR_CASTLE:
     LDN 9               ; D = captured piece
     PHI 10              ; R10.1 = captured piece
 
+    ; =========================================
+    ; CASTLING ROOK MOVEMENT
+    ; =========================================
+    ; Detect: to - from = $02 (kingside) or $FE (queenside)
+    LDI HIGH(COMPARE_TEMP)
+    PHI 9
+    LDI LOW(COMPARE_TEMP)
+    PLO 9
+    LDI HIGH(UNDO_FROM)
+    PHI 8
+    LDI LOW(UNDO_FROM)
+    PLO 8
+    LDN 8               ; D = from square
+    SEX 9
+    STR 9               ; M(COMPARE_TEMP) = from
+    LDI HIGH(UNDO_TO)
+    PHI 8
+    LDI LOW(UNDO_TO)
+    PLO 8
+    LDN 8               ; D = to square
+    SM                   ; D = to - from
+    SEX 2
+
+    XRI $02
+    LBZ MM_CASTLE_KS     ; to - from = 2: kingside
+    XRI $FC              ; XOR chain: checks if original was $FE
+    LBZ MM_CASTLE_QS     ; to - from = $FE: queenside
+    LBR MM_NOT_KING      ; Normal king move
+
+MM_CASTLE_KS:
+    ; Kingside: rook from to+1 (h-file) to to-1 (f-file)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+
+    ; Read rook from BOARD[to+1]
+    ADI 1                ; D = to + 1
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to+1]
+    LDN 8               ; D = rook piece
+    PHI 13              ; R13.1 = rook piece (temp)
+    LDI EMPTY
+    STR 8               ; Clear rook's old square (h1/h8)
+
+    ; Place rook at BOARD[to-1]
+    LDN 9               ; D = to square (reload from UNDO_TO)
+    SMI 1                ; D = to - 1
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to-1]
+    GHI 13              ; D = rook piece
+    STR 8               ; Place rook at f1/f8
+
+    ; Hash: XOR out [rook, to+1]
+    GHI 13              ; D = rook piece
+    PLO 8               ; R8.0 = rook piece
+    LDN 9               ; D = to square
+    ADI 1                ; D = to + 1 (rook's old square)
+    PHI 8               ; R8.1 = old rook square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; Hash: XOR in [rook, to-1] (R8.0 preserved by HASH_XOR)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    SMI 1                ; D = to - 1 (rook's new square)
+    PHI 8               ; R8.1 = new rook square
+    CALL HASH_XOR_PIECE_SQ
+
+    LBR MM_CASTLE_DONE
+
+MM_CASTLE_QS:
+    ; Queenside: rook from to-2 (a-file) to to+1 (d-file)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+
+    ; Read rook from BOARD[to-2]
+    SMI 2                ; D = to - 2
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to-2]
+    LDN 8               ; D = rook piece
+    PHI 13              ; R13.1 = rook piece (temp)
+    LDI EMPTY
+    STR 8               ; Clear rook's old square (a1/a8)
+
+    ; Place rook at BOARD[to+1]
+    LDN 9               ; D = to square (reload from UNDO_TO)
+    ADI 1                ; D = to + 1
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to+1]
+    GHI 13              ; D = rook piece
+    STR 8               ; Place rook at d1/d8
+
+    ; Hash: XOR out [rook, to-2]
+    GHI 13              ; D = rook piece
+    PLO 8               ; R8.0 = rook piece
+    LDN 9               ; D = to square
+    SMI 2                ; D = to - 2 (rook's old square)
+    PHI 8               ; R8.1 = old rook square
+    CALL HASH_XOR_PIECE_SQ
+
+    ; Hash: XOR in [rook, to+1] (R8.0 preserved by HASH_XOR)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    ADI 1                ; D = to + 1 (rook's new square)
+    PHI 8               ; R8.1 = new rook square
+    CALL HASH_XOR_PIECE_SQ
+
+MM_CASTLE_DONE:
+    ; Reload R10 (clobbered by HASH_XOR_PIECE_SQ)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to]
+    LDN 8               ; D = king piece
+    PLO 10              ; R10.0 = moving piece
+    LDI HIGH(UNDO_CAPTURED)
+    PHI 9
+    LDI LOW(UNDO_CAPTURED)
+    PLO 9
+    LDN 9               ; D = captured piece
+    PHI 10              ; R10.1 = captured piece
+    ; Fall through to MM_NOT_KING
+
 MM_NOT_KING:
     ; Clear the from square
     LDI HIGH(MOVE_FROM)
@@ -380,6 +521,127 @@ UM_STORE_KING:
     PLO 8
     LDN 8               ; D = from square
     STR 9               ; Restore king position
+
+    ; =========================================
+    ; CASTLING ROOK UNDO
+    ; =========================================
+    ; Detect: to - from = $02 (kingside) or $FE (queenside)
+    LDI HIGH(COMPARE_TEMP)
+    PHI 9
+    LDI LOW(COMPARE_TEMP)
+    PLO 9
+    LDI HIGH(UNDO_FROM)
+    PHI 8
+    LDI LOW(UNDO_FROM)
+    PLO 8
+    LDN 8               ; D = from square
+    SEX 9
+    STR 9               ; M(COMPARE_TEMP) = from
+    LDI HIGH(UNDO_TO)
+    PHI 8
+    LDI LOW(UNDO_TO)
+    PLO 8
+    LDN 8               ; D = to square
+    SM                   ; D = to - from
+    SEX 2
+
+    XRI $02
+    LBZ UM_CASTLE_KS     ; Kingside
+    XRI $FC
+    LBZ UM_CASTLE_QS     ; Queenside
+    LBR UM_NOT_KING      ; Normal king move
+
+UM_CASTLE_KS:
+    ; Kingside undo: rook from to-1 (f-file) back to to+1 (h-file)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+
+    ; Read rook from BOARD[to-1]
+    SMI 1                ; D = to - 1
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to-1]
+    LDN 8               ; D = rook piece
+    PHI 13              ; R13.1 = rook piece (temp)
+    LDI EMPTY
+    STR 8               ; Clear f1/f8
+
+    ; Place rook back at BOARD[to+1]
+    LDN 9               ; D = to square
+    ADI 1                ; D = to + 1
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to+1]
+    GHI 13              ; D = rook piece
+    STR 8               ; Restore rook to h1/h8
+
+    ; Hash: XOR [rook, to-1] (same pairs as make - XOR cancels)
+    GHI 13              ; D = rook piece
+    PLO 8               ; R8.0 = rook piece
+    LDN 9               ; D = to square
+    SMI 1                ; D = to - 1
+    PHI 8               ; R8.1 = f1/f8
+    CALL HASH_XOR_PIECE_SQ
+
+    ; Hash: XOR [rook, to+1] (R8.0 preserved)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    ADI 1                ; D = to + 1
+    PHI 8               ; R8.1 = h1/h8
+    CALL HASH_XOR_PIECE_SQ
+
+    LBR UM_NOT_KING
+
+UM_CASTLE_QS:
+    ; Queenside undo: rook from to+1 (d-file) back to to-2 (a-file)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+
+    ; Read rook from BOARD[to+1]
+    ADI 1                ; D = to + 1
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to+1]
+    LDN 8               ; D = rook piece
+    PHI 13              ; R13.1 = rook piece (temp)
+    LDI EMPTY
+    STR 8               ; Clear d1/d8
+
+    ; Place rook back at BOARD[to-2]
+    LDN 9               ; D = to square
+    SMI 2                ; D = to - 2
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[to-2]
+    GHI 13              ; D = rook piece
+    STR 8               ; Restore rook to a1/a8
+
+    ; Hash: XOR [rook, to+1]
+    GHI 13              ; D = rook piece
+    PLO 8               ; R8.0 = rook piece
+    LDN 9               ; D = to square
+    ADI 1                ; D = to + 1
+    PHI 8               ; R8.1 = d1/d8
+    CALL HASH_XOR_PIECE_SQ
+
+    ; Hash: XOR [rook, to-2] (R8.0 preserved)
+    LDI HIGH(UNDO_TO)
+    PHI 9
+    LDI LOW(UNDO_TO)
+    PLO 9
+    LDN 9               ; D = to square
+    SMI 2                ; D = to - 2
+    PHI 8               ; R8.1 = a1/a8
+    CALL HASH_XOR_PIECE_SQ
 
 UM_NOT_KING:
     ; Restore castling rights to GAME_STATE + STATE_CASTLING

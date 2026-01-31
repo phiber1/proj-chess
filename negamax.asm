@@ -128,6 +128,16 @@ NEGAMAX_NOT_FIFTY:
     ; Hash is updated incrementally in MAKE/UNMAKE_MOVE,
     ; so TT works correctly at all nodes.
     ;
+    ; Skip TT at root (ply 0): TT_STORE saves the root's BEST_MOVE
+    ; globally, so non-root TT entries have stale/sentinel move data.
+    ; Root must always search fully to guarantee a valid BEST_MOVE.
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    LBZ NEGAMAX_TT_MISS ; Root: always search fully
+
     ; Load current search depth for comparison
     LDI HIGH(SEARCH_DEPTH)
     PHI 13
@@ -146,38 +156,10 @@ NEGAMAX_NOT_FIFTY:
     XRI TT_FLAG_EXACT
     LBNZ NEGAMAX_TT_MISS    ; Not exact, can't use directly (for now)
 
-    ; EXACT hit - use the stored score and move
-    ; Only copy TT_MOVE to BEST_MOVE if we're at root (ply 0)!
-    ; Otherwise internal TT hits would corrupt the root's best move.
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
-    LDN 10              ; D = current ply
-    LBNZ NEGAMAX_TT_SKIP_MOVE  ; Not root, skip BEST_MOVE update
+    ; EXACT hit at non-root node - use the stored score
+    ; (Root is excluded above, so no BEST_MOVE copy needed)
 
-    ; At root - copy TT_MOVE to BEST_MOVE
-    LDI HIGH(TT_MOVE_HI)
-    PHI 10
-    LDI LOW(TT_MOVE_HI)
-    PLO 10
-    LDA 10              ; move_hi
-    PHI 9               ; temp in R9.1
-    LDN 10              ; move_lo
-    PLO 8               ; temp in R8.0
-    LDI HIGH(BEST_MOVE)
-    PHI 10
-    LDI LOW(BEST_MOVE)
-    PLO 10
-    GHI 9               ; move_hi
-    STR 10
-    INC 10
-    GLO 8               ; move_lo
-    STR 10
-
-NEGAMAX_TT_SKIP_MOVE:
-
-    ; Now get the score and save to SCORE_HI/LO BEFORE restore
+    ; Get the score and save to SCORE_HI/LO BEFORE restore
     ; (RESTORE_PLY_STATE clobbers R9!)
     LDI HIGH(TT_SCORE_HI)
     PHI 10
@@ -1765,7 +1747,7 @@ NEGAMAX_SCORE_BETTER:
     LDI LOW(CURRENT_PLY)
     PLO 10
     LDN 10              ; Get current ply
-    LBNZ NEGAMAX_NEXT_MOVE  ; Not at root, skip BEST_MOVE update
+    LBNZ NEGAMAX_UPDATE_ALPHA  ; Not at root, skip BEST_MOVE but still update alpha
 
     ; At root - save move to BEST_MOVE from UNDO_FROM/UNDO_TO
     LDI HIGH(UNDO_FROM)
@@ -1787,8 +1769,7 @@ NEGAMAX_SCORE_BETTER:
     GLO 7
     STR 10              ; BEST_MOVE[1] = to
 
-    ; Alpha update disabled for testing - fall through to NEGAMAX_NEXT_MOVE
-    LBR NEGAMAX_NEXT_MOVE
+    ; Fall through to alpha update
 
 NEGAMAX_UPDATE_ALPHA:
     ; -----------------------------------------------

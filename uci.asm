@@ -8,9 +8,8 @@
 ; ------------------------------------------------------------------------------
 ; UCI Command Buffer - defined in board-0x88.asm
 ; ------------------------------------------------------------------------------
-; UCI_BUFFER ($6900) and UCI_STATE ($6A00) defined in board-0x88.asm
-; All engine variables consolidated at $6800+ region
-UCI_BUFFER_LEN  EQU 255     ; Max chars (fits in 8-bit comparison)
+; UCI_BUFFER ($6500, 512 bytes) and UCI_STATE ($64B8) defined in board-0x88.asm
+UCI_BUFFER_LEN  EQU 511     ; Max chars (16-bit counter, 512-byte buffer)
 UCI_READY       EQU 1       ; Ready state
 
 ; ------------------------------------------------------------------------------
@@ -69,10 +68,11 @@ UCI_READ_LINE:
     LDI HIGH(UCI_BUFFER)
     PHI 10
     LDI LOW(UCI_BUFFER)
-    PLO 10              ; A = buffer pointer
+    PLO 10              ; R10 = buffer pointer
 
     LDI 0
-    PLO 13              ; D.0 = character count
+    PHI 13              ; R13.1 = count high byte = 0
+    PLO 13              ; R13.0 = count low byte = 0
 
 UCI_READ_LOOP:
     ; Read character from serial input
@@ -93,15 +93,19 @@ UCI_READ_LOOP:
     STR 10
     INC 10
 
-    ; Increment count
+    ; Increment 16-bit count
     INC 13
 
-    ; Check buffer limit
+    ; Check buffer limit (16-bit: UCI_BUFFER_LEN = 511 = $01FF)
     GLO 13
-    XRI UCI_BUFFER_LEN
-    LBZ UCI_READ_DONE
+    XRI LOW(UCI_BUFFER_LEN)
+    LBNZ UCI_READ_LOOP
+    GHI 13
+    XRI HIGH(UCI_BUFFER_LEN)
+    LBNZ UCI_READ_LOOP
+    ; Count == UCI_BUFFER_LEN, buffer full
 
-    LBR UCI_READ_LOOP
+
 
 UCI_READ_DONE:
     ; Null-terminate string

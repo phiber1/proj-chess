@@ -9,18 +9,20 @@
 
 ---
 
-## Current Status (January 30, 2026)
+## Current Status (January 30, 2026 - Evening)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
-- **Depth 3:** ~4 min 30 sec, search clean (board corruption fixed!)
+- **Depth 3:** ~80 seconds! Alpha-beta re-enabled (was accidentally disabled, causing 4-15 min)
 - **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
-- **Transposition Table:** Full internal TT enabled at all nodes
+- **Transposition Table:** Internal TT at non-root nodes; root always searches fully
 - **Late Move Reductions:** Working with verified re-search
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
 - **Futility Pruning:** Fixed Jan 30 - R9 clobber caused board corruption at depth 1 nodes
-- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches running
-- **Engine size:** 30,352 bytes (includes all optimizations)
+- **Castling:** Fully working - rook movement + Zobrist hash updates in MAKE/UNMAKE
+- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches validated
+- **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
+- **Engine size:** 12,291 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -28,6 +30,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
+- **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
 - **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.
 - **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
 - **Jan 23:** Multiple stability fixes, ply limit enforcement, BEST_MOVE safeguard
@@ -58,6 +61,70 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: January 30, 2026 (Evening) - CuteChess Match Stability
+
+### Summary
+Ran depth 3 CuteChess matches and fixed four bugs uncovered during play. The engine went
+from 15-minute moves and crashes to stable 80-second play with correct castling.
+
+### Fix 1: Alpha-Beta Pruning Re-enabled (negamax.asm)
+Alpha update was disabled with `LBR NEGAMAX_NEXT_MOVE` (left from debugging). The engine
+was doing full minimax, explaining 4-15 minute move times. Changed the branch at
+`NEGAMAX_SCORE_BETTER` so non-root nodes jump to `NEGAMAX_UPDATE_ALPHA` instead of
+`NEGAMAX_NEXT_MOVE`, and removed the unconditional skip so root falls through to the
+alpha update code.
+
+**Result:** 891s → 80s at depth 3 (11x speedup)
+
+### Fix 2: TT Probe Skipped at Root (negamax.asm)
+TT_STORE saves the global BEST_MOVE at all nodes, but BEST_MOVE is only meaningful at
+root. Internal nodes store the $FF/$FF sentinel, which produces `h@h@` in algebraic
+output. If a root position matched such a stale entry, TT returned `h@h@` as bestmove.
+
+**Fix:** Added ply 0 check before TT_PROBE - root always searches fully. Removed dead
+code that copied TT_MOVE to BEST_MOVE (unreachable since root skips TT).
+
+### Fix 3: UCI Buffer Expanded to 512 Bytes (board-0x88.asm, uci.asm)
+At move 25, the `position startpos moves ...` string was 263 chars, truncated at the
+255-byte buffer limit. The board was set to a position from 2 moves earlier, causing an
+illegal double-move. Relocated 10 variables (UCI_STATE, HASH_*, TT_*) from $6600-$6609
+to $64B8-$64C1. Buffer now spans $6500-$66FF (512 bytes). Counter changed from 8-bit
+(R13.0) to 16-bit (full R13 with INC 13).
+
+### Fix 4: Castling Rook Movement (makemove.asm)
+MAKE_MOVE only moved the king during castling - the rook stayed on its starting square.
+After `e1g1`, the rook remained on h1 and f1 was empty, so the engine tried `Kg1-f1`
+(illegal). Added castling detection (`to - from`: $02 = kingside, $FE = queenside) and
+full rook movement with Zobrist hash updates to both MAKE_MOVE and UNMAKE_MOVE.
+
+All four castling types handled:
+- White kingside: rook h1→f1 / f1→h1
+- White queenside: rook a1→d1 / d1→a1
+- Black kingside: rook h8→f8 / f8→h8
+- Black queenside: rook a8→d8 / d8→a8
+
+### Verified
+Castling position that previously failed (`e1g1` → illegal `g1f1`) now returns
+`bestmove f1e1` - a legal king move with the rook correctly on f1.
+
+### Files Changed
+- `negamax.asm`: Alpha update re-enabled, TT probe skipped at root, dead TT_MOVE copy removed
+- `makemove.asm`: Castling rook movement + hash updates in MAKE_MOVE and UNMAKE_MOVE
+- `board-0x88.asm`: Variable relocation, UCI buffer expanded to 512 bytes
+- `uci.asm`: UCI_BUFFER_LEN=511, 16-bit counter
+- `config.asm`: Comment clarification (killer moves = monolithic build only)
+
+### Build
+12,291 bytes (.bin), clean
+
+### Known Issues Remaining
+- Rook moves don't revoke castling rights (only king moves do)
+- TT stores EXACT flag for beta cutoffs (should be LOWER bound)
+- Evaluation quality: undefended pieces, rook shuffles
+- Opening book only covers Italian Game (47 entries)
 
 ---
 
