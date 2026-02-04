@@ -1651,6 +1651,38 @@ NEGAMAX_DO_BETA_CUTOFF:
     GLO 7               ; Beta low byte
     STR 10
 
+    ; At root (ply 0), save the cutoff move as BEST_MOVE.
+    ; Beta cutoff means this move is "too good" - but at root there's
+    ; no parent to reject it, so it IS the best move. Without this,
+    ; BEST_MOVE stays at $FF/$FF sentinel → h@h@ output.
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    LBNZ NEGAMAX_BETA_NOT_ROOT
+
+    ; At root: save UNDO_FROM/UNDO_TO to BEST_MOVE
+    LDI HIGH(UNDO_FROM)
+    PHI 10
+    LDI LOW(UNDO_FROM)
+    PLO 10
+    LDA 10              ; UNDO_FROM
+    PHI 8               ; Temp in R8.1
+    LDN 10              ; UNDO_TO
+    PLO 8               ; R8 = from/to
+
+    LDI HIGH(BEST_MOVE)
+    PHI 10
+    LDI LOW(BEST_MOVE)
+    PLO 10
+    GHI 8
+    STR 10              ; BEST_MOVE[0] = from
+    INC 10
+    GLO 8
+    STR 10              ; BEST_MOVE[1] = to
+
+NEGAMAX_BETA_NOT_ROOT:
     ; Decrement move count before returning
     INC 2
     LDN 2
@@ -1869,7 +1901,26 @@ NEGAMAX_NEXT_MOVE:
 NEGAMAX_LOOP_DONE:
     ; Count reached 0 - R2 is AT move_count, need to put it BELOW
     DEC 2              ; Now R2 is below move_count, matching Path A
-    ; Fall through to NEGAMAX_RETURN
+
+    ; Check if any legal move updated BEST_SCORE.
+    ; If BEST_SCORE is still $8001 (initial sentinel), no legal move
+    ; was found - all pseudo-legal moves left king in check.
+    ; This is checkmate or stalemate; handle via NEGAMAX_NO_MOVES.
+    ; (Stack state matches: R2 below move_count, same as line 734 path)
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    LDA 10              ; D = BEST_SCORE_HI
+    XRI $80
+    LBNZ NEGAMAX_RETURN ; BEST_SCORE_HI != $80 → a legal move was scored
+    LDN 10              ; D = BEST_SCORE_LO
+    XRI $01
+    LBNZ NEGAMAX_RETURN ; BEST_SCORE_LO != $01 → a legal move was scored
+
+    ; BEST_SCORE == $8001: no legal move improved the sentinel.
+    ; All pseudo-legal moves were illegal → checkmate or stalemate.
+    LBR NEGAMAX_NO_MOVES
 
 NEGAMAX_RETURN:
     ; -----------------------------------------------

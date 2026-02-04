@@ -9,7 +9,7 @@
 
 ---
 
-## Current Status (January 30, 2026 - Evening)
+## Current Status (February 4, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **Depth 2:** Working correctly, ~44 seconds when out of book
@@ -20,9 +20,10 @@
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
 - **Futility Pruning:** Fixed Jan 30 - R9 clobber caused board corruption at depth 1 nodes
 - **Castling:** Fully working - rook movement + Zobrist hash updates in MAKE/UNMAKE
-- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches validated
+- **Checkmate/Stalemate:** Properly detected even when all pseudo-legal moves are illegal
+- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 54 plies stable
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,291 bytes (out of 32K available)
+- **Engine size:** 12,343 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -30,6 +31,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
+- **Feb 4:** Fixed final h@h@ bug: checkmate detection when all pseudo-legal moves are illegal, plus beta cutoff at root now saves BEST_MOVE. Previous match reached 54 plies before this bug.
 - **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
 - **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.
 - **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
@@ -61,6 +63,66 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: February 4, 2026 - Final h@h@ Root Cause
+
+### Summary
+After a successful 54-ply CuteChess match (Caro-Kann, depth 3), the engine produced `h@h@`
+on move 28. Diagnosed and fixed the remaining path where BEST_MOVE stays at $FF/$FF.
+
+### Root Cause: All-Illegal Moves Not Detected as Checkmate
+When GENERATE_MOVES produces N > 0 pseudo-legal moves but ALL of them leave the king in
+check (checkmate position), the move loop filters them all via IS_IN_CHECK. BEST_SCORE
+stays at its sentinel $8001 (-32767). The code falls through to NEGAMAX_RETURN and returns
+$8001 -- it never detects checkmate because the "no moves" path (NEGAMAX_NO_MOVES) only
+triggers when GENERATE_MOVES returns *zero* moves.
+
+The parent negates $8001 → $7FFF (+32767), which equals root beta ($7FFF). This triggers
+NEGAMAX_DO_BETA_CUTOFF, which sets BEST_SCORE but never saves BEST_MOVE → h@h@.
+
+### Fix 1: Checkmate/Stalemate Detection After Move Loop (negamax.asm)
+At NEGAMAX_LOOP_DONE, check if BEST_SCORE is still $8001. If so, no legal move improved
+it -- all pseudo-legal moves were illegal. Jump to NEGAMAX_NO_MOVES for proper
+IS_IN_CHECK → checkmate (-32767+depth) or stalemate (0) handling.
+
+```asm
+NEGAMAX_LOOP_DONE:
+    DEC 2
+    ; If BEST_SCORE == $8001, no legal move found → checkmate/stalemate
+    LDI HIGH(BEST_SCORE_HI)
+    PHI 10
+    LDI LOW(BEST_SCORE_HI)
+    PLO 10
+    LDA 10              ; D = BEST_SCORE_HI
+    XRI $80
+    LBNZ NEGAMAX_RETURN ; A legal move was scored
+    LDN 10              ; D = BEST_SCORE_LO
+    XRI $01
+    LBNZ NEGAMAX_RETURN ; A legal move was scored
+    LBR NEGAMAX_NO_MOVES ; No legal move → checkmate/stalemate
+```
+
+### Fix 2: Beta Cutoff at Root Saves BEST_MOVE (negamax.asm)
+Safety net: at NEGAMAX_DO_BETA_CUTOFF, if at root (ply 0), copy UNDO_FROM/UNDO_TO to
+BEST_MOVE before returning. The cutoff move IS the best move at root.
+
+### Verified
+Same position that produced `h@h@` now returns `bestmove a3b4` (captures the attacking
+pawn) in just over a minute.
+
+### Files Changed
+- `negamax.asm`: Checkmate detection after move loop, BEST_MOVE save at root beta cutoff
+
+### Build
+12,343 bytes (.bin), clean (+52 bytes)
+
+### Known Issues Remaining
+- Rook moves don't revoke castling rights (only king moves do)
+- TT stores EXACT flag for beta cutoffs (should be LOWER bound)
+- Evaluation quality: undefended pieces, rook shuffles
+- Opening book only covers Italian Game (47 entries)
 
 ---
 
