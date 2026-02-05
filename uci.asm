@@ -381,6 +381,45 @@ UCI_POS_PARSE_MOVE:
     GLO 7
     STR 8               ; MOVE_TO = to
 
+    ; ---- Check for promotion suffix (5th char: q/r/b/n) ----
+    ; Clear UNDO_PROMOTION first (default: no promotion)
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 8
+    LDI LOW(UNDO_PROMOTION)
+    PLO 8
+    LDI 0
+    STR 8               ; UNDO_PROMOTION = 0
+
+    ; Check next char for promotion piece
+    LDN 10              ; Peek next char
+    XRI 'q'
+    LBZ UCI_PROMO_QUEEN
+    XRI $03             ; 'q'^'r' = $71^$72 = $03
+    LBZ UCI_PROMO_ROOK
+    XRI $10             ; 'r'^'b' = $72^$62 = $10
+    LBZ UCI_PROMO_BISHOP
+    XRI $0C             ; 'b'^'n' = $62^$6E = $0C
+    LBZ UCI_PROMO_KNIGHT
+    LBR UCI_PROMO_DONE  ; Not a promotion char, don't advance
+
+UCI_PROMO_QUEEN:
+    LDI QUEEN_TYPE      ; $05
+    LBR UCI_PROMO_STORE
+UCI_PROMO_ROOK:
+    LDI ROOK_TYPE       ; $04
+    LBR UCI_PROMO_STORE
+UCI_PROMO_BISHOP:
+    LDI BISHOP_TYPE     ; $03
+    LBR UCI_PROMO_STORE
+UCI_PROMO_KNIGHT:
+    LDI KNIGHT_TYPE     ; $02
+
+UCI_PROMO_STORE:
+    STR 8               ; UNDO_PROMOTION = piece type
+    INC 10              ; Advance past promotion char
+
+UCI_PROMO_DONE:
+
     ; ---- Record move in MOVE_HIST for opening book ----
     ; Calculate offset: GAME_PLY * 2
     LDI HIGH(GAME_PLY)

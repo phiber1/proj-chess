@@ -93,6 +93,29 @@ MAKE_MOVE:
     STR 8               ; Store at to square (R8 still points there)
 
     ; =========================================
+    ; PAWN PROMOTION
+    ; =========================================
+    ; Check UNDO_PROMOTION - if non-zero, replace pawn with promoted piece
+    ; R8 still points to BOARD[to], R10.0 = moving piece
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 9
+    LDI LOW(UNDO_PROMOTION)
+    PLO 9
+    LDN 9               ; D = promotion piece type (0 if none)
+    LBZ MM_NOT_PROMOTION
+
+    ; Promotion! Replace pawn with promoted piece
+    ; Get color from moving piece (R10.0), combine with promotion type
+    GLO 10              ; Moving piece (pawn)
+    ANI COLOR_MASK      ; Get color (0=white, 8=black)
+    STR 2               ; Save color on stack
+    LDN 9               ; Get promotion piece type again
+    ADD                 ; D = color + piece_type = promoted piece
+    STR 8               ; Store promoted piece at BOARD[to]
+
+MM_NOT_PROMOTION:
+
+    ; =========================================
     ; KING POSITION UPDATE
     ; =========================================
     ; If moving piece is a king, update GAME_STATE king position
@@ -398,9 +421,38 @@ MM_DONE:
     ; HASH_XOR_PIECE_SQ: R8.0 = piece, R8.1 = square
     ; Clobbers: R7, R9, R10, R13. Preserves: R8
     ; After each call, reload from memory (safe, no register deps)
+    ;
+    ; For promotion: BOARD[to] has promoted piece, but we need to
+    ; XOR out [pawn, from]. Check UNDO_PROMOTION to get original piece.
 
     ; --- Step 1: XOR out [moving piece, from] ---
-    ; Get moving piece from BOARD[UNDO_TO]
+    ; Check if this was a promotion
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    LDN 10              ; D = promotion type (0 if none)
+    LBZ MM_HASH_NOT_PROMO
+
+    ; Promotion: original piece was a pawn. Get color from BOARD[to].
+    LDI HIGH(UNDO_TO)
+    PHI 10
+    LDI LOW(UNDO_TO)
+    PLO 10
+    LDN 10              ; D = to_square
+    ADI LOW(BOARD)
+    PLO 10
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 10              ; R10 = &BOARD[to_square]
+    LDN 10              ; D = promoted piece
+    ANI COLOR_MASK      ; Get color (0=white, 8=black)
+    ORI PAWN_TYPE       ; D = pawn of same color
+    PLO 8               ; R8.0 = pawn
+    LBR MM_HASH_GOT_PIECE
+
+MM_HASH_NOT_PROMO:
+    ; Normal move: get moving piece from BOARD[UNDO_TO]
     LDI HIGH(UNDO_TO)
     PHI 10
     LDI LOW(UNDO_TO)
@@ -413,6 +465,8 @@ MM_DONE:
     PHI 10              ; R10 = &BOARD[to_square]
     LDN 10              ; D = moving piece
     PLO 8               ; R8.0 = moving piece
+
+MM_HASH_GOT_PIECE:
     ; Get from square
     LDI HIGH(UNDO_FROM)
     PHI 10
@@ -527,6 +581,25 @@ UNMAKE_MOVE:
     LDN 9               ; Get captured piece
     STR 8               ; Put back at to square
 
+    ; =========================================
+    ; PAWN PROMOTION UNDO
+    ; =========================================
+    ; If UNDO_PROMOTION != 0, restore pawn instead of promoted piece
+    ; R10.0 = piece from BOARD[to] (promoted piece if promotion)
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 9
+    LDI LOW(UNDO_PROMOTION)
+    PLO 9
+    LDN 9               ; D = promotion type (0 if none)
+    LBZ UM_NOT_PROMOTION
+
+    ; Promotion: restore pawn (get color from R10.0, the promoted piece)
+    GLO 10              ; D = promoted piece
+    ANI COLOR_MASK      ; Get color (0=white, 8=black)
+    ORI PAWN_TYPE       ; D = pawn of same color
+    PLO 10              ; R10.0 = pawn (overwrites promoted piece)
+
+UM_NOT_PROMOTION:
     ; Put moving piece back at from square
     LDI HIGH(UNDO_FROM)
     PHI 9
@@ -536,7 +609,7 @@ UNMAKE_MOVE:
     PLO 8
     LDI HIGH(BOARD)
     PHI 8               ; R8 = &BOARD[from]
-    GLO 10              ; D = moving piece
+    GLO 10              ; D = moving piece (pawn if promotion)
     STR 8               ; Put back at from square
 
     ; =========================================
@@ -749,8 +822,46 @@ UM_NOT_KING:
     ; HASH_XOR_PIECE_SQ: R8.0 = piece, R8.1 = square
     ; Clobbers: R7, R9, R10, R13. Preserves: R8
     ; Board is now restored: piece at UNDO_FROM, captured at UNDO_TO
+    ;
+    ; For promotion: need to XOR out [promoted_piece, to], not [pawn, to]
 
-    ; --- Step 1: XOR out [moving piece, to] ---
+    ; --- Step 1: XOR out [piece that WAS at to], to ---
+    ; Check if this was a promotion
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    LDN 10              ; D = promotion type (0 if none)
+    LBZ UM_HASH_NOT_PROMO
+
+    ; Promotion: XOR out [promoted_piece, to]
+    ; Get color from BOARD[from] (the pawn), combine with promotion type
+    LDI HIGH(UNDO_FROM)
+    PHI 10
+    LDI LOW(UNDO_FROM)
+    PLO 10
+    LDN 10              ; D = from_square
+    ADI LOW(BOARD)
+    PLO 10
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 10              ; R10 = &BOARD[from_square]
+    LDN 10              ; D = pawn
+    ANI COLOR_MASK      ; Get color
+    PLO 8               ; R8.0 = color (temp)
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    LDN 10              ; D = promotion piece type
+    STR 2               ; Save on stack
+    GLO 8               ; D = color
+    ADD                 ; D = color + promotion_type = promoted piece
+    PLO 8               ; R8.0 = promoted piece
+    LBR UM_HASH_GOT_PIECE
+
+UM_HASH_NOT_PROMO:
+    ; Normal move: XOR out [moving piece, to]
     ; Moving piece is now at BOARD[UNDO_FROM]
     LDI HIGH(UNDO_FROM)
     PHI 10
@@ -764,6 +875,8 @@ UM_NOT_KING:
     PHI 10              ; R10 = &BOARD[from_square]
     LDN 10              ; D = moving piece
     PLO 8               ; R8.0 = moving piece
+
+UM_HASH_GOT_PIECE:
     ; Get to square
     LDI HIGH(UNDO_TO)
     PHI 10

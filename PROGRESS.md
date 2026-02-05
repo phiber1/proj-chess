@@ -21,9 +21,10 @@
 - **Futility Pruning:** Working at frontier nodes (depth 1); fixed byte-addressing and condition bugs
 - **Castling:** Fully working - rook/king moves revoke rights, rook movement + Zobrist in MAKE/UNMAKE
 - **Checkmate/Stalemate:** Properly detected even when all pseudo-legal moves are illegal
-- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 54 plies stable
+- **Pawn Promotion:** UCI parsing handles 5th char (q/r/b/n), MAKE/UNMAKE handle piece replacement
+- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 74 plies reached
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,389 bytes (out of 32K available)
+- **Engine size:** 12,551 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -31,7 +32,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
-- **Feb 4:** Fixed queen blindness (TT depth bug), futility pruning (wrong byte + condition), h@h@ from all-illegal moves, and rook moves now revoke castling rights.
+- **Feb 4:** Fixed queen blindness (TT depth bug), futility pruning, h@h@, rook castling rights, and added pawn promotion support for UCI opponent moves.
 - **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
 - **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.
 - **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
@@ -63,6 +64,52 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: February 4, 2026 - Pawn Promotion (UCI Opponent Moves)
+
+### Summary
+CuteChess match crashed when black played `b2a1r` (pawn promotes to rook). The UCI parser
+only read 4 characters, treating the `r` as start of a new move. MAKE_MOVE moved the pawn
+to a1 without promoting it. Board state diverged, causing illegal move on next turn.
+
+### Implementation
+Three components added:
+
+**1. UCI Parser (uci.asm):**
+After parsing from/to squares, check if 5th char is q/r/b/n. If so, convert to piece type
+(QUEEN_TYPE=5, ROOK_TYPE=4, BISHOP_TYPE=3, KNIGHT_TYPE=2), store to UNDO_PROMOTION, and
+advance past the character. Uses XOR chain for efficient character matching.
+
+**2. MAKE_MOVE (makemove.asm):**
+After placing moving piece at destination, check UNDO_PROMOTION. If non-zero, replace the
+pawn with the promoted piece (color from pawn + promotion type). Hash update modified to
+XOR out [pawn, from] instead of [promoted_piece, from] for promotions.
+
+**3. UNMAKE_MOVE (makemove.asm):**
+When restoring piece to from-square, check UNDO_PROMOTION. If set, restore a pawn (not the
+promoted piece). Hash update uses promoted piece for XOR out [piece, to].
+
+### Memory
+- `UNDO_PROMOTION` at $6404 (1 byte) - promotion piece type or 0
+
+### Verified
+Position with `h7h8q` promotion: engine parses correctly, responds with valid moves at
+depth 1 (Nb3-c1) and depth 3 (Bc8-a6) in 7 seconds.
+
+### Files Changed
+- `board-0x88.asm`: UNDO_PROMOTION variable
+- `uci.asm`: 5th character parsing for promotion suffix
+- `makemove.asm`: MAKE_MOVE and UNMAKE_MOVE promotion handling + hash updates
+
+### Build
+12,551 bytes (.bin), clean (+162 bytes)
+
+### Note
+This handles opponent promotions from UCI. Engine's own promotion moves during search
+still use the generic MOVE_PROMOTION flag without encoding which piece - a future
+enhancement if needed.
 
 ---
 

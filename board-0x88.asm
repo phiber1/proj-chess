@@ -64,7 +64,7 @@ QS_MOVE_LIST EQU $6F00  ; Quiescence moves (256 bytes) ($6F00-$6FFF) - separate 
 HISTORY_PTR EQU $6400   ; 2 bytes - current history pointer ($6400-$6401)
 MOVE_FROM   EQU $6402   ; 1 byte - move from square (temp)
 MOVE_TO     EQU $6403   ; 1 byte - move to square (temp)
-; NOTE: $6404 unused - castling state is at GAME_STATE + STATE_CASTLING ($6081)
+UNDO_PROMOTION  EQU $6404   ; 1 byte - promotion piece type (Q=5,R=4,B=3,N=2) or 0
 
 ; Move encoding temps (avoiding R14 - BIOS uses it)
 DECODED_FLAGS   EQU $6405   ; 1 byte - flags from DECODE_MOVE_16BIT
