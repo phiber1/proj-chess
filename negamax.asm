@@ -2342,6 +2342,10 @@ QS_NO_DELTA_PRUNE:
     LDI LOW(QS_MOVE_LIST)
     STR 10
 
+    ; Initialize capture limit counter
+    LDI 8                   ; QS_CAPTURE_LIMIT = 8 captures max
+    PHI 11                  ; R11.1 = captures remaining
+
 QS_LOOP:
     ; Check if any moves left
     GLO 15
@@ -2548,6 +2552,12 @@ QS_DELTA_NO_PRUNE:
     LBR QS_LOOP         ; Skip this illegal capture, try next
 
 QS_CAPTURE_LEGAL:
+    ; Check capture limit - decrement and bail if exhausted
+    GHI 11                  ; D = captures remaining
+    LBZ QS_CAPTURE_LIMIT_HIT ; Already at 0, don't process more
+    SMI 1
+    PHI 11                  ; R11.1 = captures remaining - 1
+
     ; Set skip-PST flag for faster QS evaluation
     LDI HIGH(EVAL_SKIP_PST)
     PHI 10
@@ -2726,6 +2736,17 @@ QS_BETA_CUTOFF:
     GLO 7
     PLO 9               ; R9 = beta
     RETN
+
+QS_CAPTURE_LIMIT_HIT:
+    ; Hit capture limit - unmake the move and return best so far
+    CALL UNMAKE_MOVE
+    ; Restore move count from stack (was pushed at capture processing start)
+    IRX
+    LDXA
+    PLO 15              ; R15.0 = move count low
+    LDX
+    PHI 15              ; R15.1 = move count high (0)
+    ; Fall through to QS_RETURN
 
 QS_RETURN:
     ; Return best score in R9 (big-endian: HI first)
