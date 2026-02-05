@@ -2389,7 +2389,9 @@ QS_LOOP:
     LBZ QS_LOOP         ; Same color (result 0) = own piece, skip
 
     ; It's a capture! Process it.
-    ; Save move count to stack
+    ; Save move count to stack (BOTH bytes! IS_IN_CHECK clobbers R15.1)
+    GHI 15
+    STXD
     GLO 15
     STXD
 
@@ -2422,10 +2424,12 @@ QS_LOOP:
 
     ; R12 stays as our color (UNMAKE_MOVE doesn't toggle R12)
 
-    ; Restore move count from stack and continue loop
+    ; Restore move count from stack and continue loop (both bytes)
     IRX
+    LDXA
+    PLO 15              ; R15.0 = move count low
     LDX
-    PLO 15              ; R15 = move count restored
+    PHI 15              ; R15.1 = move count high (0)
     LBR QS_LOOP         ; Skip this illegal capture, try next
 
 QS_CAPTURE_LEGAL:
@@ -2461,10 +2465,12 @@ QS_NO_NEG:
     LDX
     PHI 9
 
-    ; Restore move count
+    ; Restore move count (both bytes)
     IRX
+    LDXA
+    PLO 15              ; R15.0 = move count low
     LDX
-    PLO 15
+    PHI 15              ; R15.1 = move count high (0)
 
     ; Compare: if score (R9) > best (QS_BEST), update best
     ; Load QS_BEST into R7 for comparison (big-endian: HI first)
