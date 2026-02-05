@@ -15,15 +15,15 @@
 - **Depth 2:** Working correctly, ~44 seconds when out of book
 - **Depth 3:** ~80 seconds! Alpha-beta re-enabled (was accidentally disabled, causing 4-15 min)
 - **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
-- **Transposition Table:** Internal TT at non-root nodes; root always searches fully
+- **Transposition Table:** Internal TT with proper depth enforcement; root always searches fully
 - **Late Move Reductions:** Working with verified re-search
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
-- **Futility Pruning:** Fixed Jan 30 - R9 clobber caused board corruption at depth 1 nodes
+- **Futility Pruning:** Working at frontier nodes (depth 1); fixed byte-addressing and condition bugs
 - **Castling:** Fully working - rook movement + Zobrist hash updates in MAKE/UNMAKE
 - **Checkmate/Stalemate:** Properly detected even when all pseudo-legal moves are illegal
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 54 plies stable
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,343 bytes (out of 32K available)
+- **Engine size:** 12,332 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -31,7 +31,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
-- **Feb 4:** Fixed final h@h@ bug: checkmate detection when all pseudo-legal moves are illegal, plus beta cutoff at root now saves BEST_MOVE. Previous match reached 54 plies before this bug.
+- **Feb 4:** Fixed queen blindness: TT probe read wrong byte of SEARCH_DEPTH, disabling depth enforcement. Also fixed futility pruning check (wrong byte + wrong condition). Fixed h@h@ from all-illegal pseudo-legal moves.
 - **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
 - **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.
 - **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
@@ -63,6 +63,52 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: February 4, 2026 - Queen Blindness (TT Depth Bug)
+
+### Summary
+CuteChess match at depth 3: at move 19, the engine's queen was on c3, threatened by black's
+pawn on d4. Engine played Nb5 (a3b5) instead of saving the queen. Black captured with dxc3.
+This is a 1-ply capture that the depth-3 search must see.
+
+### Root Cause: TT Probe Reads Wrong Byte of SEARCH_DEPTH
+`SEARCH_DEPTH` is a 16-bit big-endian value at $6416-$6417. The TT probe code at
+negamax.asm line 142 read from `SEARCH_DEPTH` ($6416 = **high byte**, always 0 for
+depth < 256) instead of `SEARCH_DEPTH + 1` ($6417 = **low byte**, the actual depth).
+
+This passed `required_depth = 0` to `TT_PROBE`. The depth check (`entry_depth >= 0`) is
+trivially true for every entry, so any hash-matching TT entry was accepted regardless of
+its stored depth. A depth-1 cached score could replace a depth-3 search.
+
+After root move Nb5, the TT returned a stale shallow-depth score at ply 1 that didn't
+account for dxc3 capturing the queen. The engine never actually searched the position.
+
+### Second Bug: Futility Check Also Reads Wrong Byte
+The futility pruning check in the move loop (line 818) had the same wrong-byte bug, reading
+`SEARCH_DEPTH` (high byte = 0) instead of `SEARCH_DEPTH + 1` (low byte). This made the
+condition always false, completely disabling futility pruning in the move loop.
+
+Additionally, the condition `CURRENT_PLY == SEARCH_DEPTH - 1` was conceptually wrong.
+Since SEARCH_DEPTH is the remaining depth at the current node (decremented by parent before
+recursion), the correct frontier-node check is simply `SEARCH_DEPTH == 1`. This matches
+the futility setup code which also checks `depth == 1`.
+
+### Fixes Applied (negamax.asm)
+1. **TT probe**: Changed address from `SEARCH_DEPTH` to `SEARCH_DEPTH + 1` (2-byte fix)
+2. **Futility check**: Changed to read `SEARCH_DEPTH + 1` and use `XRI 1` to check
+   remaining depth == 1 (simplified from 18 lines to 7 lines, saves 11 bytes)
+
+### Verified
+Same position that played Nb5 (queen blunder) now returns `bestmove c3d2` (queen saves
+itself) in 40 seconds.
+
+### Files Changed
+- `negamax.asm`: TT probe depth byte, futility pruning condition
+
+### Build
+12,332 bytes (.bin), clean (-11 bytes from simplified futility check)
 
 ---
 

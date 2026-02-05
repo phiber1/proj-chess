@@ -139,11 +139,11 @@ NEGAMAX_NOT_FIFTY:
     LBZ NEGAMAX_TT_MISS ; Root: always search fully
 
     ; Load current search depth for comparison
-    LDI HIGH(SEARCH_DEPTH)
+    LDI HIGH(SEARCH_DEPTH + 1)
     PHI 13
-    LDI LOW(SEARCH_DEPTH)
+    LDI LOW(SEARCH_DEPTH + 1)
     PLO 13
-    LDN 13              ; D = depth low byte (depth is small, ignore high)
+    LDN 13              ; D = depth low byte (SEARCH_DEPTH+1 = low byte)
     CALL TT_PROBE       ; D = required depth, returns D = 1 if hit
     LBZ NEGAMAX_TT_MISS ; No hit, continue with search
 
@@ -809,29 +809,19 @@ LMR_CAPTURE_DONE:
     ; -----------------------------------------------
     ; Futility Pruning Check (depth 1 quiet moves)
     ; -----------------------------------------------
-    ; BUG FIX: FUTILITY_OK is global and persists after recursion!
-    ; Must also verify we're actually at a frontier node (remaining depth == 1)
-    ; remaining_depth = SEARCH_DEPTH - CURRENT_PLY
-    ; Futility only applies when CURRENT_PLY == SEARCH_DEPTH - 1
+    ; Only apply at frontier nodes (remaining depth == 1).
+    ; SEARCH_DEPTH is the remaining depth at this node (decremented
+    ; by parent before recursion), so check SEARCH_DEPTH == 1 directly.
+    ; This matches the futility setup code which also checks depth == 1.
 
-    ; First check: is CURRENT_PLY == SEARCH_DEPTH - 1?
-    LDI HIGH(SEARCH_DEPTH)
+    ; Check: is remaining depth == 1? (SEARCH_DEPTH low byte)
+    LDI HIGH(SEARCH_DEPTH + 1)
     PHI 10
-    LDI LOW(SEARCH_DEPTH)
+    LDI LOW(SEARCH_DEPTH + 1)
     PLO 10
-    LDN 10              ; D = SEARCH_DEPTH (low byte, depth < 256)
-    SMI 1               ; D = SEARCH_DEPTH - 1
-    PLO 7               ; R7.0 = SEARCH_DEPTH - 1 (temp)
-
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
-    LDN 10              ; D = CURRENT_PLY
-    STR 2               ; M(R2) = CURRENT_PLY (use stack as temp)
-    GLO 7               ; D = SEARCH_DEPTH - 1
-    SM                  ; D = (SEARCH_DEPTH - 1) - CURRENT_PLY
-    LBNZ NEGAMAX_NOT_FUTILE  ; Not at frontier node, skip futility
+    LDN 10              ; D = SEARCH_DEPTH low byte (remaining depth)
+    XRI 1               ; Check if depth == 1
+    LBNZ NEGAMAX_NOT_FUTILE  ; Not frontier node, skip futility
 
     ; Check if move is a capture (target square non-empty)
     LDI HIGH(MOVE_TO)
