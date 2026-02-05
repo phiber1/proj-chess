@@ -2087,8 +2087,24 @@ QUIESCENCE_SEARCH:
     ; Ensure X=2 for stack operations
     SEX 2
 
-    ; Stand-pat: evaluate current position
+    ; Set skip-PST flag for faster QS evaluation
+    LDI HIGH(EVAL_SKIP_PST)
+    PHI 10
+    LDI LOW(EVAL_SKIP_PST)
+    PLO 10
+    LDI 1
+    STR 10
+
+    ; Stand-pat: evaluate current position (material only)
     CALL EVALUATE
+
+    ; Clear skip-PST flag
+    LDI HIGH(EVAL_SKIP_PST)
+    PHI 10
+    LDI LOW(EVAL_SKIP_PST)
+    PLO 10
+    LDI 0
+    STR 10
     ; Returns score in R9 (from white's perspective)
 
     ; Negate if black to move (R12: 0=white, 8=black)
@@ -2388,6 +2404,105 @@ QS_LOOP:
     SEX 2
     LBZ QS_LOOP         ; Same color (result 0) = own piece, skip
 
+    ; -------------------------------------------------
+    ; Per-capture delta pruning:
+    ; If stand_pat + victim_value < alpha, skip capture
+    ; (Even capturing this piece won't raise score above alpha)
+    ; -------------------------------------------------
+    ; Reload victim piece and extract type
+    LDI HIGH(BOARD)
+    PHI 10
+    GLO 13              ; to square (preserved in R13.0)
+    PLO 10
+    LDN 10              ; piece at target
+    ANI $07             ; D = piece type (1-6)
+
+    ; Look up value: PIECE_VALUES + type*2
+    SHL                 ; D = type * 2
+    ADI LOW(PIECE_VALUES)
+    PLO 10
+    LDI HIGH(PIECE_VALUES)
+    ADCI 0
+    PHI 10              ; R10 = &PIECE_VALUES[type]
+
+    LDA 10              ; victim value high
+    PHI 8
+    LDN 10              ; victim value low
+    PLO 8               ; R8 = victim_value
+
+    ; Load stand_pat from QS_BEST
+    LDI HIGH(QS_BEST_HI)
+    PHI 10
+    LDI LOW(QS_BEST_HI)
+    PLO 10
+    LDA 10
+    PHI 7
+    LDN 10
+    PLO 7               ; R7 = stand_pat
+
+    ; R7 = stand_pat + victim_value
+    GLO 8
+    STR 2               ; Use stack top as temp
+    GLO 7
+    ADD
+    PLO 7
+    GHI 8
+    STR 2
+    GHI 7
+    ADC
+    PHI 7               ; R7 = stand_pat + victim_value
+
+    ; Load alpha
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    LDA 10
+    PHI 8
+    LDN 10
+    PLO 8               ; R8 = alpha
+
+    ; Compare: (stand_pat + victim) < alpha?
+    ; If R7 < R8, skip this capture
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+    GHI 7               ; (stand_pat + victim) high
+    STR 10
+    GHI 8               ; alpha high
+    XOR
+    ANI $80             ; Check if different signs
+    SEX 2
+    LBNZ QS_DELTA_DIFF_SIGN2
+
+    ; Same sign: R7 < R8 means R7 - R8 has borrow
+    SEX 10
+    GLO 8               ; alpha low
+    STR 10
+    GLO 7               ; (stand_pat + victim) low
+    SM                  ; D = (sp+v)_lo - alpha_lo
+    GHI 8               ; alpha high
+    STR 10
+    GHI 7               ; (stand_pat + victim) high
+    SMB                 ; D = (sp+v)_hi - alpha_hi - borrow
+    SEX 2
+    LBNF QS_LOOP        ; Borrow = (stand_pat + victim) < alpha, skip!
+    LBR QS_DELTA_NO_PRUNE
+
+QS_DELTA_DIFF_SIGN2:
+    ; Different signs: negative < positive always
+    ; (stand_pat + victim) negative means it's < alpha (if alpha positive)
+    GHI 7
+    ANI $80
+    LBNZ QS_LOOP        ; (stand_pat + victim) negative -> skip capture
+
+QS_DELTA_NO_PRUNE:
+    ; -------------------------------------------------
+    ; End per-capture delta pruning
+    ; -------------------------------------------------
+
     ; It's a capture! Process it.
     ; Save move count to stack (BOTH bytes! IS_IN_CHECK clobbers R15.1)
     GHI 15
@@ -2433,8 +2548,24 @@ QS_LOOP:
     LBR QS_LOOP         ; Skip this illegal capture, try next
 
 QS_CAPTURE_LEGAL:
-    ; Evaluate position after capture
+    ; Set skip-PST flag for faster QS evaluation
+    LDI HIGH(EVAL_SKIP_PST)
+    PHI 10
+    LDI LOW(EVAL_SKIP_PST)
+    PLO 10
+    LDI 1
+    STR 10
+
+    ; Evaluate position after capture (material only)
     CALL EVALUATE
+
+    ; Clear skip-PST flag
+    LDI HIGH(EVAL_SKIP_PST)
+    PHI 10
+    LDI LOW(EVAL_SKIP_PST)
+    PLO 10
+    LDI 0
+    STR 10
     ; Score in R9 (from white's perspective)
 
     ; Negate if black to move (R12: 0=white, 8=black)
@@ -2919,7 +3050,7 @@ OKM_DONE:
 ; Output: Move list reordered with captures at front
 ; Uses:   R7, R8, R10, R11, R13
 ; Note:   Call after GENERATE_MOVES, before move loop
-;         Captures scored by MVV-LVA: victim_type * 8 - attacker_type
+; TODO:   Add MVV-LVA scoring: victim_type * 8 - attacker_type (not yet implemented)
 ; ------------------------------------------------------------------------------
 ORDER_CAPTURES_FIRST:
     ; Save move count

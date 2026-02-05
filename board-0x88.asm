@@ -166,6 +166,11 @@ LMR_IS_CAPTURE    EQU $64A5   ; 1 byte - flag: 1=current move is a capture
 LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive calls)
 
 ; ------------------------------------------------------------------------------
+; QS Evaluation Flag: $64AA
+; ------------------------------------------------------------------------------
+EVAL_SKIP_PST     EQU $64AA   ; 1 byte - flag: 1=skip PST in EVALUATE (for QS speed)
+
+; ------------------------------------------------------------------------------
 ; Move Loop Pointer Save: $64B0-$64B7
 ; ------------------------------------------------------------------------------
 ; Ply-indexed save for R9 (move list pointer) during negamax move loop.

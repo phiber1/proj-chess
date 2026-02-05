@@ -147,9 +147,18 @@ EVAL_NEXT_SQUARE:
 
 EVAL_DONE:
     ; R9 contains material score
+    ; Check if we should skip PST (for faster QS evaluation)
+    LDI HIGH(EVAL_SKIP_PST)
+    PHI 10
+    LDI LOW(EVAL_SKIP_PST)
+    PLO 10
+    LDN 10
+    LBNZ EVAL_RETURN        ; Flag set = skip PST, return material only
+
     ; Add piece-square table bonuses
     CALL EVAL_PST
 
+EVAL_RETURN:
     RETN
 
 ; ------------------------------------------------------------------------------
