@@ -19,11 +19,11 @@
 - **Late Move Reductions:** Working with verified re-search
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
 - **Futility Pruning:** Working at frontier nodes (depth 1); fixed byte-addressing and condition bugs
-- **Castling:** Fully working - rook movement + Zobrist hash updates in MAKE/UNMAKE
+- **Castling:** Fully working - rook/king moves revoke rights, rook movement + Zobrist in MAKE/UNMAKE
 - **Checkmate/Stalemate:** Properly detected even when all pseudo-legal moves are illegal
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 54 plies stable
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,332 bytes (out of 32K available)
+- **Engine size:** 12,389 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -31,7 +31,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
-- **Feb 4:** Fixed queen blindness: TT probe read wrong byte of SEARCH_DEPTH, disabling depth enforcement. Also fixed futility pruning check (wrong byte + wrong condition). Fixed h@h@ from all-illegal pseudo-legal moves.
+- **Feb 4:** Fixed queen blindness (TT depth bug), futility pruning (wrong byte + condition), h@h@ from all-illegal moves, and rook moves now revoke castling rights.
 - **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
 - **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.
 - **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
@@ -63,6 +63,40 @@ Sicilian Defense (depth 3):
 position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
 go depth 3 -> 1:29, bestmove b1a3
 ```
+
+---
+
+## Session: February 4, 2026 - Rook Castling Rights
+
+### Summary
+CuteChess match ended with illegal move `e1g1` (kingside castle) after the h1 rook had
+moved to h2 two plies earlier. The engine didn't revoke castling rights when the rook
+moved away from its home square.
+
+### Root Cause
+Only king moves cleared castling rights (in the king-specific code path of MAKE_MOVE).
+Rook moves from home squares (a1, h1, a8, h8) did not revoke the corresponding right.
+
+### Fix (makemove.asm)
+Added `MM_ROOK_HOME_CHECK` subroutine called from MAKE_MOVE after the halfmove clock
+update. Checks both FROM and TO squares against the four rook home squares:
+- FROM match: rook moving away from home (own castling revoked)
+- TO match: rook captured on home square (opponent castling revoked)
+
+Uses XOR chain ($07, $77, $07) to check all four squares efficiently. Calls
+`CLEAR_CASTLING_RIGHT` for the matching bit. Also fixed two short branch errors in
+evaluate.asm (BNZ/BZ → LBNZ/LBZ) caused by the code insertion shifting a page boundary.
+
+### Verified
+Same position that played `e1g1` (illegal castle) now returns `bestmove a1b1` in a few
+seconds.
+
+### Files Changed
+- `makemove.asm`: MM_ROOK_CHECK call site + MM_ROOK_HOME_CHECK subroutine
+- `evaluate.asm`: Two short branches promoted to long branches (page boundary shift)
+
+### Build
+12,389 bytes (.bin), clean (+57 bytes)
 
 ---
 
@@ -165,8 +199,8 @@ pawn) in just over a minute.
 12,343 bytes (.bin), clean (+52 bytes)
 
 ### Known Issues Remaining
-- Rook moves don't revoke castling rights (only king moves do)
 - TT stores EXACT flag for beta cutoffs (should be LOWER bound)
+- Pawn promotion not implemented (UCI parsing + MAKE/UNMAKE)
 - Evaluation quality: undefended pieces, rook shuffles
 - Opening book only covers Italian Game (47 entries)
 
@@ -229,8 +263,8 @@ Castling position that previously failed (`e1g1` → illegal `g1f1`) now returns
 12,291 bytes (.bin), clean
 
 ### Known Issues Remaining
-- Rook moves don't revoke castling rights (only king moves do)
 - TT stores EXACT flag for beta cutoffs (should be LOWER bound)
+- Pawn promotion not implemented (UCI parsing + MAKE/UNMAKE)
 - Evaluation quality: undefended pieces, rook shuffles
 - Opening book only covers Italian Game (47 entries)
 

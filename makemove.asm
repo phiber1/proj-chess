@@ -365,12 +365,31 @@ MM_NOT_KING:
     LDN 8               ; Get current halfmove
     ADI 1               ; Increment
     STR 8               ; Store back
-    BR MM_DONE
+    LBR MM_ROOK_CHECK
 
 MM_RESET_HALFMOVE:
     ; Reset halfmove clock to 0
     LDI 0
     STR 8
+
+    ; =========================================
+    ; CASTLING RIGHTS: ROOK HOME SQUARE CHECK
+    ; =========================================
+    ; If FROM or TO is a rook home square, clear that castling right.
+    ; FROM: rook moves away from home (own castling revoked)
+    ; TO: rook captured on home square (opponent castling revoked)
+    ; R10 is no longer needed (halfmove done), safe to clobber.
+MM_ROOK_CHECK:
+    LDI HIGH(UNDO_FROM)
+    PHI 9
+    LDI LOW(UNDO_FROM)
+    PLO 9
+    LDA 9               ; D = from square, R9 advances to UNDO_TO
+    CALL MM_ROOK_HOME_CHECK
+    LDN 9               ; D = to square (R9 already at UNDO_TO)
+    CALL MM_ROOK_HOME_CHECK
+
+MM_ROOK_DONE:
 
 MM_DONE:
     ; =========================================
@@ -443,6 +462,44 @@ MM_DONE:
 
     LDI 0               ; Return success
     SEP 5
+
+; ------------------------------------------------------------------------------
+; MM_ROOK_HOME_CHECK - Check if square is a rook home square
+; ------------------------------------------------------------------------------
+; If so, clear the corresponding castling right.
+; Input: D = square to check
+; Clobbers: R10, R13 (via CLEAR_CASTLING_RIGHT)
+; Note: Called from MAKE_MOVE for both FROM and TO squares.
+;       FROM handles rook moving away; TO handles rook being captured.
+; ------------------------------------------------------------------------------
+MM_ROOK_HOME_CHECK:
+    LBZ MMRHC_A1         ; $00 = a1 → white queenside
+    XRI $07
+    LBZ MMRHC_H1         ; $07 = h1 → white kingside
+    XRI $77
+    LBZ MMRHC_A8         ; $70 = a8 → black queenside
+    XRI $07
+    LBZ MMRHC_H8         ; $77 = h8 → black kingside
+    RETN                 ; No match, return
+
+MMRHC_A1:
+    LDI CASTLE_WQ        ; $02
+    LBR MMRHC_CLEAR
+
+MMRHC_H1:
+    LDI CASTLE_WK        ; $01
+    LBR MMRHC_CLEAR
+
+MMRHC_A8:
+    LDI CASTLE_BQ        ; $08
+    LBR MMRHC_CLEAR
+
+MMRHC_H8:
+    LDI CASTLE_BK        ; $04
+
+MMRHC_CLEAR:
+    CALL CLEAR_CASTLING_RIGHT
+    RETN
 
 ; ==============================================================================
 ; UNMAKE_MOVE - Reverse the last move

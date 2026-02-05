@@ -211,10 +211,10 @@ EVAL_WITH_PST:
 EVAL_PST_SCAN:
     LDN 13              ; Get square counter from memory
     ANI $88
-    BNZ EVAL_PST_NEXT
+    LBNZ EVAL_PST_NEXT
 
     LDN 10
-    BZ EVAL_PST_NEXT
+    LBZ EVAL_PST_NEXT
 
     ; TODO: Implement PST lookup and addition
     ; 1. Get piece type and color
