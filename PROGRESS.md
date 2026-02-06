@@ -9,12 +9,13 @@
 
 ---
 
-## Current Status (February 4, 2026)
+## Current Status (February 6, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
-- **Depth 2:** Working correctly, ~44 seconds when out of book
+- **Depth 2:** Working correctly, ~65 seconds (queen attack position)
 - **Depth 3:** ~80 seconds! Alpha-beta re-enabled (was accidentally disabled, causing 4-15 min)
 - **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
+- **Workspace Init:** WORKSPACE_CLEAR zeroes $6200-$64FF at startup and ucinewgame - no more stale RAM bugs
 - **Transposition Table:** Internal TT with proper depth enforcement; root always searches fully
 - **Late Move Reductions:** Working with verified re-search
 - **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
@@ -24,7 +25,7 @@
 - **Pawn Promotion:** UCI parsing handles 5th char (q/r/b/n), MAKE/UNMAKE handle piece replacement
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 74 plies reached
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,551 bytes (out of 32K available)
+- **Engine size:** 12,701 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
 
 ### Comparison to Historical Engines
@@ -32,6 +33,7 @@
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
 ### Recent Milestones
+- **Feb 6:** Fixed stale RAM bug - added WORKSPACE_CLEAR ($6200-$64FF) at startup and ucinewgame. Reverted buggy QS material-only eval (EVAL_SKIP_PST) and disabled delta pruning. Queen attack now returns correct g7h7 on cold start, warm start, and ucinewgame.
 - **Feb 4:** Fixed queen blindness (TT depth bug), futility pruning, h@h@, rook castling rights, and added pawn promotion support for UCI opponent moves.
 - **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
 - **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.

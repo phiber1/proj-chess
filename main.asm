@@ -47,6 +47,9 @@ MAIN_CONTINUE:
     CALL SERIAL_INIT
 #endif
 
+    ; Clear workspace RAM ($6200-$64FF) to prevent stale variable bugs
+    CALL WORKSPACE_CLEAR
+
     ; Initialize board to starting position
     CALL INIT_BOARD
 
@@ -114,6 +117,38 @@ PRINT_LOOP:
 PRINT_DONE:
     RETN
 #endif
+
+; ==============================================================================
+; WORKSPACE_CLEAR - Zero all workspace RAM ($6200-$64FF)
+; ==============================================================================
+; Clears 768 bytes ($0300) to prevent stale variable bugs between runs.
+; Must be called before INIT_BOARD (which populates the board area).
+;
+; Uses: R9 (counter), R10 (pointer)
+; ==============================================================================
+WORKSPACE_CLEAR:
+    LDI $62
+    PHI 10
+    LDI $00
+    PLO 10              ; R10 = $6200
+
+    ; 768 bytes = $0300
+    LDI $03
+    PHI 9
+    LDI $00
+    PLO 9               ; R9 = $0300
+
+    LDI 0               ; Value to write
+WORKSPACE_CLEAR_LOOP:
+    STR 10
+    INC 10
+    DEC 9
+    GHI 9
+    LBNZ WORKSPACE_CLEAR_LOOP
+    GLO 9
+    LBNZ WORKSPACE_CLEAR_LOOP
+
+    RETN
 
 ; ==============================================================================
 ; Test Functions (SEARCH_POSITION is in negamax.asm)

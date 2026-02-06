@@ -2087,24 +2087,8 @@ QUIESCENCE_SEARCH:
     ; Ensure X=2 for stack operations
     SEX 2
 
-    ; Set skip-PST flag for faster QS evaluation
-    LDI HIGH(EVAL_SKIP_PST)
-    PHI 10
-    LDI LOW(EVAL_SKIP_PST)
-    PLO 10
-    LDI 1
-    STR 10
-
-    ; Stand-pat: evaluate current position (material only)
+    ; Stand-pat: evaluate current position
     CALL EVALUATE
-
-    ; Clear skip-PST flag
-    LDI HIGH(EVAL_SKIP_PST)
-    PHI 10
-    LDI LOW(EVAL_SKIP_PST)
-    PLO 10
-    LDI 0
-    STR 10
     ; Returns score in R9 (from white's perspective)
 
     ; Negate if black to move (R12: 0=white, 8=black)
@@ -2408,6 +2392,8 @@ QS_LOOP:
     SEX 2
     LBZ QS_LOOP         ; Same color (result 0) = own piece, skip
 
+    LBR QS_DELTA_NO_PRUNE   ; TEMP: bypass delta pruning (bug)
+
     ; -------------------------------------------------
     ; Per-capture delta pruning:
     ; If stand_pat + victim_value < alpha, skip capture
@@ -2558,24 +2544,8 @@ QS_CAPTURE_LEGAL:
     SMI 1
     PHI 11                  ; R11.1 = captures remaining - 1
 
-    ; Set skip-PST flag for faster QS evaluation
-    LDI HIGH(EVAL_SKIP_PST)
-    PHI 10
-    LDI LOW(EVAL_SKIP_PST)
-    PLO 10
-    LDI 1
-    STR 10
-
-    ; Evaluate position after capture (material only)
+    ; Evaluate position after capture
     CALL EVALUATE
-
-    ; Clear skip-PST flag
-    LDI HIGH(EVAL_SKIP_PST)
-    PHI 10
-    LDI LOW(EVAL_SKIP_PST)
-    PLO 10
-    LDI 0
-    STR 10
     ; Score in R9 (from white's perspective)
 
     ; Negate if black to move (R12: 0=white, 8=black)

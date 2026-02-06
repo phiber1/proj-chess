@@ -640,6 +640,9 @@ UCI_CMD_QUIT:
 ; Clears transposition table and resets game state
 ; ------------------------------------------------------------------------------
 UCI_CMD_UCINEWGAME:
+    ; Clear workspace RAM to prevent stale variable bugs
+    CALL WORKSPACE_CLEAR
+
     ; Clear transposition table
     CALL TT_CLEAR
 
