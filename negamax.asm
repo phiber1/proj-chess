@@ -542,6 +542,150 @@ NMP_NO_CUTOFF:
 
 NMP_SKIP:
     ; -----------------------------------------------
+    ; REVERSE FUTILITY PRUNING (RFP)
+    ; -----------------------------------------------
+    ; At depth 1-2, if static_eval - margin >= beta, prune entire node.
+    ; The position is so good that the opponent can't recover.
+    ;
+    ; Conditions: depth <= 2, ply > 0, not in check
+
+    ; Condition 1: depth <= 2?
+    LDI HIGH(SEARCH_DEPTH + 1)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH + 1)
+    PLO 10
+    LDN 10              ; D = depth low byte
+    SMI 3               ; D = depth - 3
+    LBDF RFP_SKIP       ; depth >= 3, skip RFP
+
+    ; Condition 2: ply > 0? (don't prune at root)
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDN 10              ; D = current ply
+    LBZ RFP_SKIP        ; ply == 0, skip
+
+    ; Condition 3: not in check?
+    CALL IS_IN_CHECK
+    ; D = 1 if in check, 0 if safe
+    LBNZ RFP_SKIP       ; in check, can't prune
+
+    ; --- All conditions met ---
+    ; Get static eval
+    CALL EVALUATE
+    ; R9 = score from white's perspective
+
+    ; Negate if black to move (R12: 0=white, 8=black)
+    GLO 12
+    ANI $08
+    LBZ RFP_NO_NEG
+    GLO 9
+    SDI 0
+    PLO 9
+    GHI 9
+    SDBI 0
+    PHI 9
+RFP_NO_NEG:
+    ; R9 = eval from side-to-move perspective (negamax convention)
+
+    ; Save eval in SCORE_HI/LO (for return value if we prune)
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    GHI 9
+    STR 10
+    INC 10
+    GLO 9
+    STR 10              ; SCORE_HI/LO = eval
+
+    ; Select margin based on depth
+    ; Load depth again
+    LDI HIGH(SEARCH_DEPTH + 1)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH + 1)
+    PLO 10
+    LDN 10              ; D = depth (1 or 2)
+    SMI 2
+    LBNF RFP_DEPTH1     ; depth < 2, so depth == 1
+
+    ; Depth 2: subtract 300cp margin
+    GLO 9
+    SMI RFP_MARGIN_D2_LO
+    PLO 9
+    GHI 9
+    SMBI RFP_MARGIN_D2_HI
+    PHI 9
+    LBR RFP_COMPARE
+
+RFP_DEPTH1:
+    ; Depth 1: subtract 150cp margin
+    GLO 9
+    SMI RFP_MARGIN_D1_LO
+    PLO 9
+    GHI 9
+    SMBI RFP_MARGIN_D1_HI
+    PHI 9
+
+RFP_COMPARE:
+    ; R9 = eval - margin
+    ; Compare: (eval - margin) >= beta (R7)?
+    ; Signed 16-bit comparison using same pattern as NMP
+
+    LDI HIGH(COMPARE_TEMP)
+    PHI 10
+    LDI LOW(COMPARE_TEMP)
+    PLO 10
+    SEX 10
+
+    ; Check if signs differ
+    GHI 9               ; (eval-margin)_hi
+    STR 10
+    GHI 7               ; beta_hi
+    XOR
+    ANI $80             ; Check sign bit difference
+    SEX 2
+    LBNZ RFP_CHECK_SIGN
+
+    ; Same sign: (eval-margin) >= beta if no borrow
+    SEX 10
+    GLO 7               ; beta_lo
+    STR 10
+    GLO 9               ; (eval-margin)_lo
+    SM                  ; (eval-margin)_lo - beta_lo
+    GHI 7               ; beta_hi
+    STR 10
+    GHI 9               ; (eval-margin)_hi
+    SMB                 ; (eval-margin)_hi - beta_hi - borrow
+    SEX 2
+    LBNF RFP_SKIP       ; Borrow = eval-margin < beta, don't prune
+    LBR RFP_PRUNE       ; No borrow = eval-margin >= beta, prune!
+
+RFP_CHECK_SIGN:
+    ; Different signs: positive >= negative always
+    GHI 9               ; (eval-margin)_hi
+    ANI $80
+    LBNZ RFP_SKIP       ; eval-margin negative, beta positive: don't prune
+    ; eval-margin positive, beta negative: prune
+    ; Fall through to RFP_PRUNE
+
+RFP_PRUNE:
+    ; Return eval (saved in SCORE_HI/LO)
+    CALL RESTORE_PLY_STATE
+    ; Reload R9 from SCORE_HI/LO after restore
+    LDI HIGH(SCORE_HI)
+    PHI 10
+    LDI LOW(SCORE_HI)
+    PLO 10
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9               ; R9 = eval score
+    RETN
+
+RFP_SKIP:
+    ; -----------------------------------------------
     ; Generate moves for current position
     ; -----------------------------------------------
     ; Use ply-indexed move list to avoid overwrites during recursion!
@@ -846,12 +990,12 @@ LMR_CAPTURE_DONE:
     LDN 10              ; STATIC_EVAL_LO
     PLO 11              ; R11 = static eval
 
-    ; Add FUTILITY_MARGIN (300 = $012C)
+    ; Add FUTILITY_MARGIN (150 = $0096)
     GLO 11
-    ADI FUTILITY_MARGIN_LO  ; Add low byte
+    ADI FUTILITY_MARGIN_D1_LO  ; Add low byte
     PLO 11
     GHI 11
-    ADCI FUTILITY_MARGIN_HI ; Add high byte with carry
+    ADCI FUTILITY_MARGIN_D1_HI ; Add high byte with carry
     PHI 11              ; R11 = static_eval + margin
 
     ; Futility: prune if static_eval is very negative (losing badly)
@@ -2391,8 +2535,6 @@ QS_LOOP:
     XOR                 ; D = our_color XOR target_color
     SEX 2
     LBZ QS_LOOP         ; Same color (result 0) = own piece, skip
-
-    LBR QS_DELTA_NO_PRUNE   ; TEMP: bypass delta pruning (bug)
 
     ; -------------------------------------------------
     ; Per-capture delta pruning:

@@ -152,9 +152,18 @@ STATIC_EVAL_HI  EQU $64A0   ; 1 byte - cached static eval high byte
 STATIC_EVAL_LO  EQU $64A1   ; 1 byte - cached static eval low byte
 FUTILITY_OK     EQU $64A2   ; 1 byte - 1 if futility pruning enabled this node
 
-; Futility margin: 150 centipawns (1.5 pawns) = $0096
-FUTILITY_MARGIN_HI  EQU $00
-FUTILITY_MARGIN_LO  EQU $96
+; Futility margin: depth 1 = 150cp, depth 2 = 500cp (extended futility)
+FUTILITY_MARGIN_D1_HI  EQU $00
+FUTILITY_MARGIN_D1_LO  EQU $96     ; 150 centipawns (~1.5 pawns)
+FUTILITY_MARGIN_D2_HI  EQU $01
+FUTILITY_MARGIN_D2_LO  EQU $F4     ; 500 centipawns (~1 queen trade away)
+
+; Reverse Futility Pruning margins (depth-indexed)
+; At depth 1-2, if eval - margin >= beta, prune entire node
+RFP_MARGIN_D1_HI  EQU $00
+RFP_MARGIN_D1_LO  EQU $96     ; 150 centipawns (~1.5 pawns)
+RFP_MARGIN_D2_HI  EQU $01
+RFP_MARGIN_D2_LO  EQU $2C     ; 300 centipawns (~1 minor piece)
 
 ; ------------------------------------------------------------------------------
 ; Late Move Reductions: $64A3-$64A6

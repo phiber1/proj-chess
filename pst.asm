@@ -94,17 +94,17 @@ PST_ROOK:
     DB -5,  0,  0,  0,  0,  0,  0, -5
     ; Rank 2
     DB -5,  0,  0,  0,  0,  0,  0, -5
-    ; Rank 1 - prefer central starting squares
-    DB  0,  0,  0,  5,  5,  0,  0,  0
+    ; Rank 1 - penalize undeveloped corner rooks, prefer central
+    DB -15,  0,  0,  5,  5,  0,  0,-15
 
 ; ------------------------------------------------------------------------------
 ; QUEEN PST - Slight preference for center, avoid early development
 ; ------------------------------------------------------------------------------
 PST_QUEEN:
-    ; Rank 8
-    DB -20,-10,-10, -5, -5,-10,-10,-20
-    ; Rank 7
-    DB -10,  0,  0,  0,  0,  0,  0,-10
+    ; Rank 8 - heavy penalty for deep queen raids
+    DB -30,-20,-20,-10,-10,-20,-20,-30
+    ; Rank 7 - penalize edge squares in enemy territory
+    DB -20,-10,  0,  0,  0,  0,-10,-20
     ; Rank 6
     DB -10,  0,  5,  5,  5,  5,  0,-10
     ; Rank 5
@@ -136,8 +136,8 @@ PST_KING:
     DB -10,-20,-20,-20,-20,-20,-20,-10
     ; Rank 2
     DB  20, 20,  0,  0,  0,  0, 20, 20
-    ; Rank 1 - castled king is safest
-    DB  20, 30, 10,  0,  0, 10, 30, 20
+    ; Rank 1 - castled king is safest (b1/g1 = strong castling bonus)
+    DB  20, 40, 10,  0,  0, 10, 40, 20
 
 ; ==============================================================================
 ; PST Table Address Lookup
