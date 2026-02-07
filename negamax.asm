@@ -3707,11 +3707,11 @@ ITER_DONE:
     RETN
 
 ; ==============================================================================
-; SEND_UCI_INFO - Send "info depth N nodes XXYY" after each iteration
+; SEND_UCI_INFO - Send "info depth N nodes NNNNN" after each iteration
 ; ==============================================================================
-; Sends: "info depth N nodes XXYY\r\n"
+; Sends: "info depth N nodes NNNNN\r\n"
 ;   N = CURRENT_MAX_DEPTH (ASCII digit)
-;   XXYY = NODES_SEARCHED bytes 1:0 in hex (lower 16 bits)
+;   NNNNN = NODES_SEARCHED as decimal via F_UINTOUT (lower 16 bits)
 ; ==============================================================================
 SEND_UCI_INFO:
     ; Send "info depth "
@@ -3739,21 +3739,41 @@ SEND_UCI_INFO:
     SEP 4
     DW F_MSG
 
-    ; Send NODES_SEARCHED byte 1 as hex (high byte of 16-bit count)
+    ; Load NODES_SEARCHED (16-bit) into R13: high byte first, then low
     LDI HIGH(NODES_SEARCHED + 1)
     PHI 10
     LDI LOW(NODES_SEARCHED + 1)
     PLO 10
-    LDN 10
-    CALL SERIAL_PRINT_HEX
-
-    ; Send NODES_SEARCHED byte 0 as hex (low byte)
+    LDN 10                      ; D = high byte of node count
+    PHI 13                      ; R13.1 = high byte
     LDI HIGH(NODES_SEARCHED)
     PHI 10
     LDI LOW(NODES_SEARCHED)
     PLO 10
-    LDN 10
-    CALL SERIAL_PRINT_HEX
+    LDN 10                      ; D = low byte of node count
+    PLO 13                      ; R13.0 = low byte
+
+    ; Point R15 at ASCII scratch buffer
+    LDI HIGH(UINT_BUFFER)
+    PHI 15
+    LDI LOW(UINT_BUFFER)
+    PLO 15
+
+    ; Convert R13 to ASCII decimal at R15
+    SEP 4
+    DW F_UINTOUT
+
+    ; Null-terminate (R15 points past last digit)
+    LDI 0
+    STR 15
+
+    ; Print the decimal string
+    LDI HIGH(UINT_BUFFER)
+    PHI 15
+    LDI LOW(UINT_BUFFER)
+    PLO 15
+    SEP 4
+    DW F_MSG
 
     ; Send CR+LF
     LDI 13

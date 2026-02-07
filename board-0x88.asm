@@ -230,6 +230,7 @@ ITER_SCORE_LO     EQU $64C9   ; 1 byte - score low byte (last completed depth)
 ; RTC-based time management
 SEARCH_PREV_SECS  EQU $64CA   ; 1 byte - last RTC seconds reading (for delta)
 SEARCH_ELAPSED    EQU $64CB   ; 1 byte - accumulated elapsed seconds (0-255)
+UINT_BUFFER       EQU $64CC   ; 6 bytes - ASCII scratch for F_UINTOUT ($64CC-$64D1)
 
 ; ------------------------------------------------------------------------------
 ; UCI input buffer: $6500-$66FF (512 bytes)
