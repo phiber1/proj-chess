@@ -84,6 +84,93 @@ NEGAMAX_PLY_OK:
     CALL INC_NODE_COUNT
 
     ; -----------------------------------------------
+    ; ABORT/TIME CHECK: Skip entirely for depth 1-2
+    ; -----------------------------------------------
+    ; Depth 1-2 never abort, so skip all checks (7 instructions)
+    ; Depth 3+: check abort flag, then check RTC elapsed time
+    LDI HIGH(CURRENT_MAX_DEPTH)
+    PHI 13
+    LDI LOW(CURRENT_MAX_DEPTH)
+    PLO 13
+    LDN 13                      ; D = current iteration depth
+    SMI 3
+    LBNF NEGAMAX_BUDGET_OK      ; depth < 3, skip all checks
+
+    ; --- Abort flag check (propagate up recursion during d3) ---
+    LDI HIGH(SEARCH_ABORTED)
+    PHI 13
+    LDI LOW(SEARCH_ABORTED)
+    PLO 13
+    LDN 13
+    LBNZ NEGAMAX_ABORT_RETURN   ; Already aborted, bail out
+
+    ; --- RTC elapsed time check ---
+    ; Read current seconds from DS12887 (binary mode)
+    LDI $80                     ; Seconds register
+    STR 2
+    OUT 2                       ; Select register, R2++
+    DEC 2                       ; Restore R2
+    INP 3                       ; D = current_secs, M(R2) = current_secs
+    PLO 7                       ; R7.0 = current_secs (R7 saved by SAVE_PLY_STATE)
+
+    ; Load prev_secs, save for delta computation
+    LDI HIGH(SEARCH_PREV_SECS)
+    PHI 13
+    LDI LOW(SEARCH_PREV_SECS)
+    PLO 13
+    LDN 13                      ; D = prev_secs
+    PHI 7                       ; R7.1 = prev_secs
+
+    ; Update prev = current
+    GLO 7                       ; D = current_secs
+    STR 13                      ; SEARCH_PREV_SECS = current_secs
+
+    ; Compute delta = current - prev
+    GHI 7                       ; D = prev_secs
+    STR 2                       ; M(R2) = prev_secs
+    GLO 7                       ; D = current_secs
+    SM                          ; D = current - prev (SM = D - M(R(X)))
+    LBDF RTC_DELTA_POS          ; DF=1: no borrow, delta >= 0
+    ADI 60                      ; Wrapped past 59→0: add 60
+RTC_DELTA_POS:
+    ; D = delta seconds (typically 0 or 1)
+
+    ; Add delta to elapsed counter
+    STR 2                       ; M(R2) = delta
+    LDI HIGH(SEARCH_ELAPSED)
+    PHI 13
+    LDI LOW(SEARCH_ELAPSED)
+    PLO 13
+    LDN 13                      ; D = elapsed so far
+    ADD                         ; D = elapsed + delta
+    LBNF RTC_NO_SAT             ; DF=0: no carry, fits in 8 bits
+    LDI 255                     ; Saturate at 255
+RTC_NO_SAT:
+    STR 13                      ; SEARCH_ELAPSED = updated value
+
+    ; Check: elapsed >= 90 seconds?
+    SMI 90                      ; D = elapsed - 90
+    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 90, continue
+
+    ; Time exceeded — set abort flag
+    LDI HIGH(SEARCH_ABORTED)
+    PHI 13
+    LDI LOW(SEARCH_ABORTED)
+    PLO 13
+    LDI 1
+    STR 13
+
+NEGAMAX_ABORT_RETURN:
+    ; Restore ply state and return dummy score
+    CALL RESTORE_PLY_STATE
+    LDI 0
+    PHI 9
+    PLO 9                       ; R9 = 0 (score irrelevant, will be discarded)
+    RETN
+
+NEGAMAX_BUDGET_OK:
+
+    ; -----------------------------------------------
     ; FIFTY-MOVE RULE: Check for draw
     ; -----------------------------------------------
     ; If halfmove clock >= 100, position is a draw
@@ -3350,81 +3437,84 @@ INC_NODE_DONE:
     RETN
 
 ; ==============================================================================
-; SEARCH_POSITION - Entry point for search from UCI/main
+; SEARCH_POSITION - Iterative Deepening Entry Point
 ; ==============================================================================
-; Input:  SEARCH_DEPTH = search depth (stored in memory by caller)
+; Input:  SEARCH_DEPTH = target depth (stored in memory by UCI handler)
 ; Output: R9 = best score (R6 is SCRT linkage - off limits!)
 ;         BEST_MOVE = best move found
-; NOTE:   R5 is SRET in BIOS mode - cannot be used for depth!
-; WARNING: R6 is SCRT linkage register - do NOT use for return values!
+; Searches depth 1, 2, ..., TARGET_DEPTH. If depth N exceeds node budget,
+; aborts and returns depth N-1's bestmove.
 ; ==============================================================================
 SEARCH_POSITION:
-    ; Ensure X=2 for stack operations
     SEX 2
 
-    ; Alpha = -INFINITY (to memory - R6 is SCRT linkage, off limits!)
-    ; NOTE: Use $8001 (-32767) not $8000 (-32768) to avoid overflow when negating!
-    ; -(-32768) overflows to -32768, causing invalid alpha-beta window in child
-    ; Big-endian: high byte at lower address (ALPHA_HI)
-    LDI HIGH(ALPHA_HI)
+    ; --- Save TARGET_DEPTH from SEARCH_DEPTH (set by UCI handler) ---
+    LDI HIGH(SEARCH_DEPTH + 1)
     PHI 10
-    LDI LOW(ALPHA_HI)
+    LDI LOW(SEARCH_DEPTH + 1)
     PLO 10
-    LDI $80
-    STR 10              ; ALPHA_HI = $80 (high byte first)
-    INC 10
-    LDI $01
-    STR 10              ; ALPHA_LO = $01 (alpha = $8001 = -32767)
-
-    ; Beta = +INFINITY (to memory for consistency)
-    ; Big-endian: high byte at lower address (BETA_HI)
-    LDI HIGH(BETA_HI)
+    LDN 10                      ; D = target depth (low byte)
+    STXD                        ; Save depth on stack (LDI clobbers D!)
+    LDI HIGH(TARGET_DEPTH)
     PHI 10
-    LDI LOW(BETA_HI)
+    LDI LOW(TARGET_DEPTH)
     PLO 10
-    LDI $7F
-    STR 10              ; BETA_HI = $7F (high byte first)
-    INC 10
-    LDI $FF
-    STR 10              ; BETA_LO = $FF (beta = $7FFF = +32767)
+    IRX
+    LDX                         ; D = target depth (restored from stack)
+    STR 10                      ; TARGET_DEPTH = original depth
 
-    ; Initialize ply counter to 0 (we're at root)
-    LDI HIGH(CURRENT_PLY)
+    ; --- Clear SEARCH_ABORTED flag ---
+    LDI HIGH(SEARCH_ABORTED)
     PHI 10
-    LDI LOW(CURRENT_PLY)
+    LDI LOW(SEARCH_ABORTED)
     PLO 10
     LDI 0
-    STR 10              ; CURRENT_PLY = 0
+    STR 10
 
-    ; Initialize null move pruning flag (allow null move at start)
-    LDI HIGH(NULL_MOVE_OK)
+    ; --- Clear ITER_BEST (no bestmove yet) ---
+    LDI HIGH(ITER_BEST_FROM)
     PHI 10
-    LDI LOW(NULL_MOVE_OK)
+    LDI LOW(ITER_BEST_FROM)
+    PLO 10
+    LDI $FF
+    STR 10
+    INC 10
+    STR 10                      ; ITER_BEST_TO = $FF
+
+    ; --- Set starting depth = 1 ---
+    LDI HIGH(CURRENT_MAX_DEPTH)
+    PHI 10
+    LDI LOW(CURRENT_MAX_DEPTH)
     PLO 10
     LDI 1
-    STR 10              ; NULL_MOVE_OK = 1
+    STR 10
 
-    ; Get side to move
-    CALL GET_SIDE_TO_MOVE
-    PLO 12              ; C.0 = color
-
-    ; Board pointer
-    LDI HIGH(BOARD)
+    ; --- Initialize RTC elapsed timer ---
+    ; Read current seconds from DS12887 RTC (binary mode)
+    ; Protocol: OUT port 2 = register select, INP port 3 = read data
+    LDI $80                     ; $80 = seconds register
+    STR 2                       ; Store at M(R2) for OUT
+    OUT 2                       ; Send to port 2 (selects seconds), R2++
+    DEC 2                       ; Restore stack pointer
+    INP 3                       ; D = seconds (binary 0-59), also M(R2)
+    STXD                        ; Save seconds on stack (LDI clobbers D!)
+    LDI HIGH(SEARCH_PREV_SECS)
     PHI 10
-    LDI LOW(BOARD)
+    LDI LOW(SEARCH_PREV_SECS)
     PLO 10
+    IRX
+    LDX                         ; D = seconds (restored)
+    STR 10                      ; SEARCH_PREV_SECS = current seconds
 
-    ; Clear best move
-    LDI HIGH(BEST_MOVE)
-    PHI 11
-    LDI LOW(BEST_MOVE)
-    PLO 11
-    LDI $FF
-    STR 11
-    INC 11
-    STR 11
+    ; Clear elapsed counter
+    LDI HIGH(SEARCH_ELAPSED)
+    PHI 10
+    LDI LOW(SEARCH_ELAPSED)
+    PLO 10
+    LDI 0
+    STR 10                      ; SEARCH_ELAPSED = 0
 
-    ; Clear node counter
+    ; --- Clear node counter (once for entire search) ---
     LDI HIGH(NODES_SEARCHED)
     PHI 11
     LDI LOW(NODES_SEARCHED)
@@ -3438,11 +3528,238 @@ SEARCH_POSITION:
     INC 11
     STR 11
 
-    ; Initialize Zobrist hash for current position
+    ; --- Initialize Zobrist hash (once — TT benefits from earlier depths) ---
     CALL HASH_INIT
 
-    ; Call negamax
+; ======================================================================
+; ITERATIVE DEEPENING LOOP
+; ======================================================================
+ITER_LOOP:
+    ; --- Set SEARCH_DEPTH = CURRENT_MAX_DEPTH for this iteration ---
+    LDI HIGH(SEARCH_DEPTH)
+    PHI 10
+    LDI LOW(SEARCH_DEPTH)
+    PLO 10
+    LDI 0
+    STR 10                      ; SEARCH_DEPTH high = 0
+    INC 10
+    ; Load CURRENT_MAX_DEPTH
+    LDI HIGH(CURRENT_MAX_DEPTH)
+    PHI 13
+    LDI LOW(CURRENT_MAX_DEPTH)
+    PLO 13
+    LDN 13                      ; D = current depth
+    STR 10                      ; SEARCH_DEPTH low = current depth
+
+    ; --- Reset SEARCH_ABORTED for this iteration ---
+    LDI HIGH(SEARCH_ABORTED)
+    PHI 10
+    LDI LOW(SEARCH_ABORTED)
+    PLO 10
+    LDI 0
+    STR 10
+
+    ; --- Standard search init ---
+    ; Alpha = -32767
+    LDI HIGH(ALPHA_HI)
+    PHI 10
+    LDI LOW(ALPHA_HI)
+    PLO 10
+    LDI $80
+    STR 10                      ; ALPHA_HI = $80
+    INC 10
+    LDI $01
+    STR 10                      ; ALPHA_LO = $01
+
+    ; Beta = +32767
+    LDI HIGH(BETA_HI)
+    PHI 10
+    LDI LOW(BETA_HI)
+    PLO 10
+    LDI $7F
+    STR 10                      ; BETA_HI = $7F
+    INC 10
+    LDI $FF
+    STR 10                      ; BETA_LO = $FF
+
+    ; CURRENT_PLY = 0
+    LDI HIGH(CURRENT_PLY)
+    PHI 10
+    LDI LOW(CURRENT_PLY)
+    PLO 10
+    LDI 0
+    STR 10
+
+    ; NULL_MOVE_OK = 1
+    LDI HIGH(NULL_MOVE_OK)
+    PHI 10
+    LDI LOW(NULL_MOVE_OK)
+    PLO 10
+    LDI 1
+    STR 10
+
+    ; Get side to move
+    CALL GET_SIDE_TO_MOVE
+    PLO 12                      ; C.0 = color
+
+    ; Board pointer
+    LDI HIGH(BOARD)
+    PHI 10
+    LDI LOW(BOARD)
+    PLO 10
+
+    ; Clear best move for this iteration
+    LDI HIGH(BEST_MOVE)
+    PHI 11
+    LDI LOW(BEST_MOVE)
+    PLO 11
+    LDI $FF
+    STR 11
+    INC 11
+    STR 11
+
+    ; --- Run search for this depth ---
     CALL NEGAMAX
+
+    ; --- Check if search was aborted ---
+    LDI HIGH(SEARCH_ABORTED)
+    PHI 10
+    LDI LOW(SEARCH_ABORTED)
+    PLO 10
+    LDN 10
+    LBNZ ITER_ABORTED           ; Aborted: use previous depth's bestmove
+
+    ; --- Depth completed: save bestmove ---
+    ; Set up BOTH pointers first, then copy (LDI clobbers D!)
+    LDI HIGH(BEST_MOVE)
+    PHI 10
+    LDI LOW(BEST_MOVE)
+    PLO 10
+    LDI HIGH(ITER_BEST_FROM)
+    PHI 11
+    LDI LOW(ITER_BEST_FROM)
+    PLO 11
+    ; Now copy: R10→BEST_MOVE, R11→ITER_BEST
+    LDA 10                      ; D = from square
+    STR 11                      ; ITER_BEST_FROM = from
+    INC 11
+    LDN 10                      ; D = to square (BEST_MOVE+1)
+    STR 11                      ; ITER_BEST_TO = to
+
+    ; --- Save score from this depth ---
+    LDI HIGH(ITER_SCORE_HI)
+    PHI 10
+    LDI LOW(ITER_SCORE_HI)
+    PLO 10
+    GHI 9
+    STR 10                      ; ITER_SCORE_HI = R9.hi
+    INC 10
+    GLO 9
+    STR 10                      ; ITER_SCORE_LO = R9.lo
+
+    ; --- Send UCI "info" for this depth ---
+    CALL SEND_UCI_INFO
+
+    ; --- Check if we've reached TARGET_DEPTH ---
+    LDI HIGH(CURRENT_MAX_DEPTH)
+    PHI 10
+    LDI LOW(CURRENT_MAX_DEPTH)
+    PLO 10
+    LDN 10                      ; D = current depth
+    STR 2                       ; Push to stack for comparison
+    LDI HIGH(TARGET_DEPTH)
+    PHI 10
+    LDI LOW(TARGET_DEPTH)
+    PLO 10
+    LDN 10                      ; D = target depth
+    SM                          ; D = target - current (M(R2) = current)
+    LBZ ITER_DONE               ; current == target, finished
+
+    ; --- Increment depth and loop ---
+    LDI HIGH(CURRENT_MAX_DEPTH)
+    PHI 10
+    LDI LOW(CURRENT_MAX_DEPTH)
+    PLO 10
+    LDN 10
+    ADI 1
+    STR 10                      ; CURRENT_MAX_DEPTH++
+    LBR ITER_LOOP
+
+ITER_ABORTED:
+    ; Search at this depth was aborted — fall back to ITER_BEST
+    ; Set up BOTH pointers first, then copy (LDI clobbers D!)
+    LDI HIGH(ITER_BEST_FROM)
+    PHI 10
+    LDI LOW(ITER_BEST_FROM)
+    PLO 10
+    LDI HIGH(BEST_MOVE)
+    PHI 11
+    LDI LOW(BEST_MOVE)
+    PLO 11
+    ; Now copy: R10→ITER_BEST, R11→BEST_MOVE
+    LDA 10                      ; D = ITER_BEST_FROM
+    STR 11                      ; BEST_MOVE[0] = from
+    INC 11
+    LDN 10                      ; D = ITER_BEST_TO
+    STR 11                      ; BEST_MOVE[1] = to
+
+ITER_DONE:
+    RETN
+
+; ==============================================================================
+; SEND_UCI_INFO - Send "info depth N nodes XXYY" after each iteration
+; ==============================================================================
+; Sends: "info depth N nodes XXYY\r\n"
+;   N = CURRENT_MAX_DEPTH (ASCII digit)
+;   XXYY = NODES_SEARCHED bytes 1:0 in hex (lower 16 bits)
+; ==============================================================================
+SEND_UCI_INFO:
+    ; Send "info depth "
+    LDI HIGH(STR_INFO_DEPTH)
+    PHI 15
+    LDI LOW(STR_INFO_DEPTH)
+    PLO 15
+    SEP 4
+    DW F_MSG
+
+    ; Send depth digit (1-9)
+    LDI HIGH(CURRENT_MAX_DEPTH)
+    PHI 10
+    LDI LOW(CURRENT_MAX_DEPTH)
+    PLO 10
+    LDN 10                      ; D = depth (1-9)
+    ADI '0'                     ; Convert to ASCII
+    CALL SERIAL_WRITE_CHAR
+
+    ; Send " nodes "
+    LDI HIGH(STR_NODES)
+    PHI 15
+    LDI LOW(STR_NODES)
+    PLO 15
+    SEP 4
+    DW F_MSG
+
+    ; Send NODES_SEARCHED byte 1 as hex (high byte of 16-bit count)
+    LDI HIGH(NODES_SEARCHED + 1)
+    PHI 10
+    LDI LOW(NODES_SEARCHED + 1)
+    PLO 10
+    LDN 10
+    CALL SERIAL_PRINT_HEX
+
+    ; Send NODES_SEARCHED byte 0 as hex (low byte)
+    LDI HIGH(NODES_SEARCHED)
+    PHI 10
+    LDI LOW(NODES_SEARCHED)
+    PLO 10
+    LDN 10
+    CALL SERIAL_PRINT_HEX
+
+    ; Send CR+LF
+    LDI 13
+    CALL SERIAL_WRITE_CHAR
+    LDI 10
+    CALL SERIAL_WRITE_CHAR
 
     RETN
 

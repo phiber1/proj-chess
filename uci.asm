@@ -32,6 +32,8 @@ STR_OPTION_DEPTH DB "option name Depth type spin default 4 min 1 max 6", 13, 10,
 STR_UCIOK       DB "uciok", 13, 10, 0
 STR_READYOK     DB "readyok", 13, 10, 0
 STR_BESTMOVE    DB "bestmove ", 0
+STR_INFO_DEPTH  DB "info depth ", 0
+STR_NODES       DB " nodes ", 0
 
 ; ------------------------------------------------------------------------------
 ; UCI_INIT - Initialize UCI interface

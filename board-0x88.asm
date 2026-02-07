@@ -216,6 +216,22 @@ TT_MOVE_HI      EQU $64C0   ; 1 byte - stored best move high
 TT_MOVE_LO      EQU $64C1   ; 1 byte - stored best move low
 
 ; ------------------------------------------------------------------------------
+; Iterative Deepening State: $64C2-$64C9
+; ------------------------------------------------------------------------------
+ITER_BEST_FROM    EQU $64C2   ; 1 byte - best from square (last completed depth)
+ITER_BEST_TO      EQU $64C3   ; 1 byte - best to square (last completed depth)
+SEARCH_ABORTED    EQU $64C4   ; 1 byte - flag: 1 = current depth search was aborted
+CURRENT_MAX_DEPTH EQU $64C5   ; 1 byte - current iteration's target depth
+TARGET_DEPTH      EQU $64C6   ; 1 byte - overall target depth from UCI "go depth N"
+NODE_BUDGET_HI    EQU $64C7   ; 1 byte - node budget threshold (byte 2 of node counter)
+ITER_SCORE_HI     EQU $64C8   ; 1 byte - score high byte (last completed depth)
+ITER_SCORE_LO     EQU $64C9   ; 1 byte - score low byte (last completed depth)
+
+; RTC-based time management
+SEARCH_PREV_SECS  EQU $64CA   ; 1 byte - last RTC seconds reading (for delta)
+SEARCH_ELAPSED    EQU $64CB   ; 1 byte - accumulated elapsed seconds (0-255)
+
+; ------------------------------------------------------------------------------
 ; UCI input buffer: $6500-$66FF (512 bytes)
 ; ------------------------------------------------------------------------------
 UCI_BUFFER      EQU $6500   ; 512 bytes - input buffer ($6500-$66FF)
