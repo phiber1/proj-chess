@@ -25,14 +25,22 @@
 - **Pawn Promotion:** UCI parsing handles 5th char (q/r/b/n), MAKE/UNMAKE handle piece replacement
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 74 plies reached
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,701 bytes (out of 32K available)
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP
+- **Engine size:** 12,838 bytes (out of 32K available)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP
+- **ELPH Bridge:** Dynamic delay scaling, echo detection, go-param stripping (pyserial)
 
 ### Comparison to Historical Engines
 - **Sargon (Z80)** defaulted to depth 2 for casual play
 - This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
 
+### Next Up
+- **CuteChess match at depth 3** with iterative deepening — first real test of ID + RTC abort
+- Tune 90-second budget based on match results
+- Investigate depth 2 bestmove difference in ID context (TT from d1 influence)
+
 ### Recent Milestones
+- **Feb 6 (late):** Iterative deepening with RTC-based time management on `iterative-deepening` branch. SEARCH_POSITION loops d1→d2→d3, DS12887 RTC reads seconds via OUT 2/INP 3, aborts at 90s. Italian d3: 85s/2012 nodes/c6d4 (completes). Queen's Attack d3: 89s abort/f8d6 (falls back to d2). Node budget tried first but too coarse (only 2K-4K nodes total). Three LDI-clobbers-D bugs fixed. Engine size: 13,192 bytes.
+- **Feb 6 (eve):** RFP implemented (15% speedup on quiet positions). Tested and reverted extended futility and razoring (EVALUATE overhead > benefit on 1802). PST tuning for king/rook/queen. Two CuteChess depth-2 matches confirmed poor play quality — depth 3 needed. Restored elph-bridge.py with dynamic delays.
 - **Feb 6:** Fixed stale RAM bug - added WORKSPACE_CLEAR ($6200-$64FF) at startup and ucinewgame. Reverted buggy QS material-only eval (EVAL_SKIP_PST) and disabled delta pruning. Queen attack now returns correct g7h7 on cold start, warm start, and ucinewgame.
 - **Feb 4:** Fixed queen blindness (TT depth bug), futility pruning, h@h@, rook castling rights, and added pawn promotion support for UCI opponent moves.
 - **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
