@@ -11,133 +11,132 @@
 ; ------------------------------------------------------------------------------
 ; PAWN PST - Encourage central pawns and advancement
 ; ------------------------------------------------------------------------------
-; a8 b8 c8 d8 e8 f8 g8 h8  (promotion rank - high values)
-; a7 b7 c7 d7 e7 f7 g7 h7  (7th rank - very good)
-; ...
-; a1 b1 c1 d1 e1 f1 g1 h1  (back rank - pawns shouldn't be here)
+; Index 0-7 = Rank 1 (a1-h1), Index 56-63 = Rank 8 (a8-h8)
+; For White: index = rank*8 + file (rank 0 = Rank 1)
+; For Black: index XOR $38 flips rank (Black's Rank 8 maps to Rank 1 values)
 ; ------------------------------------------------------------------------------
 PST_PAWN:
-    ; Rank 8 (index 0-7) - pawns promote, but never here in normal play
+    ; Rank 1 (index 0-7) - pawns never here
     DB  0,  0,  0,  0,  0,  0,  0,  0
-    ; Rank 7 (index 8-15) - about to promote!
-    DB 50, 50, 50, 50, 50, 50, 50, 50
-    ; Rank 6 (index 16-23)
-    DB 10, 10, 20, 30, 30, 20, 10, 10
-    ; Rank 5 (index 24-31)
-    DB  5,  5, 10, 25, 25, 10,  5,  5
-    ; Rank 4 (index 32-39) - center control
-    DB  0,  0,  0, 20, 20,  0,  0,  0
-    ; Rank 3 (index 40-47)
-    DB  5, -5,-10,  0,  0,-10, -5,  5
-    ; Rank 2 (index 48-55) - starting position
+    ; Rank 2 (index 8-15) - starting position
     DB  5, 10, 10,-20,-20, 10, 10,  5
-    ; Rank 1 (index 56-63) - pawns never here
+    ; Rank 3 (index 16-23)
+    DB  5, -5,-10,  0,  0,-10, -5,  5
+    ; Rank 4 (index 24-31) - center control
+    DB  0,  0,  0, 20, 20,  0,  0,  0
+    ; Rank 5 (index 32-39)
+    DB  5,  5, 10, 25, 25, 10,  5,  5
+    ; Rank 6 (index 40-47)
+    DB 10, 10, 20, 30, 30, 20, 10, 10
+    ; Rank 7 (index 48-55) - about to promote!
+    DB 50, 50, 50, 50, 50, 50, 50, 50
+    ; Rank 8 (index 56-63) - promotion rank
     DB  0,  0,  0,  0,  0,  0,  0,  0
 
 ; ------------------------------------------------------------------------------
 ; KNIGHT PST - Knights love the center, hate the rim
 ; ------------------------------------------------------------------------------
 PST_KNIGHT:
-    ; Rank 8
+    ; Rank 1
     DB -50,-40,-30,-30,-30,-30,-40,-50
-    ; Rank 7
-    DB -40,-20,  0,  0,  0,  0,-20,-40
-    ; Rank 6
-    DB -30,  0, 10, 15, 15, 10,  0,-30
-    ; Rank 5
-    DB -30,  5, 15, 20, 20, 15,  5,-30
-    ; Rank 4
-    DB -30,  0, 15, 20, 20, 15,  0,-30
-    ; Rank 3
-    DB -30,  5, 10, 15, 15, 10,  5,-30
     ; Rank 2
     DB -40,-20,  0,  5,  5,  0,-20,-40
-    ; Rank 1
+    ; Rank 3
+    DB -30,  5, 10, 15, 15, 10,  5,-30
+    ; Rank 4
+    DB -30,  0, 15, 20, 20, 15,  0,-30
+    ; Rank 5
+    DB -30,  5, 15, 20, 20, 15,  5,-30
+    ; Rank 6
+    DB -30,  0, 10, 15, 15, 10,  0,-30
+    ; Rank 7
+    DB -40,-20,  0,  0,  0,  0,-20,-40
+    ; Rank 8
     DB -50,-40,-30,-30,-30,-30,-40,-50
 
 ; ------------------------------------------------------------------------------
 ; BISHOP PST - Avoid corners, prefer long diagonals
 ; ------------------------------------------------------------------------------
 PST_BISHOP:
-    ; Rank 8
-    DB -20,-10,-10,-10,-10,-10,-10,-20
-    ; Rank 7
-    DB -10,  0,  0,  0,  0,  0,  0,-10
-    ; Rank 6
-    DB -10,  0,  5, 10, 10,  5,  0,-10
-    ; Rank 5
-    DB -10,  5,  5, 10, 10,  5,  5,-10
-    ; Rank 4
-    DB -10,  0, 10, 10, 10, 10,  0,-10
-    ; Rank 3
-    DB -10, 10, 10, 10, 10, 10, 10,-10
+    ; Rank 1 - penalize undeveloped bishops on c1/f1
+    DB -20,-10,-15,-10,-10,-15,-10,-20
     ; Rank 2
     DB -10,  5,  0,  0,  0,  0,  5,-10
-    ; Rank 1
+    ; Rank 3
+    DB -10, 10, 10, 10, 10, 10, 10,-10
+    ; Rank 4
+    DB -10,  0, 10, 10, 10, 10,  0,-10
+    ; Rank 5
+    DB -10,  5,  5, 10, 10,  5,  5,-10
+    ; Rank 6
+    DB -10,  0,  5, 10, 10,  5,  0,-10
+    ; Rank 7
+    DB -10,  0,  0,  0,  0,  0,  0,-10
+    ; Rank 8
     DB -20,-10,-10,-10,-10,-10,-10,-20
 
 ; ------------------------------------------------------------------------------
 ; ROOK PST - 7th rank is golden, open files later
 ; ------------------------------------------------------------------------------
 PST_ROOK:
-    ; Rank 8
-    DB  0,  0,  0,  0,  0,  0,  0,  0
-    ; Rank 7 - "pig" on 7th rank
-    DB  5, 10, 10, 10, 10, 10, 10,  5
-    ; Rank 6
-    DB -5,  0,  0,  0,  0,  0,  0, -5
-    ; Rank 5
-    DB -5,  0,  0,  0,  0,  0,  0, -5
-    ; Rank 4
+    ; Rank 1 - penalize undeveloped corner rooks, prefer central
+    DB -15,  0,  0,  5,  5,  0,  0,-15
+    ; Rank 2
     DB -5,  0,  0,  0,  0,  0,  0, -5
     ; Rank 3
     DB -5,  0,  0,  0,  0,  0,  0, -5
-    ; Rank 2
+    ; Rank 4
     DB -5,  0,  0,  0,  0,  0,  0, -5
-    ; Rank 1 - penalize undeveloped corner rooks, prefer central
-    DB -15,  0,  0,  5,  5,  0,  0,-15
+    ; Rank 5
+    DB -5,  0,  0,  0,  0,  0,  0, -5
+    ; Rank 6
+    DB -5,  0,  0,  0,  0,  0,  0, -5
+    ; Rank 7 - "pig" on 7th rank
+    DB  5, 10, 10, 10, 10, 10, 10,  5
+    ; Rank 8
+    DB  0,  0,  0,  0,  0,  0,  0,  0
 
 ; ------------------------------------------------------------------------------
 ; QUEEN PST - Slight preference for center, avoid early development
 ; ------------------------------------------------------------------------------
 PST_QUEEN:
-    ; Rank 8 - heavy penalty for deep queen raids
-    DB -30,-20,-20,-10,-10,-20,-20,-30
-    ; Rank 7 - penalize edge squares in enemy territory
-    DB -20,-10,  0,  0,  0,  0,-10,-20
-    ; Rank 6
-    DB -10,  0,  5,  5,  5,  5,  0,-10
-    ; Rank 5
-    DB  -5,  0,  5,  5,  5,  5,  0, -5
-    ; Rank 4
-    DB   0,  0,  5,  5,  5,  5,  0, -5
-    ; Rank 3
-    DB -10,  5,  5,  5,  5,  5,  0,-10
-    ; Rank 2
-    DB -10,  0,  5,  0,  0,  0,  0,-10
     ; Rank 1 - starting position OK
     DB -20,-10,-10, -5, -5,-10,-10,-20
+    ; Rank 2
+    DB -10,  0,  5,  0,  0,  0,  0,-10
+    ; Rank 3
+    DB -10,  5,  5,  5,  5,  5,  0,-10
+    ; Rank 4
+    DB   0,  0,  5,  5,  5,  5,  0, -5
+    ; Rank 5
+    DB  -5,  0,  5,  5,  5,  5,  0, -5
+    ; Rank 6
+    DB -10,  0,  5,  5,  5,  5,  0,-10
+    ; Rank 7 - penalize edge squares in enemy territory
+    DB -20,-10,  0,  0,  0,  0,-10,-20
+    ; Rank 8 - heavy penalty for deep queen raids
+    DB -30,-20,-20,-10,-10,-20,-20,-30
 
 ; ------------------------------------------------------------------------------
 ; KING PST (Middlegame) - Castle! Stay safe on the side
 ; ------------------------------------------------------------------------------
 PST_KING:
-    ; Rank 8 (black's back rank - castled positions good)
-    DB -30,-40,-40,-50,-50,-40,-40,-30
-    ; Rank 7
+    ; Rank 1 - castled king is safest (b1/g1 = strong castling bonus)
+    DB  20, 60, 10,-20,-20, 10, 60, 20
+    ; Rank 2 - behind pawn shelter OK
+    DB  30, 30, 10,-10,-10, 10, 30, 30
+    ; Rank 3
+    DB -10,-20,-20,-20,-20,-20,-20,-10
+    ; Rank 4
+    DB -20,-30,-30,-40,-40,-30,-30,-20
+    ; Rank 5
     DB -30,-40,-40,-50,-50,-40,-40,-30
     ; Rank 6
     DB -30,-40,-40,-50,-50,-40,-40,-30
-    ; Rank 5
+    ; Rank 7
     DB -30,-40,-40,-50,-50,-40,-40,-30
-    ; Rank 4
-    DB -20,-30,-30,-40,-40,-30,-30,-20
-    ; Rank 3
-    DB -10,-20,-20,-20,-20,-20,-20,-10
-    ; Rank 2
-    DB  20, 20,  0,  0,  0,  0, 20, 20
-    ; Rank 1 - castled king is safest (b1/g1 = strong castling bonus)
-    DB  20, 40, 10,  0,  0, 10, 40, 20
+    ; Rank 8
+    DB -30,-40,-40,-50,-50,-40,-40,-30
 
 ; ==============================================================================
 ; PST Table Address Lookup

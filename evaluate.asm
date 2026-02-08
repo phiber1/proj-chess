@@ -150,6 +150,210 @@ EVAL_DONE:
     ; Add piece-square table bonuses
     CALL EVAL_PST
 
+    ; TEMP: skip pawn shield to isolate PST fix
+    LBR BKS_DONE
+
+    ; Add king safety (pawn shield) bonuses
+    ; R9 = current score (material + PST)
+
+    ; === White King Pawn Shield ===
+    ; Load white king square
+    LDI HIGH(GAME_STATE + STATE_W_KING_SQ)
+    PHI 10
+    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
+    PLO 10
+    LDN 10                      ; D = white king 0x88 square
+    ANI $70                     ; Isolate rank bits
+    LBNZ WKS_DONE               ; Rank != 0 (not on back rank), skip
+
+    ; King is on rank 1 — check pawn shield (3 squares ahead)
+    LDN 10                      ; Reload king square
+    PLO 7                       ; R7.0 = king square
+
+    ; Check square directly in front (king_sq + $10)
+    ADI $10                     ; D = king_sq + $10
+    ANI $88
+    LBNZ WKS_SKIP_CENTER        ; Off board (shouldn't happen for rank 0 + $10)
+    ; Set up board pointer: BOARD + (king_sq + $10)
+    GLO 7
+    ADI $10
+    PLO 10
+    LDI HIGH(BOARD)
+    PHI 10
+    GLO 10
+    STR 2
+    LDI LOW(BOARD)
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10                      ; D = piece at square
+    XRI W_PAWN
+    LBNZ WKS_SKIP_CENTER
+    ; White pawn found — add 8 to score
+    GLO 9
+    ADI 8
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+WKS_SKIP_CENTER:
+
+    ; Check square diag-left (king_sq + $0F)
+    GLO 7                       ; D = king square
+    ADI $0F
+    PLO 8                       ; R8.0 = candidate square
+    ANI $88
+    LBNZ WKS_SKIP_LEFT          ; Off board (king on a-file)
+    LDI HIGH(BOARD)
+    PHI 10
+    LDI LOW(BOARD)
+    STR 2
+    GLO 8
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10
+    XRI W_PAWN
+    LBNZ WKS_SKIP_LEFT
+    GLO 9
+    ADI 8
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+WKS_SKIP_LEFT:
+
+    ; Check square diag-right (king_sq + $11)
+    GLO 7                       ; D = king square
+    ADI $11
+    PLO 8                       ; R8.0 = candidate square
+    ANI $88
+    LBNZ WKS_DONE               ; Off board (king on h-file)
+    LDI HIGH(BOARD)
+    PHI 10
+    LDI LOW(BOARD)
+    STR 2
+    GLO 8
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10
+    XRI W_PAWN
+    LBNZ WKS_DONE
+    GLO 9
+    ADI 8
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+
+WKS_DONE:
+
+    ; === Black King Pawn Shield ===
+    ; Load black king square
+    LDI HIGH(GAME_STATE + STATE_B_KING_SQ)
+    PHI 10
+    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
+    PLO 10
+    LDN 10                      ; D = black king 0x88 square
+    ANI $70                     ; Isolate rank bits
+    XRI $70
+    LBNZ BKS_DONE               ; Rank != 7 (not on back rank), skip
+
+    ; King is on rank 8 — check pawn shield (3 squares ahead for black)
+    LDN 10                      ; Reload king square
+    PLO 7                       ; R7.0 = king square
+
+    ; Check square directly in front (king_sq - $10)
+    SMI $10                     ; D = king_sq - $10
+    ANI $88
+    LBNZ BKS_SKIP_CENTER
+    GLO 7
+    SMI $10
+    PLO 8                       ; R8.0 = candidate square
+    LDI HIGH(BOARD)
+    PHI 10
+    LDI LOW(BOARD)
+    STR 2
+    GLO 8
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10
+    XRI B_PAWN
+    LBNZ BKS_SKIP_CENTER
+    ; Black pawn found — subtract 8 from score (benefits black)
+    GLO 9
+    SMI 8
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+BKS_SKIP_CENTER:
+
+    ; Check square diag-left for black (king_sq - $11)
+    GLO 7
+    SMI $11
+    PLO 8
+    ANI $88
+    LBNZ BKS_SKIP_LEFT
+    LDI HIGH(BOARD)
+    PHI 10
+    LDI LOW(BOARD)
+    STR 2
+    GLO 8
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10
+    XRI B_PAWN
+    LBNZ BKS_SKIP_LEFT
+    GLO 9
+    SMI 8
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+BKS_SKIP_LEFT:
+
+    ; Check square diag-right for black (king_sq - $0F)
+    GLO 7
+    SMI $0F
+    PLO 8
+    ANI $88
+    LBNZ BKS_DONE
+    LDI HIGH(BOARD)
+    PHI 10
+    LDI LOW(BOARD)
+    STR 2
+    GLO 8
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10
+    XRI B_PAWN
+    LBNZ BKS_DONE
+    GLO 9
+    SMI 8
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+
+BKS_DONE:
+
     RETN
 
 ; ------------------------------------------------------------------------------
