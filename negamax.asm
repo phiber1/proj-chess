@@ -1116,6 +1116,26 @@ LMR_CAPTURE_DONE:
 
 NEGAMAX_NOT_FUTILE:
 
+    ; Set UNDO_PROMOTION based on move flags
+    ; Must be done before MAKE_MOVE so promotions work correctly
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    LDI HIGH(DECODED_FLAGS)
+    PHI 13
+    LDI LOW(DECODED_FLAGS)
+    PLO 13
+    LDN 13              ; D = flags
+    XRI MOVE_PROMOTION  ; == $03?
+    LBNZ NM_NOT_PROMO
+    LDI QUEEN_TYPE      ; Promote to queen ($05)
+    LBR NM_SET_PROMO
+NM_NOT_PROMO:
+    LDI 0               ; Not a promotion
+NM_SET_PROMO:
+    STR 10              ; UNDO_PROMOTION = QUEEN_TYPE or 0
+
     ; Make the move on the board
     CALL MAKE_MOVE
 
@@ -1281,7 +1301,7 @@ LMR_NO_EXTRA_DEC:
     ; Stack now has: [beta_lo][beta_hi][alpha_lo][alpha_hi][depth]...
 
     ; -----------------------------------------------
-    ; Save UNDO_* to stack (6 bytes) for recursive safety
+    ; Save UNDO_* to stack (7 bytes) for recursive safety
     ; Child calls will overwrite UNDO_*, so we must save it
     ; Push LAST so it gets popped FIRST (LIFO order!)
     ; -----------------------------------------------
@@ -1300,6 +1320,13 @@ LMR_NO_EXTRA_DEC:
     LDA 10              ; UNDO_EP
     STXD
     LDN 10              ; UNDO_HALFMOVE
+    STXD
+    ; UNDO_PROMOTION is at $6404 (not contiguous)
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    LDN 10              ; UNDO_PROMOTION
     STXD
 
     ; -----------------------------------------------
@@ -1681,8 +1708,17 @@ LMR_NO_RESEARCH:
     STR 10
 
     ; -----------------------------------------------
-    ; Restore UNDO_* from stack (6 bytes) before UNMAKE_MOVE
+    ; Restore UNDO_* from stack (7 bytes) before UNMAKE_MOVE
     ; -----------------------------------------------
+    ; UNDO_PROMOTION first (it was pushed last - LIFO)
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    IRX
+    LDX                 ; UNDO_PROMOTION
+    STR 10
+    ; Now restore the contiguous block ($6408-$640D)
     LDI HIGH(UNDO_HALFMOVE)
     PHI 10
     LDI LOW(UNDO_HALFMOVE)
@@ -2739,6 +2775,25 @@ QS_DELTA_NO_PRUNE:
     INC 10
     GLO 13              ; to
     STR 10
+
+    ; Set UNDO_PROMOTION based on move flags (capture-promotions)
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    LDI HIGH(DECODED_FLAGS)
+    PHI 13
+    LDI LOW(DECODED_FLAGS)
+    PLO 13
+    LDN 13              ; D = flags
+    XRI MOVE_PROMOTION  ; == $03?
+    LBNZ QS_NOT_PROMO
+    LDI QUEEN_TYPE      ; Promote to queen ($05)
+    LBR QS_SET_PROMO
+QS_NOT_PROMO:
+    LDI 0               ; Not a promotion
+QS_SET_PROMO:
+    STR 10              ; UNDO_PROMOTION = QUEEN_TYPE or 0
 
     ; Make move
     CALL MAKE_MOVE

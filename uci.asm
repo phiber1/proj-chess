@@ -606,6 +606,16 @@ UCI_GO_SET_DEPTH:
     LBR UCI_GO_SEND_MOVE
 
 UCI_GO_SEARCH:
+    ; Clear stale promotion flag before search
+    ; (opponent's promotion move leaves UNDO_PROMOTION set, which would
+    ; corrupt every MAKE_MOVE during search)
+    LDI HIGH(UNDO_PROMOTION)
+    PHI 10
+    LDI LOW(UNDO_PROMOTION)
+    PLO 10
+    LDI 0
+    STR 10              ; UNDO_PROMOTION = 0
+
     ; Run search
     CALL SEARCH_POSITION
 
@@ -702,6 +712,39 @@ UCI_SEND_BEST_MOVE:
     GLO 13              ; To square
     CALL SQUARE_TO_ALGEBRAIC
 
+    ; Check if this is a promotion move (pawn reaching last rank)
+    ; Load piece at from square
+    LDI HIGH(BOARD)
+    PHI 10
+    GHI 13              ; from square
+    PLO 10
+    LDI LOW(BOARD)
+    STR 2
+    GLO 10
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10              ; R10 = &BOARD[from]
+    LDN 10              ; D = piece at from
+    ANI PIECE_MASK      ; Get piece type
+    XRI PAWN_TYPE       ; Is it a pawn?
+    LBNZ UCI_BM_NO_PROMO
+
+    ; It's a pawn - check if to square is on last rank
+    GLO 13              ; to square
+    ANI $70             ; Isolate rank
+    LBZ UCI_BM_IS_PROMO ; Rank 0 = promotion for black
+    XRI $70
+    LBZ UCI_BM_IS_PROMO ; Rank 7 = promotion for white
+    LBR UCI_BM_NO_PROMO
+
+UCI_BM_IS_PROMO:
+    ; Append 'q' for queen promotion
+    LDI 'q'
+    CALL SERIAL_WRITE_CHAR
+
+UCI_BM_NO_PROMO:
     RETN
 
 ; ------------------------------------------------------------------------------
