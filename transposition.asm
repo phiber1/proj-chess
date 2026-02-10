@@ -150,17 +150,11 @@ HASH_INIT_NEXT_SQ:
     LBNZ HASH_INIT_LOOP
 
     ; Done with pieces. Now XOR side to move.
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE)
-    PLO 10
+    RLDI 10, GAME_STATE
     LDN 10              ; D = side to move (0=white, 8=black)
     LBZ HASH_SIDE_DONE
     ; Black to move - XOR side key
-    LDI HIGH(ZOBRIST_SIDE)
-    PHI 10
-    LDI LOW(ZOBRIST_SIDE)
-    PLO 10
+    RLDI 10, ZOBRIST_SIDE
     LDA 10
     STR 2
     GHI 7
@@ -175,10 +169,7 @@ HASH_SIDE_DONE:
 
     ; XOR castling rights
     ; Castling is at GAME_STATE + STATE_CASTLING ($6081)
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_CASTLING
     LDN 10              ; D = castling rights
     PLO 9               ; R9.0 = castling bits
 
@@ -209,10 +200,7 @@ HASH_NO_BK:
 HASH_NO_BQ:
 
     ; XOR en passant file if set
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE)
-    PLO 10
+    RLDI 10, GAME_STATE
     INC 10
     INC 10              ; Point to EP square
     LDN 10              ; D = EP square ($FF if none)
@@ -240,10 +228,7 @@ HASH_NO_BQ:
 HASH_NO_EP:
 
     ; Store final hash
-    LDI HIGH(HASH_HI)
-    PHI 10
-    LDI LOW(HASH_HI)
-    PLO 10
+    RLDI 10, HASH_HI
     GHI 7
     STR 10
     INC 10
@@ -254,34 +239,22 @@ HASH_NO_EP:
 
 ; Helper functions to XOR castling keys (avoids code duplication)
 HASH_XOR_CASTLE_0:
-    LDI HIGH(ZOBRIST_CASTLE)
-    PHI 10
-    LDI LOW(ZOBRIST_CASTLE)
-    PLO 10
+    RLDI 10, ZOBRIST_CASTLE
     LBR HASH_XOR_CASTLE_DO
 HASH_XOR_CASTLE_1:
-    LDI HIGH(ZOBRIST_CASTLE)
-    PHI 10
-    LDI LOW(ZOBRIST_CASTLE)
-    PLO 10
+    RLDI 10, ZOBRIST_CASTLE
     INC 10
     INC 10
     LBR HASH_XOR_CASTLE_DO
 HASH_XOR_CASTLE_2:
-    LDI HIGH(ZOBRIST_CASTLE)
-    PHI 10
-    LDI LOW(ZOBRIST_CASTLE)
-    PLO 10
+    RLDI 10, ZOBRIST_CASTLE
     INC 10
     INC 10
     INC 10
     INC 10
     LBR HASH_XOR_CASTLE_DO
 HASH_XOR_CASTLE_3:
-    LDI HIGH(ZOBRIST_CASTLE)
-    PHI 10
-    LDI LOW(ZOBRIST_CASTLE)
-    PLO 10
+    RLDI 10, ZOBRIST_CASTLE
     INC 10
     INC 10
     INC 10
@@ -310,17 +283,11 @@ HASH_XOR_CASTLE_DO:
 ; Uses: R9 (counter), R10 (pointer)
 ; ==============================================================================
 TT_CLEAR:
-    LDI HIGH(TT_TABLE)
-    PHI 10
-    LDI LOW(TT_TABLE)
-    PLO 10              ; R10 = TT_TABLE
+    RLDI 10, TT_TABLE
 
     ; Clear 256 entries × 8 bytes = 2048 bytes
     ; Use R9 as 16-bit counter
-    LDI HIGH(TT_ENTRIES * TT_ENTRY_SIZE)
-    PHI 9
-    LDI LOW(TT_ENTRIES * TT_ENTRY_SIZE)
-    PLO 9               ; R9 = 2048
+    RLDI 9, TT_ENTRIES * TT_ENTRY_SIZE
 
     LDI 0               ; Value to write
 TT_CLEAR_LOOP:
@@ -350,10 +317,7 @@ TT_PROBE:
     PLO 8               ; R8.0 = required depth
 
     ; Load current hash
-    LDI HIGH(HASH_HI)
-    PHI 10
-    LDI LOW(HASH_HI)
-    PLO 10
+    RLDI 10, HASH_HI
     LDA 10
     PHI 7
     LDN 10
@@ -433,10 +397,7 @@ TT_PROBE:
     DEC 10              ; R10 at entry start
 
     ; Copy to TT result variables
-    LDI HIGH(TT_SCORE_HI)
-    PHI 9
-    LDI LOW(TT_SCORE_HI)
-    PLO 9
+    RLDI 9, TT_SCORE_HI
 
     INC 10
     INC 10              ; Skip hash verification bytes
@@ -459,10 +420,7 @@ TT_PROBE:
     STR 9
 
     ; Set TT_HIT = 1
-    LDI HIGH(TT_HIT)
-    PHI 10
-    LDI LOW(TT_HIT)
-    PLO 10
+    RLDI 10, TT_HIT
     LDI 1
     STR 10
 
@@ -471,10 +429,7 @@ TT_PROBE:
 
 TT_PROBE_MISS:
     ; Set TT_HIT = 0
-    LDI HIGH(TT_HIT)
-    PHI 10
-    LDI LOW(TT_HIT)
-    PLO 10
+    RLDI 10, TT_HIT
     LDI 0
     STR 10
 
@@ -503,10 +458,7 @@ TT_STORE:
     STXD                ; Push flag
 
     ; Load current hash
-    LDI HIGH(HASH_HI)
-    PHI 10
-    LDI LOW(HASH_HI)
-    PLO 10
+    RLDI 10, HASH_HI
     LDA 10
     PHI 7
     LDN 10
@@ -550,10 +502,7 @@ TT_STORE:
     INC 10
 
     ; Score from SCORE_HI/LO
-    LDI HIGH(SCORE_HI)
-    PHI 9
-    LDI LOW(SCORE_HI)
-    PLO 9
+    RLDI 9, SCORE_HI
     LDA 9               ; score_hi
     STR 10
     INC 10
@@ -573,10 +522,7 @@ TT_STORE:
     INC 10
 
     ; Best move from BEST_MOVE
-    LDI HIGH(BEST_MOVE)
-    PHI 9
-    LDI LOW(BEST_MOVE)
-    PLO 9
+    RLDI 9, BEST_MOVE
     LDA 9               ; move_hi
     STR 10
     INC 10
@@ -601,10 +547,7 @@ HASH_XOR_PIECE_SQ:
     LBZ HXPS_DONE
 
     ; Load current hash into R7
-    LDI HIGH(HASH_HI)
-    PHI 10
-    LDI LOW(HASH_HI)
-    PLO 10
+    RLDI 10, HASH_HI
     LDA 10
     PHI 7
     LDN 10
@@ -689,10 +632,7 @@ HXPS_ADD_SQ:
     PLO 7
 
     ; Store updated hash
-    LDI HIGH(HASH_HI)
-    PHI 10
-    LDI LOW(HASH_HI)
-    PLO 10
+    RLDI 10, HASH_HI
     GHI 7
     STR 10
     INC 10
@@ -711,20 +651,14 @@ HXPS_DONE:
 ; ==============================================================================
 HASH_XOR_SIDE:
     ; Load current hash
-    LDI HIGH(HASH_HI)
-    PHI 10
-    LDI LOW(HASH_HI)
-    PLO 10
+    RLDI 10, HASH_HI
     LDA 10
     PHI 7
     LDN 10
     PLO 7               ; R7 = current hash
 
     ; XOR with side key
-    LDI HIGH(ZOBRIST_SIDE)
-    PHI 10
-    LDI LOW(ZOBRIST_SIDE)
-    PLO 10
+    RLDI 10, ZOBRIST_SIDE
     LDA 10              ; key_hi
     STR 2
     GHI 7
@@ -737,10 +671,7 @@ HASH_XOR_SIDE:
     PLO 7
 
     ; Store updated hash
-    LDI HIGH(HASH_HI)
-    PHI 10
-    LDI LOW(HASH_HI)
-    PLO 10
+    RLDI 10, HASH_HI
     GHI 7
     STR 10
     INC 10

@@ -12,6 +12,19 @@ import time
 import re
 
 LOG_FILE = '/home/phiber/proj-chess/elph-debug.log'
+_log_start = None
+
+def log_write(log, msg):
+    """Write a timestamped line to the log file."""
+    global _log_start
+    now = time.time()
+    if _log_start is None:
+        _log_start = now
+    elapsed = now - _log_start
+    minutes = int(elapsed) // 60
+    seconds = elapsed - (minutes * 60)
+    log.write(f"[{minutes:02d}:{seconds:06.3f}] {msg}")
+    log.flush()
 SERIAL_PORT = '/dev/ttyUSB0'
 BAUD_RATE = 19200
 
@@ -36,8 +49,7 @@ def filter_go_command(line):
 
 def main():
     log = open(LOG_FILE, 'w')
-    log.write("ELPH Bridge started\n")
-    log.flush()
+    log_write(log, "ELPH Bridge started\n")
 
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
@@ -55,10 +67,9 @@ def main():
         )
         ser.reset_input_buffer()
         ser.reset_output_buffer()
-        log.write(f"Serial: {ser.name} @ {ser.baudrate}\n")
-        log.flush()
+        log_write(log, f"Serial: {ser.name} @ {ser.baudrate}\n")
     except Exception as e:
-        log.write(f"Serial open failed: {e}\n")
+        log_write(log, f"Serial open failed: {e}\n")
         log.close()
         sys.exit(1)
 
@@ -70,8 +81,7 @@ def main():
     pending_echo_lines = []
     recv_buffer = bytearray()
 
-    log.write("Entering main loop\n")
-    log.flush()
+    log_write(log, "Entering main loop\n")
 
     try:
         while True:
@@ -81,7 +91,7 @@ def main():
             if stdin_fd in readable:
                 data = os.read(stdin_fd, 1024)
                 if not data:
-                    log.write("EOF on stdin\n")
+                    log_write(log, "EOF on stdin\n")
                     break
 
                 text = data.decode('latin-1')
@@ -92,14 +102,13 @@ def main():
                         continue
 
                     if line.strip().lower() == 'quit':
-                        log.write("Quit command\n")
+                        log_write(log, "Quit command\n")
                         return
 
                     original_line = line
                     line = filter_go_command(line)
 
-                    log.write(f"TX: {repr(line)}\n")
-                    log.flush()
+                    log_write(log, f"TX: {repr(line)}\n")
 
                     pending_echo_lines.append(line.lower())
 
@@ -131,8 +140,7 @@ def main():
 
                         delay = LONG_CMD_BASE_DELAY + (move_count * LONG_CMD_PER_MOVE)
                         time.sleep(delay)
-                        log.write(f"  (long cmd delay: {len(line)} chars, {move_count} moves, {delay*1000:.0f}ms)\n")
-                        log.flush()
+                        log_write(log, f"  (long cmd delay: {len(line)} chars, {move_count} moves, {delay*1000:.0f}ms)\n")
 
             # Read from serial
             while ser.in_waiting:
@@ -167,43 +175,36 @@ def main():
                 is_echo = False
                 for i, expected in enumerate(pending_echo_lines):
                     if line_lower == expected:
-                        log.write(f"ECHO: {repr(line_stripped)}\n")
-                        log.flush()
+                        log_write(log, f"ECHO: {repr(line_stripped)}\n")
                         pending_echo_lines.pop(i)
                         is_echo = True
                         break
                     # Check for partial match (corrupted echo)
                     elif expected.endswith(line_lower) or line_lower.endswith(expected):
-                        log.write(f"PARTIAL_ECHO: {repr(line_stripped)} (expected {repr(expected)})\n")
-                        log.flush()
+                        log_write(log, f"PARTIAL_ECHO: {repr(line_stripped)} (expected {repr(expected)})\n")
                         pending_echo_lines.pop(i)
                         is_echo = True
                         break
 
                 if not is_echo:
                     output = (line_stripped + '\n').encode('latin-1')
-                    log.write(f"RX: {repr(line_stripped)}\n")
-                    log.flush()
+                    log_write(log, f"RX: {repr(line_stripped)}\n")
                     try:
                         os.write(stdout_fd, output)
                     except (BrokenPipeError, OSError) as e:
-                        log.write(f"Stdout write failed: {e}\n")
-                        log.flush()
+                        log_write(log, f"Stdout write failed: {e}\n")
                         return
 
     except Exception as e:
-        log.write(f"Error: {e}\n")
-        log.flush()
+        log_write(log, f"Error: {e}\n")
         import traceback
-        log.write(traceback.format_exc())
-        log.flush()
+        log_write(log, traceback.format_exc())
     finally:
         try:
             ser.close()
         except:
             pass
-        log.write("Bridge closed\n")
-        log.flush()
+        log_write(log, "Bridge closed\n")
         log.close()
 
 if __name__ == '__main__':

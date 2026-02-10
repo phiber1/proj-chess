@@ -24,20 +24,14 @@ IS_IN_CHECK:
 
 IS_CHECK_BLACK:
     ; Get black king position
-    LDI HIGH(GAME_STATE)
-    PHI 13
-    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
-    PLO 13
+    RLDI 13, GAME_STATE + STATE_B_KING_SQ
     LDN 13
     PLO 11              ; B.0 = black king square
     LBR IS_CHECK_TEST
 
 IS_CHECK_WHITE:
     ; Get white king position
-    LDI HIGH(GAME_STATE)
-    PHI 13
-    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
-    PLO 13
+    RLDI 13, GAME_STATE + STATE_W_KING_SQ
     LDN 13
     PLO 11              ; B.0 = white king square
 
@@ -81,10 +75,7 @@ IS_SQUARE_ATTACKED:
 
     ; Calculate enemy color and store in memory (NOT stack!)
     ; This avoids complex stack offset calculations in nested calls
-    LDI HIGH(ENEMY_COLOR_TEMP)
-    PHI 10
-    LDI LOW(ENEMY_COLOR_TEMP)
-    PLO 10
+    RLDI 10, ENEMY_COLOR_TEMP
     GLO 12
     XRI BLACK           ; Flip color (0 -> 8, 8 -> 0)
     STR 10              ; Store enemy color at ENEMY_COLOR_TEMP
@@ -178,10 +169,7 @@ ATTACK_PAWN_W2:
     ; -----------------------------------------------
 ATTACK_CHECK_KNIGHTS:
     ; Use knight offset table
-    LDI HIGH(KNIGHT_OFFSETS)
-    PHI 13
-    LDI LOW(KNIGHT_OFFSETS)
-    PLO 13              ; D = knight offset table
+    RLDI 13, KNIGHT_OFFSETS
 
     LDI 8
     STXD                ; Push loop counter to stack (R14 is off-limits)
@@ -226,10 +214,7 @@ ATTACK_KNIGHT_LOOP:
     STR 2              ; Store piece color at M[R2]
 
     ; Get enemy color from memory (simple and reliable!)
-    LDI HIGH(ENEMY_COLOR_TEMP)
-    PHI 10
-    LDI LOW(ENEMY_COLOR_TEMP)
-    PLO 10
+    RLDI 10, ENEMY_COLOR_TEMP
     LDN 10              ; D = enemy color
 
     ; Now D = enemy color, M[R2] = piece color
@@ -261,10 +246,7 @@ ATTACK_KNIGHT_NEXT:
     ; 3. Check for enemy king attacks (king vs king)
     ; -----------------------------------------------
 ATTACK_CHECK_KING:
-    LDI HIGH(KING_OFFSETS)
-    PHI 13
-    LDI LOW(KING_OFFSETS)
-    PLO 13
+    RLDI 13, KING_OFFSETS
 
     LDI 8
     STXD                ; Push loop counter to stack (R14 is off-limits)
@@ -304,10 +286,7 @@ ATTACK_KING_LOOP:
     STR 2              ; Store piece color at M[R2]
 
     ; Get enemy color from memory (simple and reliable!)
-    LDI HIGH(ENEMY_COLOR_TEMP)
-    PHI 10
-    LDI LOW(ENEMY_COLOR_TEMP)
-    PLO 10
+    RLDI 10, ENEMY_COLOR_TEMP
     LDN 10              ; D = enemy color
 
     SEX 2               ; Ensure X=2 for XOR
@@ -453,10 +432,7 @@ ATTACK_SLIDE_LOOP:
     STR 2              ; Save piece color at M[R2]
 
     ; Get enemy color from memory (simple and reliable!)
-    LDI HIGH(ENEMY_COLOR_TEMP)
-    PHI 10
-    LDI LOW(ENEMY_COLOR_TEMP)
-    PLO 10
+    RLDI 10, ENEMY_COLOR_TEMP
     LDN 10              ; D = enemy color
 
     ; Compare: D = enemy_color, M[R2] = piece_color

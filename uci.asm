@@ -46,10 +46,7 @@ UCI_INIT:
     LDI UCI_READY
     PLO 13
 
-    LDI HIGH(UCI_STATE)
-    PHI 10
-    LDI LOW(UCI_STATE)
-    PLO 10
+    RLDI 10, UCI_STATE
 
     GLO 13
     STR 10
@@ -67,10 +64,7 @@ UCI_INIT:
 ; Reads characters until newline or max length
 ; ------------------------------------------------------------------------------
 UCI_READ_LINE:
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10              ; R10 = buffer pointer
+    RLDI 10, UCI_BUFFER
 
     LDI 0
     PHI 13              ; R13.1 = count high byte = 0
@@ -137,99 +131,57 @@ UCI_PROCESS_COMMAND:
     ; Compare command with known commands
 
     ; Check "uci"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10
+    RLDI 10, UCI_BUFFER
 
-    LDI HIGH(STR_UCI)
-    PHI 11
-    LDI LOW(STR_UCI)
-    PLO 11
+    RLDI 11, STR_UCI
 
     CALL STRCMP
     LBZ UCI_CMD_UCI
 
     ; Check "isready"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10
+    RLDI 10, UCI_BUFFER
 
-    LDI HIGH(STR_ISREADY)
-    PHI 11
-    LDI LOW(STR_ISREADY)
-    PLO 11
+    RLDI 11, STR_ISREADY
 
     CALL STRCMP
     LBZ UCI_CMD_ISREADY
 
     ; Check "position"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10
+    RLDI 10, UCI_BUFFER
 
-    LDI HIGH(STR_POSITION)
-    PHI 11
-    LDI LOW(STR_POSITION)
-    PLO 11
+    RLDI 11, STR_POSITION
 
     CALL STRNCMP        ; Compare first 8 chars
     LBZ UCI_CMD_POSITION
 
     ; Check "go"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10
+    RLDI 10, UCI_BUFFER
 
-    LDI HIGH(STR_GO)
-    PHI 11
-    LDI LOW(STR_GO)
-    PLO 11
+    RLDI 11, STR_GO
 
     CALL STRNCMP
     LBZ UCI_CMD_GO
 
     ; Check "quit"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10
+    RLDI 10, UCI_BUFFER
 
-    LDI HIGH(STR_QUIT)
-    PHI 11
-    LDI LOW(STR_QUIT)
-    PLO 11
+    RLDI 11, STR_QUIT
 
     CALL STRCMP
     LBZ UCI_CMD_QUIT
 
     ; Check "ucinewgame"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10
+    RLDI 10, UCI_BUFFER
 
-    LDI HIGH(STR_UCINEWGAME)
-    PHI 11
-    LDI LOW(STR_UCINEWGAME)
-    PLO 11
+    RLDI 11, STR_UCINEWGAME
 
     CALL STRCMP
     LBZ UCI_CMD_UCINEWGAME
 
     ; Check "stop"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER)
-    PLO 10
+    RLDI 10, UCI_BUFFER
 
-    LDI HIGH(STR_STOP)
-    PHI 11
-    LDI LOW(STR_STOP)
-    PLO 11
+    RLDI 11, STR_STOP
 
     CALL STRCMP
     LBZ UCI_CMD_STOP
@@ -243,33 +195,21 @@ UCI_PROCESS_COMMAND:
 
 UCI_CMD_UCI:
     ; Send identification
-    LDI HIGH(STR_ID_NAME)
-    PHI 15
-    LDI LOW(STR_ID_NAME)
-    PLO 15
+    RLDI 15, STR_ID_NAME
     SEP 4
     DW F_MSG
 
-    LDI HIGH(STR_ID_AUTHOR)
-    PHI 15
-    LDI LOW(STR_ID_AUTHOR)
-    PLO 15
+    RLDI 15, STR_ID_AUTHOR
     SEP 4
     DW F_MSG
 
     ; Send options
-    LDI HIGH(STR_OPTION_DEPTH)
-    PHI 15
-    LDI LOW(STR_OPTION_DEPTH)
-    PLO 15
+    RLDI 15, STR_OPTION_DEPTH
     SEP 4
     DW F_MSG
 
     ; Send uciok
-    LDI HIGH(STR_UCIOK)
-    PHI 15
-    LDI LOW(STR_UCIOK)
-    PLO 15
+    RLDI 15, STR_UCIOK
     SEP 4
     DW F_MSG
 
@@ -277,10 +217,7 @@ UCI_CMD_UCI:
 
 UCI_CMD_ISREADY:
     ; Send readyok
-    LDI HIGH(STR_READYOK)
-    PHI 15
-    LDI LOW(STR_READYOK)
-    PLO 15
+    RLDI 15, STR_READYOK
     SEP 4
     DW F_MSG
 
@@ -291,10 +228,7 @@ UCI_CMD_POSITION:
     ; Format: "position startpos" or "position startpos moves e2e4 ..."
 
     ; Check if "startpos"
-    LDI HIGH(UCI_BUFFER)
-    PHI 10
-    LDI LOW(UCI_BUFFER + 9)  ; Skip "position "
-    PLO 10
+    RLDI 10, UCI_BUFFER + 9
 
     ; Check for "startpos"
     LDN 10
@@ -307,10 +241,7 @@ UCI_CMD_POSITION:
 
     ; Skip past "startpos" (8 chars) to check for " moves"
     ; Buffer now at "startpos..." - need to find " moves "
-    LDI HIGH(UCI_BUFFER + 17) ; "position startpos" = 17 chars
-    PHI 10
-    LDI LOW(UCI_BUFFER + 17)
-    PLO 10
+    RLDI 10, UCI_BUFFER + 17
 
     ; Check if there's more (should be space or null)
     LDN 10
@@ -373,10 +304,7 @@ UCI_POS_PARSE_MOVE:
     ; Store from and to in MOVE_FROM/MOVE_TO
     PLO 7               ; R7.0 = to square
 
-    LDI HIGH(MOVE_FROM)
-    PHI 8
-    LDI LOW(MOVE_FROM)
-    PLO 8
+    RLDI 8, MOVE_FROM
     GHI 7
     STR 8               ; MOVE_FROM = from
     INC 8
@@ -385,10 +313,7 @@ UCI_POS_PARSE_MOVE:
 
     ; ---- Check for promotion suffix (5th char: q/r/b/n) ----
     ; Clear UNDO_PROMOTION first (default: no promotion)
-    LDI HIGH(UNDO_PROMOTION)
-    PHI 8
-    LDI LOW(UNDO_PROMOTION)
-    PLO 8
+    RLDI 8, UNDO_PROMOTION
     LDI 0
     STR 8               ; UNDO_PROMOTION = 0
 
@@ -424,10 +349,7 @@ UCI_PROMO_DONE:
 
     ; ---- Record move in MOVE_HIST for opening book ----
     ; Calculate offset: GAME_PLY * 2
-    LDI HIGH(GAME_PLY)
-    PHI 8
-    LDI LOW(GAME_PLY)
-    PLO 8
+    RLDI 8, GAME_PLY
     LDN 8               ; D = GAME_PLY
     SHL                 ; D = GAME_PLY * 2
     PLO 9               ; R9.0 = offset
@@ -529,10 +451,7 @@ UCI_CMD_GO:
 
     ; Check for "depth " after "go "
     ; Buffer: "go depth 3" or "go" or "go infinite"
-    LDI HIGH(UCI_BUFFER + 3)  ; Skip "go "
-    PHI 10
-    LDI LOW(UCI_BUFFER + 3)
-    PLO 10
+    RLDI 10, UCI_BUFFER + 3
 
     ; Check if we have "depth"
     LDN 10
@@ -573,10 +492,7 @@ UCI_CMD_GO:
 
 UCI_GO_SET_DEPTH:
     ; Set SEARCH_DEPTH from R7.0
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH
     LDI 0
     STR 13              ; SEARCH_DEPTH high = 0
     INC 13
@@ -588,14 +504,8 @@ UCI_GO_SET_DEPTH:
     LBZ UCI_GO_SEARCH   ; D=0: no book hit, do normal search
 
     ; Book hit! Copy BOOK_MOVE to BEST_MOVE
-    LDI HIGH(BOOK_MOVE_FROM)
-    PHI 8
-    LDI LOW(BOOK_MOVE_FROM)
-    PLO 8
-    LDI HIGH(BEST_MOVE)
-    PHI 9
-    LDI LOW(BEST_MOVE)
-    PLO 9
+    RLDI 8, BOOK_MOVE_FROM
+    RLDI 9, BEST_MOVE
 
     ; Store book move in BEST_MOVE (from in high, to in low)
     LDA 8               ; BOOK_MOVE_FROM
@@ -609,10 +519,7 @@ UCI_GO_SEARCH:
     ; Clear stale promotion flag before search
     ; (opponent's promotion move leaves UNDO_PROMOTION set, which would
     ; corrupt every MAKE_MOVE during search)
-    LDI HIGH(UNDO_PROMOTION)
-    PHI 10
-    LDI LOW(UNDO_PROMOTION)
-    PLO 10
+    RLDI 10, UNDO_PROMOTION
     LDI 0
     STR 10              ; UNDO_PROMOTION = 0
 
@@ -623,10 +530,7 @@ UCI_GO_SEND_MOVE:
     ; Best move now at BEST_MOVE
 
     ; Send best move
-    LDI HIGH(STR_BESTMOVE)
-    PHI 15
-    LDI LOW(STR_BESTMOVE)
-    PLO 15
+    RLDI 15, STR_BESTMOVE
     SEP 4
     DW F_MSG
 
@@ -659,10 +563,7 @@ UCI_CMD_UCINEWGAME:
     CALL TT_CLEAR
 
     ; Reset game ply counter
-    LDI HIGH(GAME_PLY)
-    PHI 10
-    LDI LOW(GAME_PLY)
-    PLO 10
+    RLDI 10, GAME_PLY
     LDI 0
     STR 10
 
@@ -692,10 +593,7 @@ UCI_CMD_STOP:
 UCI_SEND_BEST_MOVE:
     ; BEST_MOVE contains raw from/to squares (not encoded)
     ; BEST_MOVE[0] = from square (0x88), BEST_MOVE[1] = to square (0x88)
-    LDI HIGH(BEST_MOVE)
-    PHI 10
-    LDI LOW(BEST_MOVE)
-    PLO 10
+    RLDI 10, BEST_MOVE
 
     LDA 10              ; from square (raw 0x88)
     PHI 13              ; R13.1 = from

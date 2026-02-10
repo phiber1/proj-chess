@@ -197,25 +197,16 @@ EVAL_PST:
     PLO 7               ; 7 = 0
 
     ; Point to board
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     ; Loop counter in memory (R14 is off-limits - BIOS uses it!)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDI 0
     STR 8               ; EVAL_TEMP1 = 0 (square index)
 
 EVAL_PST_LOOP:
     ; Check if valid square (load from memory)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDN 8               ; D = square index
     ANI $88
     LBNZ EVAL_PST_NEXT_SQ
@@ -232,10 +223,7 @@ EVAL_PST_LOOP:
     PLO 13               ; D.0 = piece type (1-6)
 
     ; Get PST table address for this piece type
-    LDI HIGH(PST_TABLE_LO)
-    PHI 11
-    LDI LOW(PST_TABLE_LO)
-    PLO 11
+    RLDI 11, PST_TABLE_LO
     GLO 13               ; Piece type
     STR 2
     GLO 11
@@ -244,10 +232,7 @@ EVAL_PST_LOOP:
     LDN 11               ; D = low byte of PST address
     PHI 13               ; Save in D.1 temporarily
 
-    LDI HIGH(PST_TABLE_HI)
-    PHI 11
-    LDI LOW(PST_TABLE_HI)
-    PLO 11
+    RLDI 11, PST_TABLE_HI
     GLO 13               ; Piece type (still in D.0? No, need to reload)
     GLO 15               ; Get piece back
     ANI PIECE_MASK
@@ -264,10 +249,7 @@ EVAL_PST_LOOP:
     ; Index = (rank * 8) + file
     ; For 0x88: rank = sq >> 4, file = sq & 7
     ; Load square from memory (R14 is off-limits!)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDN 8               ; D = square (0x88 format)
     STXD                ; Save square on stack for reuse
     ANI $07             ; File (0-7)
@@ -350,10 +332,7 @@ EVAL_PST_ADD_WHITE:
 EVAL_PST_NEXT_SQ:
     INC 10               ; Next board position
     ; Increment square index in memory (R14 is off-limits!)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDN 8               ; D = square index
     ADI 1               ; Increment
     STR 8               ; Store back

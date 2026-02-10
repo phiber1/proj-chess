@@ -162,10 +162,7 @@ POP16_RC:
 ; ------------------------------------------------------------------------------
 SAVE_PLY_STATE:
     ; Get current ply and calculate frame address
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply (0-7)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2
@@ -232,10 +229,7 @@ SAVE_PLY_STATE:
 ; ------------------------------------------------------------------------------
 RESTORE_PLY_STATE:
     ; Get current ply and calculate frame address
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply (0-7)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2

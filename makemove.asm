@@ -16,16 +16,10 @@
 ; ==============================================================================
 MAKE_MOVE:
     ; Save undo information
-    LDI HIGH(UNDO_FROM)
-    PHI 8
-    LDI LOW(UNDO_FROM)
-    PLO 8
+    RLDI 8, UNDO_FROM
 
     ; Save from square
-    LDI HIGH(MOVE_FROM)
-    PHI 9
-    LDI LOW(MOVE_FROM)
-    PLO 9
+    RLDI 9, MOVE_FROM
     LDN 9
     STR 8
     INC 8
@@ -37,10 +31,7 @@ MAKE_MOVE:
     INC 8
     
     ; Save castling rights from GAME_STATE + STATE_CASTLING
-    LDI HIGH(GAME_STATE)
-    PHI 9
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 9
+    RLDI 9, GAME_STATE + STATE_CASTLING
     LDN 9
     STR 8
     INC 8
@@ -57,10 +48,7 @@ MAKE_MOVE:
     STR 8
 
     ; Get the piece being moved
-    LDI HIGH(MOVE_FROM)
-    PHI 9
-    LDI LOW(MOVE_FROM)
-    PLO 9
+    RLDI 9, MOVE_FROM
     LDN 9               ; D = from square index
     PLO 8
     LDI HIGH(BOARD)
@@ -69,10 +57,7 @@ MAKE_MOVE:
     PLO 10              ; Save moving piece in R10.0
 
     ; Get captured piece at destination
-    LDI HIGH(MOVE_TO)
-    PHI 9
-    LDI LOW(MOVE_TO)
-    PLO 9
+    RLDI 9, MOVE_TO
     LDN 9               ; D = to square index
     PLO 8
     LDI HIGH(BOARD)
@@ -81,10 +66,7 @@ MAKE_MOVE:
     
     ; Save captured piece
     PHI 10              ; Save in R10.1
-    LDI HIGH(UNDO_CAPTURED)
-    PHI 9
-    LDI LOW(UNDO_CAPTURED)
-    PLO 9
+    RLDI 9, UNDO_CAPTURED
     GHI 10
     STR 9
 
@@ -97,10 +79,7 @@ MAKE_MOVE:
     ; =========================================
     ; Check UNDO_PROMOTION - if non-zero, replace pawn with promoted piece
     ; R8 still points to BOARD[to], R10.0 = moving piece
-    LDI HIGH(UNDO_PROMOTION)
-    PHI 9
-    LDI LOW(UNDO_PROMOTION)
-    PLO 9
+    RLDI 9, UNDO_PROMOTION
     LDN 9               ; D = promotion piece type (0 if none)
     LBZ MM_NOT_PROMOTION
 
@@ -133,25 +112,16 @@ MM_NOT_PROMOTION:
 
 MM_WHITE_KING:
     ; Update STATE_W_KING_SQ with MOVE_TO
-    LDI HIGH(GAME_STATE)
-    PHI 9
-    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
-    PLO 9
+    RLDI 9, GAME_STATE + STATE_W_KING_SQ
     BR MM_STORE_KING
 
 MM_BLACK_KING:
     ; Update STATE_B_KING_SQ with MOVE_TO
-    LDI HIGH(GAME_STATE)
-    PHI 9
-    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
-    PLO 9
+    RLDI 9, GAME_STATE + STATE_B_KING_SQ
 
 MM_STORE_KING:
     ; Get MOVE_TO and store as new king square
-    LDI HIGH(MOVE_TO)
-    PHI 8
-    LDI LOW(MOVE_TO)
-    PLO 8
+    RLDI 8, MOVE_TO
     LDN 8               ; D = to square
     STR 9               ; Store as new king position
 
@@ -177,10 +147,7 @@ MM_DO_CLEAR_CASTLE:
 
     ; Reload R10 (clobbered by CLEAR_CASTLING_RIGHT)
     ; R10.0 = moving piece from BOARD[MOVE_TO]
-    LDI HIGH(MOVE_TO)
-    PHI 9
-    LDI LOW(MOVE_TO)
-    PLO 9
+    RLDI 9, MOVE_TO
     LDN 9               ; D = to square
     PLO 8
     LDI HIGH(BOARD)
@@ -188,10 +155,7 @@ MM_DO_CLEAR_CASTLE:
     LDN 8               ; D = moving piece (king)
     PLO 10              ; R10.0 = moving piece
     ; R10.1 = captured piece from UNDO_CAPTURED
-    LDI HIGH(UNDO_CAPTURED)
-    PHI 9
-    LDI LOW(UNDO_CAPTURED)
-    PLO 9
+    RLDI 9, UNDO_CAPTURED
     LDN 9               ; D = captured piece
     PHI 10              ; R10.1 = captured piece
 
@@ -199,21 +163,12 @@ MM_DO_CLEAR_CASTLE:
     ; CASTLING ROOK MOVEMENT
     ; =========================================
     ; Detect: to - from = $02 (kingside) or $FE (queenside)
-    LDI HIGH(COMPARE_TEMP)
-    PHI 9
-    LDI LOW(COMPARE_TEMP)
-    PLO 9
-    LDI HIGH(UNDO_FROM)
-    PHI 8
-    LDI LOW(UNDO_FROM)
-    PLO 8
+    RLDI 9, COMPARE_TEMP
+    RLDI 8, UNDO_FROM
     LDN 8               ; D = from square
     SEX 9
     STR 9               ; M(COMPARE_TEMP) = from
-    LDI HIGH(UNDO_TO)
-    PHI 8
-    LDI LOW(UNDO_TO)
-    PLO 8
+    RLDI 8, UNDO_TO
     LDN 8               ; D = to square
     SM                   ; D = to - from
     SEX 2
@@ -226,10 +181,7 @@ MM_DO_CLEAR_CASTLE:
 
 MM_CASTLE_KS:
     ; Kingside: rook from to+1 (h-file) to to-1 (f-file)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
 
     ; Read rook from BOARD[to+1]
@@ -260,10 +212,7 @@ MM_CASTLE_KS:
     CALL HASH_XOR_PIECE_SQ
 
     ; Hash: XOR in [rook, to-1] (R8.0 preserved by HASH_XOR)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
     SMI 1                ; D = to - 1 (rook's new square)
     PHI 8               ; R8.1 = new rook square
@@ -273,10 +222,7 @@ MM_CASTLE_KS:
 
 MM_CASTLE_QS:
     ; Queenside: rook from to-2 (a-file) to to+1 (d-file)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
 
     ; Read rook from BOARD[to-2]
@@ -307,10 +253,7 @@ MM_CASTLE_QS:
     CALL HASH_XOR_PIECE_SQ
 
     ; Hash: XOR in [rook, to+1] (R8.0 preserved by HASH_XOR)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
     ADI 1                ; D = to + 1 (rook's new square)
     PHI 8               ; R8.1 = new rook square
@@ -318,30 +261,21 @@ MM_CASTLE_QS:
 
 MM_CASTLE_DONE:
     ; Reload R10 (clobbered by HASH_XOR_PIECE_SQ)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
     PLO 8
     LDI HIGH(BOARD)
     PHI 8               ; R8 = &BOARD[to]
     LDN 8               ; D = king piece
     PLO 10              ; R10.0 = moving piece
-    LDI HIGH(UNDO_CAPTURED)
-    PHI 9
-    LDI LOW(UNDO_CAPTURED)
-    PLO 9
+    RLDI 9, UNDO_CAPTURED
     LDN 9               ; D = captured piece
     PHI 10              ; R10.1 = captured piece
     ; Fall through to MM_NOT_KING
 
 MM_NOT_KING:
     ; Clear the from square
-    LDI HIGH(MOVE_FROM)
-    PHI 9
-    LDI LOW(MOVE_FROM)
-    PLO 9
+    RLDI 9, MOVE_FROM
     LDN 9               ; D = from square
     PLO 8
     LDI HIGH(BOARD)
@@ -350,10 +284,7 @@ MM_NOT_KING:
     STR 8               ; Clear from square
 
     ; Toggle side to move
-    LDI HIGH(SIDE)
-    PHI 8
-    LDI LOW(SIDE)
-    PLO 8
+    RLDI 8, SIDE
     LDN 8
     XRI BLACK           ; Toggle between 0 and 8
     STR 8
@@ -403,10 +334,7 @@ MM_RESET_HALFMOVE:
     ; TO: rook captured on home square (opponent castling revoked)
     ; R10 is no longer needed (halfmove done), safe to clobber.
 MM_ROOK_CHECK:
-    LDI HIGH(UNDO_FROM)
-    PHI 9
-    LDI LOW(UNDO_FROM)
-    PLO 9
+    RLDI 9, UNDO_FROM
     LDA 9               ; D = from square, R9 advances to UNDO_TO
     CALL MM_ROOK_HOME_CHECK
     LDN 9               ; D = to square (R9 already at UNDO_TO)
@@ -427,18 +355,12 @@ MM_DONE:
 
     ; --- Step 1: XOR out [moving piece, from] ---
     ; Check if this was a promotion
-    LDI HIGH(UNDO_PROMOTION)
-    PHI 10
-    LDI LOW(UNDO_PROMOTION)
-    PLO 10
+    RLDI 10, UNDO_PROMOTION
     LDN 10              ; D = promotion type (0 if none)
     LBZ MM_HASH_NOT_PROMO
 
     ; Promotion: original piece was a pawn. Get color from BOARD[to].
-    LDI HIGH(UNDO_TO)
-    PHI 10
-    LDI LOW(UNDO_TO)
-    PLO 10
+    RLDI 10, UNDO_TO
     LDN 10              ; D = to_square
     ADI LOW(BOARD)
     PLO 10
@@ -453,10 +375,7 @@ MM_DONE:
 
 MM_HASH_NOT_PROMO:
     ; Normal move: get moving piece from BOARD[UNDO_TO]
-    LDI HIGH(UNDO_TO)
-    PHI 10
-    LDI LOW(UNDO_TO)
-    PLO 10
+    RLDI 10, UNDO_TO
     LDN 10              ; D = to_square
     ADI LOW(BOARD)
     PLO 10
@@ -468,37 +387,25 @@ MM_HASH_NOT_PROMO:
 
 MM_HASH_GOT_PIECE:
     ; Get from square
-    LDI HIGH(UNDO_FROM)
-    PHI 10
-    LDI LOW(UNDO_FROM)
-    PLO 10
+    RLDI 10, UNDO_FROM
     LDN 10              ; D = from_square
     PHI 8               ; R8.1 = from_square
     CALL HASH_XOR_PIECE_SQ
 
     ; --- Step 2: XOR out [captured, to] ---
     ; Get captured piece from UNDO_CAPTURED
-    LDI HIGH(UNDO_CAPTURED)
-    PHI 10
-    LDI LOW(UNDO_CAPTURED)
-    PLO 10
+    RLDI 10, UNDO_CAPTURED
     LDN 10              ; D = captured piece
     PLO 8               ; R8.0 = captured piece
     ; Get to square
-    LDI HIGH(UNDO_TO)
-    PHI 10
-    LDI LOW(UNDO_TO)
-    PLO 10
+    RLDI 10, UNDO_TO
     LDN 10              ; D = to_square
     PHI 8               ; R8.1 = to_square
     CALL HASH_XOR_PIECE_SQ  ; skips if captured == EMPTY
 
     ; --- Step 3: XOR in [moving piece, to] ---
     ; Get to square first (need for R8.1 and BOARD index)
-    LDI HIGH(UNDO_TO)
-    PHI 10
-    LDI LOW(UNDO_TO)
-    PLO 10
+    RLDI 10, UNDO_TO
     LDN 10              ; D = to_square
     PHI 8               ; R8.1 = to_square
     ; Compute BOARD[to_square]
@@ -562,10 +469,7 @@ MMRHC_CLEAR:
 ; ==============================================================================
 UNMAKE_MOVE:
     ; Get moving piece from to square
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
     PLO 8
     LDI HIGH(BOARD)
@@ -574,10 +478,7 @@ UNMAKE_MOVE:
     PLO 10              ; Save in R10.0
 
     ; Restore captured piece at to square
-    LDI HIGH(UNDO_CAPTURED)
-    PHI 9
-    LDI LOW(UNDO_CAPTURED)
-    PLO 9
+    RLDI 9, UNDO_CAPTURED
     LDN 9               ; Get captured piece
     STR 8               ; Put back at to square
 
@@ -586,10 +487,7 @@ UNMAKE_MOVE:
     ; =========================================
     ; If UNDO_PROMOTION != 0, restore pawn instead of promoted piece
     ; R10.0 = piece from BOARD[to] (promoted piece if promotion)
-    LDI HIGH(UNDO_PROMOTION)
-    PHI 9
-    LDI LOW(UNDO_PROMOTION)
-    PLO 9
+    RLDI 9, UNDO_PROMOTION
     LDN 9               ; D = promotion type (0 if none)
     LBZ UM_NOT_PROMOTION
 
@@ -601,10 +499,7 @@ UNMAKE_MOVE:
 
 UM_NOT_PROMOTION:
     ; Put moving piece back at from square
-    LDI HIGH(UNDO_FROM)
-    PHI 9
-    LDI LOW(UNDO_FROM)
-    PLO 9
+    RLDI 9, UNDO_FROM
     LDN 9               ; D = from square
     PLO 8
     LDI HIGH(BOARD)
@@ -630,25 +525,16 @@ UM_NOT_PROMOTION:
 
 UM_WHITE_KING:
     ; Update STATE_W_KING_SQ with UNDO_FROM
-    LDI HIGH(GAME_STATE)
-    PHI 9
-    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
-    PLO 9
+    RLDI 9, GAME_STATE + STATE_W_KING_SQ
     BR UM_STORE_KING
 
 UM_BLACK_KING:
     ; Update STATE_B_KING_SQ with UNDO_FROM
-    LDI HIGH(GAME_STATE)
-    PHI 9
-    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
-    PLO 9
+    RLDI 9, GAME_STATE + STATE_B_KING_SQ
 
 UM_STORE_KING:
     ; Get UNDO_FROM and store as restored king square
-    LDI HIGH(UNDO_FROM)
-    PHI 8
-    LDI LOW(UNDO_FROM)
-    PLO 8
+    RLDI 8, UNDO_FROM
     LDN 8               ; D = from square
     STR 9               ; Restore king position
 
@@ -656,21 +542,12 @@ UM_STORE_KING:
     ; CASTLING ROOK UNDO
     ; =========================================
     ; Detect: to - from = $02 (kingside) or $FE (queenside)
-    LDI HIGH(COMPARE_TEMP)
-    PHI 9
-    LDI LOW(COMPARE_TEMP)
-    PLO 9
-    LDI HIGH(UNDO_FROM)
-    PHI 8
-    LDI LOW(UNDO_FROM)
-    PLO 8
+    RLDI 9, COMPARE_TEMP
+    RLDI 8, UNDO_FROM
     LDN 8               ; D = from square
     SEX 9
     STR 9               ; M(COMPARE_TEMP) = from
-    LDI HIGH(UNDO_TO)
-    PHI 8
-    LDI LOW(UNDO_TO)
-    PLO 8
+    RLDI 8, UNDO_TO
     LDN 8               ; D = to square
     SM                   ; D = to - from
     SEX 2
@@ -683,10 +560,7 @@ UM_STORE_KING:
 
 UM_CASTLE_KS:
     ; Kingside undo: rook from to-1 (f-file) back to to+1 (h-file)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
 
     ; Read rook from BOARD[to-1]
@@ -717,10 +591,7 @@ UM_CASTLE_KS:
     CALL HASH_XOR_PIECE_SQ
 
     ; Hash: XOR [rook, to+1] (R8.0 preserved)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
     ADI 1                ; D = to + 1
     PHI 8               ; R8.1 = h1/h8
@@ -730,10 +601,7 @@ UM_CASTLE_KS:
 
 UM_CASTLE_QS:
     ; Queenside undo: rook from to+1 (d-file) back to to-2 (a-file)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
 
     ; Read rook from BOARD[to+1]
@@ -764,10 +632,7 @@ UM_CASTLE_QS:
     CALL HASH_XOR_PIECE_SQ
 
     ; Hash: XOR [rook, to-2] (R8.0 preserved)
-    LDI HIGH(UNDO_TO)
-    PHI 9
-    LDI LOW(UNDO_TO)
-    PLO 9
+    RLDI 9, UNDO_TO
     LDN 9               ; D = to square
     SMI 2                ; D = to - 2
     PHI 8               ; R8.1 = a1/a8
@@ -775,43 +640,28 @@ UM_CASTLE_QS:
 
 UM_NOT_KING:
     ; Restore castling rights to GAME_STATE + STATE_CASTLING
-    LDI HIGH(UNDO_CASTLING)
-    PHI 9
-    LDI LOW(UNDO_CASTLING)
-    PLO 9
+    RLDI 9, UNDO_CASTLING
     LDN 9
     PHI 10              ; Save in R10.1
 
-    LDI HIGH(GAME_STATE)
-    PHI 8
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 8
+    RLDI 8, GAME_STATE + STATE_CASTLING
     GHI 10
     STR 8
 
     ; Restore en passant square to GAME_STATE + STATE_EP_SQUARE
-    LDI HIGH(UNDO_EP)
-    PHI 9
-    LDI LOW(UNDO_EP)
-    PLO 9
+    RLDI 9, UNDO_EP
     LDN 9
     INC 8               ; Point to EP_SQUARE ($6082)
     STR 8
 
     ; Restore halfmove clock to GAME_STATE + STATE_HALFMOVE
-    LDI HIGH(UNDO_HALFMOVE)
-    PHI 9
-    LDI LOW(UNDO_HALFMOVE)
-    PLO 9
+    RLDI 9, UNDO_HALFMOVE
     LDN 9
     INC 8               ; Point to HALFMOVE ($6083)
     STR 8
 
     ; Toggle side to move back
-    LDI HIGH(SIDE)
-    PHI 8
-    LDI LOW(SIDE)
-    PLO 8
+    RLDI 8, SIDE
     LDN 8
     XRI BLACK           ; Toggle between 0 and 8
     STR 8
@@ -827,19 +677,13 @@ UM_NOT_KING:
 
     ; --- Step 1: XOR out [piece that WAS at to], to ---
     ; Check if this was a promotion
-    LDI HIGH(UNDO_PROMOTION)
-    PHI 10
-    LDI LOW(UNDO_PROMOTION)
-    PLO 10
+    RLDI 10, UNDO_PROMOTION
     LDN 10              ; D = promotion type (0 if none)
     LBZ UM_HASH_NOT_PROMO
 
     ; Promotion: XOR out [promoted_piece, to]
     ; Get color from BOARD[from] (the pawn), combine with promotion type
-    LDI HIGH(UNDO_FROM)
-    PHI 10
-    LDI LOW(UNDO_FROM)
-    PLO 10
+    RLDI 10, UNDO_FROM
     LDN 10              ; D = from_square
     ADI LOW(BOARD)
     PLO 10
@@ -849,10 +693,7 @@ UM_NOT_KING:
     LDN 10              ; D = pawn
     ANI COLOR_MASK      ; Get color
     PLO 8               ; R8.0 = color (temp)
-    LDI HIGH(UNDO_PROMOTION)
-    PHI 10
-    LDI LOW(UNDO_PROMOTION)
-    PLO 10
+    RLDI 10, UNDO_PROMOTION
     LDN 10              ; D = promotion piece type
     STR 2               ; Save on stack
     GLO 8               ; D = color
@@ -863,10 +704,7 @@ UM_NOT_KING:
 UM_HASH_NOT_PROMO:
     ; Normal move: XOR out [moving piece, to]
     ; Moving piece is now at BOARD[UNDO_FROM]
-    LDI HIGH(UNDO_FROM)
-    PHI 10
-    LDI LOW(UNDO_FROM)
-    PLO 10
+    RLDI 10, UNDO_FROM
     LDN 10              ; D = from_square
     ADI LOW(BOARD)
     PLO 10
@@ -878,37 +716,25 @@ UM_HASH_NOT_PROMO:
 
 UM_HASH_GOT_PIECE:
     ; Get to square
-    LDI HIGH(UNDO_TO)
-    PHI 10
-    LDI LOW(UNDO_TO)
-    PLO 10
+    RLDI 10, UNDO_TO
     LDN 10              ; D = to_square
     PHI 8               ; R8.1 = to_square
     CALL HASH_XOR_PIECE_SQ
 
     ; --- Step 2: XOR in [captured, to] ---
     ; Captured piece is in UNDO_CAPTURED
-    LDI HIGH(UNDO_CAPTURED)
-    PHI 10
-    LDI LOW(UNDO_CAPTURED)
-    PLO 10
+    RLDI 10, UNDO_CAPTURED
     LDN 10              ; D = captured piece
     PLO 8               ; R8.0 = captured piece
     ; Get to square
-    LDI HIGH(UNDO_TO)
-    PHI 10
-    LDI LOW(UNDO_TO)
-    PLO 10
+    RLDI 10, UNDO_TO
     LDN 10              ; D = to_square
     PHI 8               ; R8.1 = to_square
     CALL HASH_XOR_PIECE_SQ  ; skips if captured == EMPTY
 
     ; --- Step 3: XOR in [moving piece, from] ---
     ; Moving piece is at BOARD[UNDO_FROM]
-    LDI HIGH(UNDO_FROM)
-    PHI 10
-    LDI LOW(UNDO_FROM)
-    PLO 10
+    RLDI 10, UNDO_FROM
     LDN 10              ; D = from_square
     PHI 8               ; R8.1 = from_square
     ; Compute BOARD[from_square]
@@ -936,32 +762,20 @@ UM_HASH_GOT_PIECE:
 ; ==============================================================================
 NULL_MAKE_MOVE:
     ; Save EP square to NULL_SAVED_EP
-    LDI HIGH(GAME_STATE + STATE_EP_SQUARE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_EP_SQUARE
     LDN 10              ; D = current EP square
     PLO 7               ; Save in R7.0
-    LDI HIGH(NULL_SAVED_EP)
-    PHI 10
-    LDI LOW(NULL_SAVED_EP)
-    PLO 10
+    RLDI 10, NULL_SAVED_EP
     GLO 7
     STR 10              ; NULL_SAVED_EP = old EP
 
     ; Clear EP square (no EP after null move)
-    LDI HIGH(GAME_STATE + STATE_EP_SQUARE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_EP_SQUARE
     LDI $FF             ; Invalid EP
     STR 10
 
     ; Toggle side to move
-    LDI HIGH(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     LDN 10
     XRI $08             ; Toggle 0 <-> 8
     STR 10
@@ -980,25 +794,16 @@ NULL_MAKE_MOVE:
 ; ==============================================================================
 NULL_UNMAKE_MOVE:
     ; Toggle side back
-    LDI HIGH(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     LDN 10
     XRI $08             ; Toggle 8 <-> 0
     STR 10
 
     ; Restore EP square from NULL_SAVED_EP
-    LDI HIGH(NULL_SAVED_EP)
-    PHI 10
-    LDI LOW(NULL_SAVED_EP)
-    PLO 10
+    RLDI 10, NULL_SAVED_EP
     LDN 10              ; D = saved EP
     PLO 7               ; Save in R7.0
-    LDI HIGH(GAME_STATE + STATE_EP_SQUARE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_EP_SQUARE
     GLO 7
     STR 10              ; Restore EP
 

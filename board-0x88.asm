@@ -391,10 +391,7 @@ H8  EQU SQ_H8
 ; ==============================================================================
 INIT_BOARD:
     ; Clear entire 128-byte board to empty
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     LDI 128
     PLO 13
@@ -408,10 +405,7 @@ INIT_CLEAR:
     BNZ INIT_CLEAR
 
     ; Set up white back rank (rank 1 = offset $00)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     LDI W_ROOK
     STR 10
@@ -438,10 +432,7 @@ INIT_CLEAR:
     STR 10
 
     ; Set up white pawns (rank 2 = offset $10)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD + $10)
-    PLO 10
+    RLDI 10, BOARD + $10
 
     LDI 8
     PLO 13
@@ -454,10 +445,7 @@ INIT_WP:
     LBNZ INIT_WP        ; Long branch - target may cross page boundary
 
     ; Set up black pawns (rank 7 = offset $60)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD + $60)
-    PLO 10
+    RLDI 10, BOARD + $60
 
     LDI 8
     PLO 13
@@ -470,10 +458,7 @@ INIT_BP:
     BNZ INIT_BP
 
     ; Set up black back rank (rank 8 = offset $70)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD + $70)
-    PLO 10
+    RLDI 10, BOARD + $70
 
     LDI B_ROOK
     STR 10
@@ -500,10 +485,7 @@ INIT_BP:
     STR 10
 
     ; Initialize game state
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE)
-    PLO 10
+    RLDI 10, GAME_STATE
 
     LDI WHITE
     STR 10               ; Side to move = white
@@ -545,10 +527,7 @@ INIT_BP:
 ; Uses: A
 ; ==============================================================================
 GET_SIDE_TO_MOVE:
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     LDN 10
     RETN
 
@@ -560,10 +539,7 @@ GET_SIDE_TO_MOVE:
 ; ==============================================================================
 SET_SIDE_TO_MOVE:
     STXD                ; Save D
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     IRX
     LDN 2
     STR 10
@@ -575,10 +551,7 @@ SET_SIDE_TO_MOVE:
 ; Uses: A, D
 ; ==============================================================================
 FLIP_SIDE:
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     LDN 10
     XRI BLACK           ; Toggle between 0 and 8
     STR 10
@@ -591,10 +564,7 @@ FLIP_SIDE:
 ; Uses: A
 ; ==============================================================================
 GET_CASTLING_RIGHTS:
-    LDI HIGH(GAME_STATE)
-    PHI 13                  ; Use R13, not R10 (R10 is board scan pointer!)
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 13
+    RLDI 13, GAME_STATE + STATE_CASTLING
     LDN 13
     RETN
 
@@ -608,10 +578,7 @@ CLEAR_CASTLING_RIGHT:
     XRI $FF             ; Invert to create mask
     PLO 13              ; Save mask in R13.0
 
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_CASTLING
 
     SEX 10              ; Point X to castling rights
     GLO 13              ; Get mask
@@ -654,10 +621,7 @@ GET_PIECE_INVALID:
 ; ==============================================================================
 INIT_MOVE_HISTORY:
     ; Set HISTORY_PTR to point to start of MOVE_HIST buffer
-    LDI HIGH(HISTORY_PTR)
-    PHI 10
-    LDI LOW(HISTORY_PTR)
-    PLO 10
+    RLDI 10, HISTORY_PTR
     LDI HIGH(MOVE_HIST)
     STR 10              ; HISTORY_PTR high byte = $60
     INC 10
@@ -665,10 +629,7 @@ INIT_MOVE_HISTORY:
     STR 10              ; HISTORY_PTR low byte = $90
 
     ; Clear GAME_PLY for opening book tracking
-    LDI HIGH(GAME_PLY)
-    PHI 10
-    LDI LOW(GAME_PLY)
-    PLO 10
+    RLDI 10, GAME_PLY
     LDI 0
     STR 10              ; GAME_PLY = 0
     RETN

@@ -53,16 +53,10 @@ EVALUATE:
     PLO 9              ; R9 = 0 (score accumulator)
 
     ; Scan board and count material
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10              ; A = board start
+    RLDI 10, BOARD
 
     ; Initialize square counter in memory (avoid R14!)
-    LDI HIGH(EVAL_SQ_INDEX)
-    PHI 13
-    LDI LOW(EVAL_SQ_INDEX)
-    PLO 13
+    RLDI 13, EVAL_SQ_INDEX
     LDI 0
     STR 13              ; EVAL_SQ_INDEX = 0
 
@@ -150,18 +144,14 @@ EVAL_DONE:
     ; Add piece-square table bonuses
     CALL EVAL_PST
 
-    ; TEMP: skip pawn shield to isolate PST fix
+    ; Pawn shield DISABLED — overhead pushes depth 3 past 90s time budget,
+    ; causing fallback to depth 2. Need lighter-weight king safety (open-file
+    ; penalty) or 1806 RLDI speedup before re-enabling eval features.
     LBR BKS_DONE
-
-    ; Add king safety (pawn shield) bonuses
-    ; R9 = current score (material + PST)
 
     ; === White King Pawn Shield ===
     ; Load white king square
-    LDI HIGH(GAME_STATE + STATE_W_KING_SQ)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_W_KING_SQ
     LDN 10                      ; D = white king 0x88 square
     ANI $70                     ; Isolate rank bits
     LBNZ WKS_DONE               ; Rank != 0 (not on back rank), skip
@@ -191,9 +181,9 @@ EVAL_DONE:
     LDN 10                      ; D = piece at square
     XRI W_PAWN
     LBNZ WKS_SKIP_CENTER
-    ; White pawn found — add 8 to score
+    ; White pawn found — add 4 to score
     GLO 9
-    ADI 8
+    ADI 4
     PLO 9
     GHI 9
     ADCI 0
@@ -220,7 +210,7 @@ WKS_SKIP_CENTER:
     XRI W_PAWN
     LBNZ WKS_SKIP_LEFT
     GLO 9
-    ADI 8
+    ADI 4
     PLO 9
     GHI 9
     ADCI 0
@@ -247,7 +237,7 @@ WKS_SKIP_LEFT:
     XRI W_PAWN
     LBNZ WKS_DONE
     GLO 9
-    ADI 8
+    ADI 4
     PLO 9
     GHI 9
     ADCI 0
@@ -257,10 +247,7 @@ WKS_DONE:
 
     ; === Black King Pawn Shield ===
     ; Load black king square
-    LDI HIGH(GAME_STATE + STATE_B_KING_SQ)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_B_KING_SQ
     LDN 10                      ; D = black king 0x88 square
     ANI $70                     ; Isolate rank bits
     XRI $70
@@ -290,9 +277,9 @@ WKS_DONE:
     LDN 10
     XRI B_PAWN
     LBNZ BKS_SKIP_CENTER
-    ; Black pawn found — subtract 8 from score (benefits black)
+    ; Black pawn found — subtract 4 from score (benefits black)
     GLO 9
-    SMI 8
+    SMI 4
     PLO 9
     GHI 9
     SMBI 0
@@ -319,7 +306,7 @@ BKS_SKIP_CENTER:
     XRI B_PAWN
     LBNZ BKS_SKIP_LEFT
     GLO 9
-    SMI 8
+    SMI 4
     PLO 9
     GHI 9
     SMBI 0
@@ -346,7 +333,7 @@ BKS_SKIP_LEFT:
     XRI B_PAWN
     LBNZ BKS_DONE
     GLO 9
-    SMI 8
+    SMI 4
     PLO 9
     GHI 9
     SMBI 0
@@ -397,16 +384,10 @@ EVAL_WITH_PST:
     STXD
 
     ; Scan board again for PST bonuses
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     ; Initialize square counter in memory (avoid R14!)
-    LDI HIGH(EVAL_SQ_INDEX)
-    PHI 13
-    LDI LOW(EVAL_SQ_INDEX)
-    PLO 13
+    RLDI 13, EVAL_SQ_INDEX
     LDI 0
     STR 13              ; Square counter = 0
     PHI 8

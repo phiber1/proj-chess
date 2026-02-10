@@ -33,25 +33,16 @@ GENERATE_MOVES:
     GHI 9
     PHI 15              ; F = move list start
 
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     ; Store scan index in memory (BIOS clobbers R14.0)
-    LDI HIGH(GM_SCAN_IDX)
-    PHI 8
-    LDI LOW(GM_SCAN_IDX)
-    PLO 8
+    RLDI 8, GM_SCAN_IDX
     LDI 0
     STR 8               ; scan index = 0
 
 GEN_SCAN_BOARD:
     ; Load scan index from memory
-    LDI HIGH(GM_SCAN_IDX)
-    PHI 8
-    LDI LOW(GM_SCAN_IDX)
-    PLO 8
+    RLDI 8, GM_SCAN_IDX
     LDN 8               ; D = scan index
     ANI $88
     LBNZ GEN_SKIP_SQUARE
@@ -67,10 +58,7 @@ GEN_SCAN_BOARD:
     LBNZ GEN_SKIP_SQUARE  ; Skip if colors don't match
 
     ; Store from square in R11.1 before dispatching
-    LDI HIGH(GM_SCAN_IDX)
-    PHI 8
-    LDI LOW(GM_SCAN_IDX)
-    PLO 8
+    RLDI 8, GM_SCAN_IDX
     LDN 8
     PHI 11              ; R11.1 = from square (survives CALLs)
 
@@ -93,10 +81,7 @@ GEN_SCAN_BOARD:
 GEN_SKIP_SQUARE:
     INC 10
     ; Increment scan index in memory
-    LDI HIGH(GM_SCAN_IDX)
-    PHI 8
-    LDI LOW(GM_SCAN_IDX)
-    PLO 8
+    RLDI 8, GM_SCAN_IDX
     LDN 8
     ADI 1
     STR 8
