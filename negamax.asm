@@ -137,9 +137,9 @@ RTC_DELTA_POS:
 RTC_NO_SAT:
     STR 13                      ; SEARCH_ELAPSED = updated value
 
-    ; Check: elapsed >= 90 seconds?
-    SMI 90                      ; D = elapsed - 90
-    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 90, continue
+    ; Check: elapsed >= 120 seconds?
+    SMI 120                     ; D = elapsed - 120
+    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 120, continue
 
     ; Time exceeded — set abort flag
     RLDI 13, SEARCH_ABORTED
@@ -769,7 +769,12 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     XRI 1               ; Check if depth == 1
     LBNZ NEGAMAX_SKIP_FUTILITY  ; Not depth 1, skip
 
-    ; Depth == 1: Cache static eval for futility pruning
+    ; Don't enable futility when in check — static eval is meaningless
+    ; and all responses are forced (must escape check)
+    CALL IS_IN_CHECK
+    LBNZ NEGAMAX_SKIP_FUTILITY  ; In check, skip futility entirely
+
+    ; Depth == 1, not in check: Cache static eval for futility pruning
     CALL EVALUATE       ; Returns score in R9
     ; Store in STATIC_EVAL (big-endian)
     RLDI 10, STATIC_EVAL_HI
@@ -888,11 +893,11 @@ LMR_CAPTURE_DONE:
     ; by parent before recursion), so check SEARCH_DEPTH == 1 directly.
     ; This matches the futility setup code which also checks depth == 1.
 
-    ; Check: is remaining depth == 1? (SEARCH_DEPTH low byte)
-    RLDI 10, SEARCH_DEPTH + 1
-    LDN 10              ; D = SEARCH_DEPTH low byte (remaining depth)
-    XRI 1               ; Check if depth == 1
-    LBNZ NEGAMAX_NOT_FUTILE  ; Not frontier node, skip futility
+    ; Check: is futility pruning enabled for this node?
+    ; (Setup only enables it at depth 1 AND not in check)
+    RLDI 10, FUTILITY_OK
+    LDN 10
+    LBZ NEGAMAX_NOT_FUTILE  ; Futility not enabled, skip
 
     ; Check if move is a capture (target square non-empty)
     RLDI 10, MOVE_TO
@@ -3097,6 +3102,12 @@ SEARCH_POSITION:
     RLDI 10, SEARCH_ABORTED
     LDI 0
     STR 10
+
+    ; --- Clear TT to avoid stale cross-move entries ---
+    ; With only 256 entries and 16-bit hash, collisions accumulate over
+    ; multiple moves and poison the search with wrong cached scores.
+    ; Clearing per-search preserves within-move ID benefits (d1→d2→d3).
+    CALL TT_CLEAR
 
     ; --- Clear ITER_BEST (no bestmove yet) ---
     RLDI 10, ITER_BEST_FROM

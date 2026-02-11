@@ -14,9 +14,9 @@
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
 - **CDP1806 RLDI Migration:** 401 conversions across 15 files, 799 bytes saved (5.9%)
 - **Transposition Table:** Fixed (Feb 10) — depth store bug + per-ply bound flags (EXACT-only probe)
-- **Depth 3:** ~59 seconds opening; late-game sub-second with TT hits (35-89 nodes)
+- **Depth 3:** ~59s opening, ~120s middlegame; TT per-search cleared to avoid cross-move collisions
 - **Depth 4:** Playable in 18-43 seconds with Null Move Pruning
-- **Iterative Deepening:** SEARCH_POSITION loops d1→d2→d3, DS12887 RTC-based 90s abort
+- **Iterative Deepening:** SEARCH_POSITION loops d1→d2→d3, DS12887 RTC-based 120s abort
 - **PST Tables:** Fixed (Feb 7) — all 6 tables had inverted row order for White
 - **Pawn Promotion:** Fully working — opponent promotions, search promotions, UCI output suffix
 - **Evaluation:** Material + PST (pawn shield implemented but disabled — speed overhead)
@@ -26,7 +26,7 @@
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches — 88 plies reached
 - **UCI Node Output:** Decimal via BIOS F_UINTOUT routine
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,842 bytes (out of 32K available)
+- **Engine size:** 12,849 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP, futility pruning
 - **ELPH Bridge:** Dynamic delay scaling, echo detection, go-param stripping, timestamped logging (pyserial)
 
@@ -35,20 +35,23 @@
 - This 1802/1806 engine does depth 3 routinely, depth 4 with NMP — exceeds 8-bit era expectations!
 
 ### Match Results (Feb 7-10, 2026)
-- **23-move French Defense (TT fix, Feb 10):** Won the exchange via Nc6 fork + Qxa8 (rook capture). Late-game TT transformed: moves 16-23 all depth 3 in sub-second (35-89 nodes vs 2000+ normally). Opening/middlegame (moves 2-11) still depth-2 timeout. Kf1 on move 3 (depth-2 blunder, lost castling rights) led to back-rank mate by Qd1#. 21-minute match.
-- **44-move Caro-Kann (post-RLDI, Feb 9):** Castled O-O on move 4, ~59-minute match. First depth-3 search completed in 59s (down from 85s pre-RLDI). Only 2 middlegame moves reached depth 3; 5 endgame moves did. Mated at move 44.
-- **38-move Caro-Kann (Feb 7):** Castled O-O (move 13), developed both bishops, creative Bxf7+ sac. Lost to Black's two rooks in endgame. Promotion (a2b1b) handled correctly — no crash.
-- **45-move French Defense (queenless):** Earlier match went 45 moves before hitting promotion bug (now fixed). Engine showed good positional play — Nc3, Bf4 development, accurate recaptures.
+- **40-move Alekhine's Defense (TT clear + 120s, Feb 10):** Longest match yet! 80 ply, ~54 minutes. Castled O-O (move 6). Queen actively placed (Qf3→Qg3→Qg5→Qd5→Qc6→Qb6). Knight shuttle Ne2↔Ng3 for 4 moves (no repetition detection). Nb5xd6 exchanges twice. Late game: Qxe8+ blunder (took protected knight, lost queen). Led to investigation → futility pruning missing IS_IN_CHECK guard. Pawn promoted to rook (a2a1r). Mated after Rxe1.
+- **33-move Caro-Kann (TT clear, Feb 10):** Tested TT clear fix. No more sub-second garbage moves — node counts proper throughout. But rook shuffling (Rd1→Re1→Ra1, back and forth) and knight shuttle at depth 2. Ba6 blundered queen (Nxe2). Lost to Qxd1# back-rank mate. 23 minutes.
+- **23-move French Defense (TT fix, Feb 10):** Won exchange via Nc6 fork + Qxa8. Late-game TT transformed: moves 16-23 all depth 3 sub-second (35-89 nodes). But Kf1 (move 3, depth-2 blunder) lost castling rights → Qd1# back-rank mate. 21 minutes.
+- **44-move Caro-Kann (post-RLDI, Feb 9):** Castled O-O on move 4, ~59-minute match. First depth-3 in 59s (down from 85s pre-RLDI). Only 2 middlegame moves reached depth 3; 5 endgame moves did. Mated at move 44.
+- **38-move Caro-Kann (Feb 7):** Castled O-O (move 13), both bishops developed, creative Bxf7+ sac. Lost to Black's two rooks in endgame. Promotion handled correctly.
+- **45-move French Defense (queenless):** Earlier match, hit promotion bug at move 45 (now fixed). Good positional play — Nc3, Bf4, accurate recaptures.
 
 ### Next Up
-- **Time budget experiment** — increase 90s to 120s to convert more middlegame depth-2 → depth-3
-- **TT ALPHA/BETA probe** — correct flags stored but only EXACT used (16-bit hash collision risk)
+- **Investigate time budget bug** — depth-4 test match showed move taking 179s (budget is 120s). RTC elapsed calc or SMI 120 comparison may overflow/wrap. Check negamax.asm RTC_DELTA_POS path.
+- **LMR check guard** — also lacks IS_IN_CHECK (lower priority: depth>=3 only, captures exempt)
+- **Repetition detection** — engine shuffles pieces in drawn positions (knight shuttle, rook shuttle a1↔b1)
 - **Open-file king penalty** — lightweight king safety (replaces pawn shield approach)
 - **RSXD/RLXA optimization** — ~42 bytes savings, requires matched-pair conversion
 - Consider expanding opening book beyond Italian Game
 
 ### Recent Milestones
-- **Feb 10:** TT correctness fix — three bugs: store depth read wrong byte (high=0, TT completely non-functional), all flags hardcoded EXACT, probe only accepted EXACT. Fixed with per-ply NODE_TT_FLAGS array, correct ALPHA/BETA/EXACT at 5 store paths, depth byte fix. ALPHA/BETA probe tested but rolled back (16-bit hash collisions caused false cutoffs). EXACT-only probe validated: 8 consecutive sub-second depth-3 moves in late game. Engine size: 12,842 bytes.
+- **Feb 10:** TT correctness fix (3 bugs: depth store, flag store, probe bounds). TT clear per-search (cross-move collision poisoning). Time budget 90s→120s. Futility pruning IS_IN_CHECK guard (depth-1 quiet moves incorrectly pruned when in check). 4 test matches, longest 40 moves/80 ply. Engine size: 12,849 bytes.
 - **Feb 9:** CDP1806 RLDI migration — 401 conversions across 15 files via automated script. Binary: 13,582 → 12,783 bytes (799 saved, 5.9%). First depth-3 search: 85s → 59s (30% speedup). Pawn shield tested at 4cp bonus — confirmed speed overhead (not values) causes depth-2 fallback; re-disabled. Bridge timestamps added.
 - **Feb 9:** Fixed promotion handling — three bugs: stale UNDO_PROMOTION corrupting search after opponent promotion, engine's own promotions during search not setting UNDO_PROMOTION from DECODED_FLAGS, UCI bestmove output missing 'q' suffix. UNDO_PROMOTION now saved/restored in search stack (7 bytes). Engine size: 13,582 bytes.
 - **Feb 7:** Fixed inverted PST tables — all 6 tables had rows in wrong order for White. King PST strengthened (b1/g1=+60, d1/e1=-20), bishop c1/f1 penalty (-15). Pawn shield code added but disabled. Engine now castles and develops bishops properly.
@@ -78,53 +81,84 @@ After NMP: 43 seconds = 8.5x speedup!
 
 ---
 
-## Session: February 10, 2026 - TT Correctness Fix (Three Bugs)
+## Session: February 10, 2026 - TT Fix, TT Clear, Futility Check Guard
 
 ### Summary
-Fixed three TT bugs that together rendered the transposition table completely non-functional
-for the main search. The store depth bug (reading high byte = always 0) was the most critical —
-identical bug class to the Feb 4 probe-side fix, but on the store side. Also implemented
-per-ply bound flags and tested full ALPHA/BETA probe logic (rolled back due to 16-bit hash
-collision risk).
+Fixed three TT bugs (depth store, flag store, probe bounds), discovered TT cross-move
+collision poisoning, and found futility pruning missing IS_IN_CHECK guard. Four match tests
+drove iterative debugging. Time budget increased from 90s to 120s.
 
-### Bug 1: TT Store Depth (negamax.asm)
-`RLDI 10, SEARCH_DEPTH` read the high byte (always 0) instead of `SEARCH_DEPTH + 1` (low byte).
-Every TT entry stored depth=0. The probe (fixed Feb 4) correctly read the low byte, so the
-depth check (`entry_depth >= required_depth`) failed for ALL probes at depth >= 1. **The TT
-was completely non-functional for the main search.**
+### TT Correctness Fix (committed bd514ee)
 
-Fix: `RLDI 10, SEARCH_DEPTH + 1` — one-line fix, biggest impact.
+**Bug 1: TT Store Depth.** `RLDI 10, SEARCH_DEPTH` read high byte (always 0) instead of
+`SEARCH_DEPTH + 1` (low byte). TT was completely non-functional for main search.
+Fix: `RLDI 10, SEARCH_DEPTH + 1`.
 
-### Bug 2: TT Store Flags (negamax.asm)
-All paths through NEGAMAX_RETURN hardcoded `LDI TT_FLAG_EXACT`. Added per-ply NODE_TT_FLAGS
-array (8 bytes, indexed by CURRENT_PLY) with STORE_NODE_FLAG/LOAD_NODE_FLAG subroutines.
-Flags set at 5 locations: init=ALPHA, alpha update=EXACT, beta cutoff=BETA,
-checkmate=EXACT, stalemate=EXACT.
+**Bug 2: TT Store Flags.** All paths hardcoded TT_FLAG_EXACT. Added per-ply NODE_TT_FLAGS
+array (8 bytes, CURRENT_PLY indexed) with STORE/LOAD_NODE_FLAG subroutines. 5 store points:
+init=ALPHA, alpha update=EXACT, beta cutoff=BETA, checkmate=EXACT, stalemate=EXACT.
 
-### Bug 3: TT Probe Bounds (negamax.asm)
-Implemented full ALPHA/BETA/EXACT probe with signed 16-bit comparisons. First test match
-showed engine "obliterated" — suspiciously low depth-1 node counts (5 nodes in positions
-with 30+ legal moves) suggested hash collision false cutoffs. **Rolled back to EXACT-only
-probe.** Correct flags are stored for future use with a larger hash.
+**Bug 3: TT Probe Bounds.** Implemented ALPHA/BETA/EXACT probe — first test showed engine
+obliterated (hash collision false cutoffs). Rolled back to EXACT-only. Correct flags stored
+for future use with larger hash.
 
-### Match Result (EXACT-only probe)
-23-move French Defense, 21-minute match:
-- Moves 2-11 (opening): All depth-2 timeout (~90s each). Kf1 on move 3 lost castling rights.
-- Move 12 (Qf3): First middlegame depth 3 — 2158 nodes, 84s
-- Move 15 (Qxa8): Depth 3 — 1534 nodes, 63s. Won the exchange (rook capture via Nc6 fork).
-- Moves 16-23: ALL depth 3 in sub-second! 35-89 nodes. TT EXACT hits cutting huge branches.
-- Lost to Qd1# (back-rank mate, consequence of early Kf1 blunder).
+### TT Clear Per-Search (uncommitted)
+**Problem:** After TT fix, sub-second endgame moves with 35-89 nodes showed ludicrous play
+(rook shuffling a1→b1→a1, queen blunders, back-rank mates). 256 entries + 16-bit hash =
+stale entries from previous moves colliding with current positions.
+
+**Fix:** Added `CALL TT_CLEAR` at start of SEARCH_POSITION before iterative deepening loop.
+Preserves within-move TT (d1→d2→d3) while eliminating cross-move collision damage.
+
+### Time Budget 90s → 120s (uncommitted)
+Changed `SMI 90` to `SMI 120` at line 141. Analysis of timing data showed middlegame moves
+were searching depth 3 for ~83s before hitting 90s wall. Move 9 (Qg3) in test match completed
+depth 3 at 118s — would have been depth-2 fallback at 90s budget.
+
+### Futility Pruning Check Guard (uncommitted)
+**Bug discovered:** Futility pruning at depth 1 had NO IS_IN_CHECK guard. NMP checks (line
+281), RFP checks (line 554), but futility setup and application did not. When in check at
+depth 1, EVALUATE returns meaningless static score; all moves are forced responses.
+
+**Impact:** Defensive moves incorrectly pruned in lines explored from non-Qxe8 root moves,
+making alternatives look worse → engine chose Qxe8+ (taking protected knight, losing queen).
+Indirect effect: captures exempt from futility, so they get "honest" evaluations while quiet
+defensive moves are pruned based on bogus eval.
+
+**Fix (2 parts):**
+1. Setup (~line 771): Added `CALL IS_IN_CHECK` / `LBNZ NEGAMAX_SKIP_FUTILITY` after depth==1
+   check. FUTILITY_OK stays 0, EVALUATE never called (meaningless in check).
+2. Application (~line 891): Changed from checking `depth==1` to checking `FUTILITY_OK`.
+   Setup is now sole gatekeeper (encodes depth==1 AND not-in-check).
+
+**Also noted:** LMR lacks IS_IN_CHECK guard but lower priority (depth>=3 only, captures exempt).
+
+### Match Results
+
+**Match 1 (TT fix only, 23 moves, French Defense):** Won exchange via Qxa8. Late-game
+TT: 8 sub-second depth-3 moves. But Kf1 (move 3) lost castling → Qd1#. Validated TT working.
+
+**Match 2 (TT fix, 120s budget, 33 moves, Caro-Kann):** TT clear NOT applied yet.
+Rook shuffling (Rd1→Re1→Ra1 circles), queen blundered via Ba6 (Nxe2). Sub-second moves
+with 35-89 nodes = stale TT entries. Identified cross-move collision poisoning.
+
+**Match 3 (TT clear + 120s, 40 moves, Alekhine's Defense):** Longest match! 80 ply, 54 min.
+Castled O-O move 6. Queen active: Qf3→Qg3→Qg5→Qd5→Qc6→Qb6. Depth 3 on moves 2, 6-9,
+16-17, 29, 31-35. Knight shuttle Ne2↔Ng3 (4 moves, no repetition detection). Qxe8+ blunder
+(took protected knight) lost queen. Black pawn promoted a2a1r. Mated after Rxe1. Led to
+futility check guard discovery.
 
 ### Commits
-- TT correctness fix (this commit)
+- `bd514ee`: TT correctness fix (depth store, per-ply flags, EXACT-only probe)
+- Uncommitted: TT clear per-search, 120s budget, futility check guard
 
 ### Files Changed
 - `board-0x88.asm`: Added NODE_TT_FLAGS EQU $64D2 (8 bytes)
-- `negamax.asm`: STORE_NODE_FLAG/LOAD_NODE_FLAG subroutines, 5 flag store points,
-  depth fix (SEARCH_DEPTH → SEARCH_DEPTH + 1), EXACT-only probe with explanatory comment
+- `negamax.asm`: TT fix (STORE/LOAD_NODE_FLAG, 5 flag points, depth fix, EXACT probe),
+  TT_CLEAR in SEARCH_POSITION, SMI 90→120, futility IS_IN_CHECK guard + FUTILITY_OK check
 
 ### Build
-12,842 bytes (.bin), clean assembly, zero errors
+12,849 bytes (.bin), clean assembly, zero errors
 
 ---
 
