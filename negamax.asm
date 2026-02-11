@@ -77,6 +77,10 @@ NEGAMAX_PLY_OK:
     ; Save context to ply-indexed state array (no stack manipulation!)
     CALL SAVE_PLY_STATE
 
+    ; Initialize TT bound flag: assume upper bound (fail-low) until proven otherwise
+    LDI TT_FLAG_ALPHA
+    CALL STORE_NODE_FLAG
+
     ; Increment node counter (for statistics)
     CALL INC_NODE_COUNT
 
@@ -201,13 +205,17 @@ NEGAMAX_NOT_FIFTY:
     CALL TT_PROBE       ; D = required depth, returns D = 1 if hit
     LBZ NEGAMAX_TT_MISS ; No hit, continue with search
 
-    ; TT hit - check if it's usable (EXACT bound)
+    ; TT hit - check if it's usable (EXACT bound only)
+    ; ALPHA/BETA bounds disabled: 16-bit hash too collision-prone for
+    ; safe non-exact cutoffs. Correct flags ARE stored (for future use
+    ; with a larger hash), but only EXACT entries produce TT cutoffs.
     RLDI 10, TT_FLAG
     LDN 10              ; D = TT flag
     XRI TT_FLAG_EXACT
-    LBNZ NEGAMAX_TT_MISS    ; Not exact, can't use directly (for now)
+    LBNZ NEGAMAX_TT_MISS    ; Not exact, skip
 
-    ; EXACT hit at non-root node - use the stored score
+NEGAMAX_TT_USE_SCORE:
+    ; TT score is usable — load, save, restore, and return
     ; (Root is excluded above, so no BEST_MOVE copy needed)
 
     ; Get the score and save to SCORE_HI/LO BEFORE restore
@@ -1617,6 +1625,10 @@ NEGAMAX_BETA_NOT_ROOT:
     ; Store killer move (for move ordering optimization)
     CALL STORE_KILLER_MOVE
 
+    ; Beta cutoff — score is a lower bound
+    LDI TT_FLAG_BETA
+    CALL STORE_NODE_FLAG
+
     LBR NEGAMAX_RETURN
 
 NEGAMAX_NO_BETA_CUTOFF:
@@ -1773,6 +1785,10 @@ NEGAMAX_ALPHA_DO_UPDATE:
     GLO 13
     STR 10              ; ALPHA = score
 
+    ; Alpha raised — this is a PV node (exact score)
+    LDI TT_FLAG_EXACT
+    CALL STORE_NODE_FLAG
+
 NEGAMAX_NEXT_MOVE:
     ; -----------------------------------------------
     ; Increment LMR move counter (move was processed)
@@ -1844,9 +1860,8 @@ NEGAMAX_RETURN:
     ; so TT works correctly at all nodes.
 
     ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
-    LDI TT_FLAG_EXACT
-    PLO 8               ; R8.0 = flag
-    RLDI 10, SEARCH_DEPTH
+    CALL LOAD_NODE_FLAG  ; R8.0 = flag from NODE_TT_FLAGS[ply]
+    RLDI 10, SEARCH_DEPTH + 1
     LDN 10              ; D = depth low byte
     CALL TT_STORE
 
@@ -1933,6 +1948,9 @@ NEGAMAX_NO_MOVES:
     INC 10
     GLO 9               ; Score low byte
     STR 10
+    ; Checkmate score is exact
+    LDI TT_FLAG_EXACT
+    CALL STORE_NODE_FLAG
     LBR NEGAMAX_RETURN
 
 NEGAMAX_STALEMATE:
@@ -1943,6 +1961,9 @@ NEGAMAX_STALEMATE:
     STR 10              ; BEST_SCORE_HI = 0
     INC 10
     STR 10              ; BEST_SCORE_LO = 0
+    ; Stalemate score is exact
+    LDI TT_FLAG_EXACT
+    CALL STORE_NODE_FLAG
     LBR NEGAMAX_RETURN
 
 ; ==============================================================================
@@ -3009,6 +3030,46 @@ INC_NODE_COUNT:
     STR 10
 
 INC_NODE_DONE:
+    RETN
+
+; ------------------------------------------------------------------------------
+; STORE_NODE_FLAG - Store TT bound flag for current ply
+; ------------------------------------------------------------------------------
+; Input:  D = flag (TT_FLAG_ALPHA, TT_FLAG_EXACT, or TT_FLAG_BETA)
+; Output: None
+; Clobbers: R10, D
+; ------------------------------------------------------------------------------
+STORE_NODE_FLAG:
+    STXD                ; Push flag to stack
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = current ply (0-7)
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    ADCI 0
+    PHI 10              ; R10 = &NODE_TT_FLAGS[ply]
+    IRX
+    LDX                 ; Pop flag back to D
+    STR 10              ; Store flag at NODE_TT_FLAGS[ply]
+    RETN
+
+; ------------------------------------------------------------------------------
+; LOAD_NODE_FLAG - Load TT bound flag for current ply into R8.0
+; ------------------------------------------------------------------------------
+; Input:  None
+; Output: R8.0 = flag, D = flag
+; Clobbers: R10
+; ------------------------------------------------------------------------------
+LOAD_NODE_FLAG:
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = current ply (0-7)
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    ADCI 0
+    PHI 10              ; R10 = &NODE_TT_FLAGS[ply]
+    LDN 10              ; D = flag
+    PLO 8               ; R8.0 = flag (TT_STORE expects this)
     RETN
 
 ; ==============================================================================

@@ -9,48 +9,56 @@
 
 ---
 
-## Current Status (February 6, 2026)
+## Current Status (February 10, 2026)
 
 - **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
-- **Depth 2:** Working correctly, ~65 seconds (queen attack position)
-- **Depth 3:** ~80 seconds! Alpha-beta re-enabled (was accidentally disabled, causing 4-15 min)
-- **Depth 4:** NOW PLAYABLE! 18-43 seconds with Null Move Pruning (was 6+ min!)
-- **Workspace Init:** WORKSPACE_CLEAR zeroes $6200-$64FF at startup and ucinewgame - no more stale RAM bugs
-- **Transposition Table:** Internal TT with proper depth enforcement; root always searches fully
-- **Late Move Reductions:** Working with verified re-search
-- **Null Move Pruning:** Implemented Jan 20 - 8.5x speedup at depth 4!
-- **Futility Pruning:** Working at frontier nodes (depth 1); fixed byte-addressing and condition bugs
-- **Castling:** Fully working - rook/king moves revoke rights, rook movement + Zobrist in MAKE/UNMAKE
+- **CDP1806 RLDI Migration:** 401 conversions across 15 files, 799 bytes saved (5.9%)
+- **Transposition Table:** Fixed (Feb 10) — depth store bug + per-ply bound flags (EXACT-only probe)
+- **Depth 3:** ~59 seconds opening; late-game sub-second with TT hits (35-89 nodes)
+- **Depth 4:** Playable in 18-43 seconds with Null Move Pruning
+- **Iterative Deepening:** SEARCH_POSITION loops d1→d2→d3, DS12887 RTC-based 90s abort
+- **PST Tables:** Fixed (Feb 7) — all 6 tables had inverted row order for White
+- **Pawn Promotion:** Fully working — opponent promotions, search promotions, UCI output suffix
+- **Evaluation:** Material + PST (pawn shield implemented but disabled — speed overhead)
+- **Castling:** Fully working — rook/king moves revoke rights, rook movement + Zobrist
 - **Checkmate/Stalemate:** Properly detected even when all pseudo-legal moves are illegal
-- **Pawn Promotion:** UCI parsing handles 5th char (q/r/b/n), MAKE/UNMAKE handle piece replacement
-- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches - 74 plies reached
+- **Fifty-Move Rule:** Halfmove clock tracked in GAME_STATE, checked >= 100 in NEGAMAX
+- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches — 88 plies reached
+- **UCI Node Output:** Decimal via BIOS F_UINTOUT routine
 - **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,838 bytes (out of 32K available)
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP
-- **ELPH Bridge:** Dynamic delay scaling, echo detection, go-param stripping (pyserial)
+- **Engine size:** 12,842 bytes (out of 32K available)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP, futility pruning
+- **ELPH Bridge:** Dynamic delay scaling, echo detection, go-param stripping, timestamped logging (pyserial)
 
 ### Comparison to Historical Engines
 - **Sargon (Z80)** defaulted to depth 2 for casual play
-- This 1802/1806 engine does depth 4 in 18-43 seconds - exceeds 8-bit era expectations!
+- This 1802/1806 engine does depth 3 routinely, depth 4 with NMP — exceeds 8-bit era expectations!
+
+### Match Results (Feb 7-10, 2026)
+- **23-move French Defense (TT fix, Feb 10):** Won the exchange via Nc6 fork + Qxa8 (rook capture). Late-game TT transformed: moves 16-23 all depth 3 in sub-second (35-89 nodes vs 2000+ normally). Opening/middlegame (moves 2-11) still depth-2 timeout. Kf1 on move 3 (depth-2 blunder, lost castling rights) led to back-rank mate by Qd1#. 21-minute match.
+- **44-move Caro-Kann (post-RLDI, Feb 9):** Castled O-O on move 4, ~59-minute match. First depth-3 search completed in 59s (down from 85s pre-RLDI). Only 2 middlegame moves reached depth 3; 5 endgame moves did. Mated at move 44.
+- **38-move Caro-Kann (Feb 7):** Castled O-O (move 13), developed both bishops, creative Bxf7+ sac. Lost to Black's two rooks in endgame. Promotion (a2b1b) handled correctly — no crash.
+- **45-move French Defense (queenless):** Earlier match went 45 moves before hitting promotion bug (now fixed). Engine showed good positional play — Nc3, Bf4 development, accurate recaptures.
 
 ### Next Up
-- **CuteChess match at depth 3** with iterative deepening — first real test of ID + RTC abort
-- Tune 90-second budget based on match results
-- Investigate depth 2 bestmove difference in ID context (TT from d1 influence)
+- **Time budget experiment** — increase 90s to 120s to convert more middlegame depth-2 → depth-3
+- **TT ALPHA/BETA probe** — correct flags stored but only EXACT used (16-bit hash collision risk)
+- **Open-file king penalty** — lightweight king safety (replaces pawn shield approach)
+- **RSXD/RLXA optimization** — ~42 bytes savings, requires matched-pair conversion
+- Consider expanding opening book beyond Italian Game
 
 ### Recent Milestones
-- **Feb 6 (late):** Iterative deepening with RTC-based time management on `iterative-deepening` branch. SEARCH_POSITION loops d1→d2→d3, DS12887 RTC reads seconds via OUT 2/INP 3, aborts at 90s. Italian d3: 85s/2012 nodes/c6d4 (completes). Queen's Attack d3: 89s abort/f8d6 (falls back to d2). Node budget tried first but too coarse (only 2K-4K nodes total). Three LDI-clobbers-D bugs fixed. Engine size: 13,192 bytes.
-- **Feb 6 (eve):** RFP implemented (15% speedup on quiet positions). Tested and reverted extended futility and razoring (EVALUATE overhead > benefit on 1802). PST tuning for king/rook/queen. Two CuteChess depth-2 matches confirmed poor play quality — depth 3 needed. Restored elph-bridge.py with dynamic delays.
-- **Feb 6:** Fixed stale RAM bug - added WORKSPACE_CLEAR ($6200-$64FF) at startup and ucinewgame. Reverted buggy QS material-only eval (EVAL_SKIP_PST) and disabled delta pruning. Queen attack now returns correct g7h7 on cold start, warm start, and ucinewgame.
+- **Feb 10:** TT correctness fix — three bugs: store depth read wrong byte (high=0, TT completely non-functional), all flags hardcoded EXACT, probe only accepted EXACT. Fixed with per-ply NODE_TT_FLAGS array, correct ALPHA/BETA/EXACT at 5 store paths, depth byte fix. ALPHA/BETA probe tested but rolled back (16-bit hash collisions caused false cutoffs). EXACT-only probe validated: 8 consecutive sub-second depth-3 moves in late game. Engine size: 12,842 bytes.
+- **Feb 9:** CDP1806 RLDI migration — 401 conversions across 15 files via automated script. Binary: 13,582 → 12,783 bytes (799 saved, 5.9%). First depth-3 search: 85s → 59s (30% speedup). Pawn shield tested at 4cp bonus — confirmed speed overhead (not values) causes depth-2 fallback; re-disabled. Bridge timestamps added.
+- **Feb 9:** Fixed promotion handling — three bugs: stale UNDO_PROMOTION corrupting search after opponent promotion, engine's own promotions during search not setting UNDO_PROMOTION from DECODED_FLAGS, UCI bestmove output missing 'q' suffix. UNDO_PROMOTION now saved/restored in search stack (7 bytes). Engine size: 13,582 bytes.
+- **Feb 7:** Fixed inverted PST tables — all 6 tables had rows in wrong order for White. King PST strengthened (b1/g1=+60, d1/e1=-20), bishop c1/f1 penalty (-15). Pawn shield code added but disabled. Engine now castles and develops bishops properly.
+- **Feb 7:** Added decimal node count output via BIOS F_UINTOUT ($FF60). UCI "info depth N nodes NNNNN" now outputs decimal instead of hex.
+- **Feb 6 (late):** Iterative deepening with RTC-based time management. DS12887 RTC reads seconds via OUT 2/INP 3, aborts at 90s. Three LDI-clobbers-D bugs fixed.
+- **Feb 6 (eve):** RFP implemented (15% speedup on quiet positions). Tested and reverted extended futility and razoring (EVALUATE overhead > benefit on 1802).
+- **Feb 6:** Fixed stale RAM bug — added WORKSPACE_CLEAR ($6200-$64FF) at startup and ucinewgame.
 - **Feb 4:** Fixed queen blindness (TT depth bug), futility pruning, h@h@, rook castling rights, and added pawn promotion support for UCI opponent moves.
-- **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip (no more h@h@), UCI buffer 256→512, castling rook movement with Zobrist hashing.
-- **Jan 30:** Board corruption root cause found and fixed! R9 clobbered by EVALUATE in futility setup. Also fixed castling mask bug and eliminated all R2 usage from makemove.asm.
-- **Jan 26:** Critical futility pruning bug fix - search now evaluates all root moves!
-- **Jan 23:** Multiple stability fixes, ply limit enforcement, BEST_MOVE safeguard
-- **W19:** Null Move Pruning - depth 4 now playable! 8.5x speedup (6:07 → 0:43)
-- **W18:** LMR re-search bug fixed - LMR_REDUCED must be pushed/popped around recursion
-- **W17:** Late Move Reductions - depth 3 in 90 seconds (60% faster!)
-- **W16:** Depth 3 now practical (~3.5 min) - internal TT is the key optimization
+- **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip, UCI buffer 256→512, castling rook movement + Zobrist.
+- Earlier sessions archived to `docs/archive/sessions-dec30-jan30.md`
 
 ### Depth 4 Test Results (with NMP)
 ```
@@ -68,1386 +76,249 @@ Baseline before NMP: Sicilian depth 4 = 6 min 7 sec
 After NMP: 43 seconds = 8.5x speedup!
 ```
 
-### Depth 3 Baseline (reference)
-```
-Sicilian Defense (depth 3):
-position startpos moves e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6
-go depth 3 -> 1:29, bestmove b1a3
-```
-
 ---
 
-## Session: February 4, 2026 - Pawn Promotion (UCI Opponent Moves)
+## Session: February 10, 2026 - TT Correctness Fix (Three Bugs)
 
 ### Summary
-CuteChess match crashed when black played `b2a1r` (pawn promotes to rook). The UCI parser
-only read 4 characters, treating the `r` as start of a new move. MAKE_MOVE moved the pawn
-to a1 without promoting it. Board state diverged, causing illegal move on next turn.
-
-### Implementation
-Three components added:
-
-**1. UCI Parser (uci.asm):**
-After parsing from/to squares, check if 5th char is q/r/b/n. If so, convert to piece type
-(QUEEN_TYPE=5, ROOK_TYPE=4, BISHOP_TYPE=3, KNIGHT_TYPE=2), store to UNDO_PROMOTION, and
-advance past the character. Uses XOR chain for efficient character matching.
-
-**2. MAKE_MOVE (makemove.asm):**
-After placing moving piece at destination, check UNDO_PROMOTION. If non-zero, replace the
-pawn with the promoted piece (color from pawn + promotion type). Hash update modified to
-XOR out [pawn, from] instead of [promoted_piece, from] for promotions.
-
-**3. UNMAKE_MOVE (makemove.asm):**
-When restoring piece to from-square, check UNDO_PROMOTION. If set, restore a pawn (not the
-promoted piece). Hash update uses promoted piece for XOR out [piece, to].
-
-### Memory
-- `UNDO_PROMOTION` at $6404 (1 byte) - promotion piece type or 0
-
-### Verified
-Position with `h7h8q` promotion: engine parses correctly, responds with valid moves at
-depth 1 (Nb3-c1) and depth 3 (Bc8-a6) in 7 seconds.
-
-### Files Changed
-- `board-0x88.asm`: UNDO_PROMOTION variable
-- `uci.asm`: 5th character parsing for promotion suffix
-- `makemove.asm`: MAKE_MOVE and UNMAKE_MOVE promotion handling + hash updates
-
-### Build
-12,551 bytes (.bin), clean (+162 bytes)
-
-### Note
-This handles opponent promotions from UCI. Engine's own promotion moves during search
-still use the generic MOVE_PROMOTION flag without encoding which piece - a future
-enhancement if needed.
-
----
-
-## Session: February 4, 2026 - Rook Castling Rights
-
-### Summary
-CuteChess match ended with illegal move `e1g1` (kingside castle) after the h1 rook had
-moved to h2 two plies earlier. The engine didn't revoke castling rights when the rook
-moved away from its home square.
-
-### Root Cause
-Only king moves cleared castling rights (in the king-specific code path of MAKE_MOVE).
-Rook moves from home squares (a1, h1, a8, h8) did not revoke the corresponding right.
-
-### Fix (makemove.asm)
-Added `MM_ROOK_HOME_CHECK` subroutine called from MAKE_MOVE after the halfmove clock
-update. Checks both FROM and TO squares against the four rook home squares:
-- FROM match: rook moving away from home (own castling revoked)
-- TO match: rook captured on home square (opponent castling revoked)
-
-Uses XOR chain ($07, $77, $07) to check all four squares efficiently. Calls
-`CLEAR_CASTLING_RIGHT` for the matching bit. Also fixed two short branch errors in
-evaluate.asm (BNZ/BZ → LBNZ/LBZ) caused by the code insertion shifting a page boundary.
-
-### Verified
-Same position that played `e1g1` (illegal castle) now returns `bestmove a1b1` in a few
-seconds.
-
-### Files Changed
-- `makemove.asm`: MM_ROOK_CHECK call site + MM_ROOK_HOME_CHECK subroutine
-- `evaluate.asm`: Two short branches promoted to long branches (page boundary shift)
-
-### Build
-12,389 bytes (.bin), clean (+57 bytes)
-
----
-
-## Session: February 4, 2026 - Queen Blindness (TT Depth Bug)
-
-### Summary
-CuteChess match at depth 3: at move 19, the engine's queen was on c3, threatened by black's
-pawn on d4. Engine played Nb5 (a3b5) instead of saving the queen. Black captured with dxc3.
-This is a 1-ply capture that the depth-3 search must see.
-
-### Root Cause: TT Probe Reads Wrong Byte of SEARCH_DEPTH
-`SEARCH_DEPTH` is a 16-bit big-endian value at $6416-$6417. The TT probe code at
-negamax.asm line 142 read from `SEARCH_DEPTH` ($6416 = **high byte**, always 0 for
-depth < 256) instead of `SEARCH_DEPTH + 1` ($6417 = **low byte**, the actual depth).
-
-This passed `required_depth = 0` to `TT_PROBE`. The depth check (`entry_depth >= 0`) is
-trivially true for every entry, so any hash-matching TT entry was accepted regardless of
-its stored depth. A depth-1 cached score could replace a depth-3 search.
-
-After root move Nb5, the TT returned a stale shallow-depth score at ply 1 that didn't
-account for dxc3 capturing the queen. The engine never actually searched the position.
-
-### Second Bug: Futility Check Also Reads Wrong Byte
-The futility pruning check in the move loop (line 818) had the same wrong-byte bug, reading
-`SEARCH_DEPTH` (high byte = 0) instead of `SEARCH_DEPTH + 1` (low byte). This made the
-condition always false, completely disabling futility pruning in the move loop.
-
-Additionally, the condition `CURRENT_PLY == SEARCH_DEPTH - 1` was conceptually wrong.
-Since SEARCH_DEPTH is the remaining depth at the current node (decremented by parent before
-recursion), the correct frontier-node check is simply `SEARCH_DEPTH == 1`. This matches
-the futility setup code which also checks `depth == 1`.
-
-### Fixes Applied (negamax.asm)
-1. **TT probe**: Changed address from `SEARCH_DEPTH` to `SEARCH_DEPTH + 1` (2-byte fix)
-2. **Futility check**: Changed to read `SEARCH_DEPTH + 1` and use `XRI 1` to check
-   remaining depth == 1 (simplified from 18 lines to 7 lines, saves 11 bytes)
-
-### Verified
-Same position that played Nb5 (queen blunder) now returns `bestmove c3d2` (queen saves
-itself) in 40 seconds.
-
-### Files Changed
-- `negamax.asm`: TT probe depth byte, futility pruning condition
-
-### Build
-12,332 bytes (.bin), clean (-11 bytes from simplified futility check)
-
----
-
-## Session: February 4, 2026 - Final h@h@ Root Cause
-
-### Summary
-After a successful 54-ply CuteChess match (Caro-Kann, depth 3), the engine produced `h@h@`
-on move 28. Diagnosed and fixed the remaining path where BEST_MOVE stays at $FF/$FF.
-
-### Root Cause: All-Illegal Moves Not Detected as Checkmate
-When GENERATE_MOVES produces N > 0 pseudo-legal moves but ALL of them leave the king in
-check (checkmate position), the move loop filters them all via IS_IN_CHECK. BEST_SCORE
-stays at its sentinel $8001 (-32767). The code falls through to NEGAMAX_RETURN and returns
-$8001 -- it never detects checkmate because the "no moves" path (NEGAMAX_NO_MOVES) only
-triggers when GENERATE_MOVES returns *zero* moves.
-
-The parent negates $8001 → $7FFF (+32767), which equals root beta ($7FFF). This triggers
-NEGAMAX_DO_BETA_CUTOFF, which sets BEST_SCORE but never saves BEST_MOVE → h@h@.
-
-### Fix 1: Checkmate/Stalemate Detection After Move Loop (negamax.asm)
-At NEGAMAX_LOOP_DONE, check if BEST_SCORE is still $8001. If so, no legal move improved
-it -- all pseudo-legal moves were illegal. Jump to NEGAMAX_NO_MOVES for proper
-IS_IN_CHECK → checkmate (-32767+depth) or stalemate (0) handling.
-
-```asm
-NEGAMAX_LOOP_DONE:
-    DEC 2
-    ; If BEST_SCORE == $8001, no legal move found → checkmate/stalemate
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
-    LDA 10              ; D = BEST_SCORE_HI
-    XRI $80
-    LBNZ NEGAMAX_RETURN ; A legal move was scored
-    LDN 10              ; D = BEST_SCORE_LO
-    XRI $01
-    LBNZ NEGAMAX_RETURN ; A legal move was scored
-    LBR NEGAMAX_NO_MOVES ; No legal move → checkmate/stalemate
-```
-
-### Fix 2: Beta Cutoff at Root Saves BEST_MOVE (negamax.asm)
-Safety net: at NEGAMAX_DO_BETA_CUTOFF, if at root (ply 0), copy UNDO_FROM/UNDO_TO to
-BEST_MOVE before returning. The cutoff move IS the best move at root.
-
-### Verified
-Same position that produced `h@h@` now returns `bestmove a3b4` (captures the attacking
-pawn) in just over a minute.
-
-### Files Changed
-- `negamax.asm`: Checkmate detection after move loop, BEST_MOVE save at root beta cutoff
-
-### Build
-12,343 bytes (.bin), clean (+52 bytes)
-
-### Known Issues Remaining
-- TT stores EXACT flag for beta cutoffs (should be LOWER bound)
-- Pawn promotion not implemented (UCI parsing + MAKE/UNMAKE)
-- Evaluation quality: undefended pieces, rook shuffles
-- Opening book only covers Italian Game (47 entries)
-
----
-
-## Session: January 30, 2026 (Evening) - CuteChess Match Stability
-
-### Summary
-Ran depth 3 CuteChess matches and fixed four bugs uncovered during play. The engine went
-from 15-minute moves and crashes to stable 80-second play with correct castling.
-
-### Fix 1: Alpha-Beta Pruning Re-enabled (negamax.asm)
-Alpha update was disabled with `LBR NEGAMAX_NEXT_MOVE` (left from debugging). The engine
-was doing full minimax, explaining 4-15 minute move times. Changed the branch at
-`NEGAMAX_SCORE_BETTER` so non-root nodes jump to `NEGAMAX_UPDATE_ALPHA` instead of
-`NEGAMAX_NEXT_MOVE`, and removed the unconditional skip so root falls through to the
-alpha update code.
-
-**Result:** 891s → 80s at depth 3 (11x speedup)
-
-### Fix 2: TT Probe Skipped at Root (negamax.asm)
-TT_STORE saves the global BEST_MOVE at all nodes, but BEST_MOVE is only meaningful at
-root. Internal nodes store the $FF/$FF sentinel, which produces `h@h@` in algebraic
-output. If a root position matched such a stale entry, TT returned `h@h@` as bestmove.
-
-**Fix:** Added ply 0 check before TT_PROBE - root always searches fully. Removed dead
-code that copied TT_MOVE to BEST_MOVE (unreachable since root skips TT).
-
-### Fix 3: UCI Buffer Expanded to 512 Bytes (board-0x88.asm, uci.asm)
-At move 25, the `position startpos moves ...` string was 263 chars, truncated at the
-255-byte buffer limit. The board was set to a position from 2 moves earlier, causing an
-illegal double-move. Relocated 10 variables (UCI_STATE, HASH_*, TT_*) from $6600-$6609
-to $64B8-$64C1. Buffer now spans $6500-$66FF (512 bytes). Counter changed from 8-bit
-(R13.0) to 16-bit (full R13 with INC 13).
-
-### Fix 4: Castling Rook Movement (makemove.asm)
-MAKE_MOVE only moved the king during castling - the rook stayed on its starting square.
-After `e1g1`, the rook remained on h1 and f1 was empty, so the engine tried `Kg1-f1`
-(illegal). Added castling detection (`to - from`: $02 = kingside, $FE = queenside) and
-full rook movement with Zobrist hash updates to both MAKE_MOVE and UNMAKE_MOVE.
-
-All four castling types handled:
-- White kingside: rook h1→f1 / f1→h1
-- White queenside: rook a1→d1 / d1→a1
-- Black kingside: rook h8→f8 / f8→h8
-- Black queenside: rook a8→d8 / d8→a8
-
-### Verified
-Castling position that previously failed (`e1g1` → illegal `g1f1`) now returns
-`bestmove f1e1` - a legal king move with the rook correctly on f1.
-
-### Files Changed
-- `negamax.asm`: Alpha update re-enabled, TT probe skipped at root, dead TT_MOVE copy removed
-- `makemove.asm`: Castling rook movement + hash updates in MAKE_MOVE and UNMAKE_MOVE
-- `board-0x88.asm`: Variable relocation, UCI buffer expanded to 512 bytes
-- `uci.asm`: UCI_BUFFER_LEN=511, 16-bit counter
-- `config.asm`: Comment clarification (killer moves = monolithic build only)
-
-### Build
-12,291 bytes (.bin), clean
-
-### Known Issues Remaining
-- TT stores EXACT flag for beta cutoffs (should be LOWER bound)
-- Pawn promotion not implemented (UCI parsing + MAKE/UNMAKE)
-- Evaluation quality: undefended pieces, rook shuffles
-- Opening book only covers Italian Game (47 entries)
-
----
-
-## Session: January 29-30, 2026 - Board Corruption Root Cause Found
-
-### Summary
-Investigated and fixed the root cause of board corruption during search, which caused
-the engine to play illegal moves (e.g., `c3d5` knight captures own pawn) during CuteChess
-matches. The bug was in the futility pruning setup: `CALL EVALUATE` at depth-1 nodes
-clobbered R9 (the move list pointer) with the evaluation score. The move loop then read
-moves from whatever address the score happened to encode (ROM at $FEC0), producing
-off-board squares that corrupted the board via MAKE_MOVE/UNMAKE_MOVE.
-
-### Root Cause: R9 Clobbered by EVALUATE (negamax.asm:700)
-At depth-1 frontier nodes, `CALL EVALUATE` returns the static eval score in R9. The code
-saved this to STATIC_EVAL but never re-initialized R9 to the move list pointer before
-falling through to `NEGAMAX_MOVE_LOOP`. The `LDA 9` instructions then read from ROM
-instead of the move list, producing encoded moves that decoded to off-board squares
-($28/$6F). These values were deterministic (same eval → same ROM address → same bytes).
-
-**Fix:** Re-initialize R9 to the ply-indexed move list start after the EVALUATE call
-and STATIC_EVAL save, before falling through to the move loop.
-
-### Also Fixed: Castling Mask Bug (makemove.asm)
-The `MM_DO_CLEAR_CASTLE` code saved R10 via STXD before `CALL CLEAR_CASTLING_RIGHT`,
-which clobbered D (the castling mask $03/$0C) with `GLO 10`. CLEAR_CASTLING_RIGHT
-received the captured piece value instead of the mask. King moves never properly revoked
-castling rights during search. Fixed by removing the STXD/IRX entirely and reloading R10
-from BOARD[MOVE_TO] and UNDO_CAPTURED after the call. D now carries the mask through
-SCRT (which preserves D via R7).
-
-### Also Fixed: Eliminated All R2 Direct Storage (makemove.asm)
-Converted 5 `STR 2` scratch sites and 1 `STXD/IRX` pair to memory-based operations.
-Since BOARD is at $6000 (LOW(BOARD) = $00), the BOARD address computation simplifies
-from 8 instructions to 3 per site. makemove.asm now has zero stack interactions, consistent
-with the memory-over-stack strategy adopted for negamax.asm.
-
-### Debug Methodology
-- BP11: UNMAKE_MOVE UNDO validation → caught UNDO_FROM=$28, UNDO_TO=$6F at ply 2
-- BP12: Same result after makemove.asm refactoring → ruled out R2/stack as cause
-- BP13: MAKE_MOVE entry validation → MOVE_FROM=$28, MOVE_TO=$6F before MAKE_MOVE
-  - R9=$FEC2 (ROM), R8=$B7A8 decoded to $28/$6F
-  - $B7A8 not in move list → R9 pointing to wrong memory
-  - Full R9 lifecycle trace identified the EVALUATE clobber
-
-### Files Changed
-- `negamax.asm`: R9 re-init after futility EVALUATE, removed all debug breakpoints, BZ→LBZ for page safety
-- `makemove.asm`: Castling mask fix, eliminated all R2 usage (STR 2, STXD, IRX)
-
-### Build
-30,352 bytes, clean (no assembly warnings)
-
----
-
-## Session: January 26, 2026 - Critical Futility Pruning Bug Fix
-
-### Summary
-Fixed a critical bug where futility pruning was incorrectly applied at the root level,
-causing the engine to only evaluate the first move and skip all others. This was the
-root cause of the "rook shuffle" behavior (a1b1, b1a1 repeating) and many illegal moves.
-
-### The Bug
-`FUTILITY_OK` is a global flag set when the search reaches depth-1 (frontier) nodes.
-However, this flag persisted after recursive calls returned. When processing subsequent
-root moves, the stale `FUTILITY_OK=1` flag caused those moves to be futility-pruned
-even though we were at the root (depth 3), not at a frontier node.
-
-**Symptoms:**
-- Engine completed depth 3 search in ~3 seconds (should be ~2 minutes)
-- Only first move was evaluated, all others were skipped
-- Engine played nonsensical moves (rook shuffles)
-- Sometimes output stale/illegal moves from previous searches
-
-### The Fix
-Added a ply-depth check to the futility pruning logic. Futility pruning now only
-applies when `CURRENT_PLY == SEARCH_DEPTH - 1` (i.e., remaining depth == 1).
-
-```asm
-; BUG FIX: Must verify we're actually at a frontier node
-; Futility only applies when CURRENT_PLY == SEARCH_DEPTH - 1
-LDI HIGH(SEARCH_DEPTH)
-PHI 10
-LDI LOW(SEARCH_DEPTH)
-PLO 10
-LDN 10              ; D = SEARCH_DEPTH
-SMI 1               ; D = SEARCH_DEPTH - 1
-PLO 7               ; R7.0 = SEARCH_DEPTH - 1
-
-LDI HIGH(CURRENT_PLY)
-PHI 10
-LDI LOW(CURRENT_PLY)
-PLO 10
-LDN 10              ; D = CURRENT_PLY
-STR 2               ; temp
-GLO 7               ; D = SEARCH_DEPTH - 1
-SM                  ; D = (SEARCH_DEPTH - 1) - CURRENT_PLY
-LBNZ NEGAMAX_NOT_FUTILE  ; Not at frontier, skip futility
-```
-
-### Test Results
-**Before fix:**
-```
-position startpos moves e2e4 g8f6 g2g4 f6e4 b1c3 d7d5 c3a4 b8c6 a1b1 e7e6 b1a1 f8d6 a1b1 e8g8 b1a1 f8e8
-go depth 3 -> 3 seconds, bestmove a1b1 (rook shuffle - BAD)
-```
-
-**After fix:**
-```
-Same position
-go depth 3 -> 2:30, bestmove d1f3 (Queen development - GOOD!)
-```
-
-### Files Modified
-- `negamax.asm` - Added ply check to futility pruning condition
-
----
-
-## Session: January 23, 2026 - CuteChess Integration & Stability Fixes
-
-### Summary
-Fixed multiple stability bugs discovered during CuteChess tournament testing at depth 3.
-Engine now survives extended matches without h@h@ crashes, though underlying search bug
-remains under investigation.
-
-### Bugs Fixed
-
-**1. Castling After King Moved (makemove.asm)**
-- Engine tried O-O after king had already moved
-- Fix: Clear castling rights when king moves in MAKE_MOVE
-
-**2. R10 Clobbering in MAKE_MOVE (makemove.asm)**
-- CLEAR_CASTLING_RIGHT clobbers R10, but MAKE_MOVE uses R10 for piece/capture
-- Fix: Save/restore R10 around the CLEAR_CASTLING_RIGHT call
-
-**3. PST R15 Clobbering (pst.asm)**
-- EVAL_PST uses R15 but QUIESCENCE_SEARCH uses R15 for move count
-- Fix: Save/restore R15 in EVAL_PST
-- Also fixed LIFO violation in pop order
-
-**4. Castling Without Empty Square Check (movegen-helpers.asm)**
-- Engine generated O-O with piece on f1/g1
-- Fix: Added empty square checks for f1/g1 (white) and f8/g8 (black)
-
-**5. Multiple SEX 2 Bugs (various files)**
-- Functions using X-dependent instructions without SEX 2 first
-- Added SEX 2 to: EVAL_PST, GENERATE_MOVES, EVALUATE, SQUARE_0x88_TO_0x40,
-  CHECK_TARGET_SQUARE, ADD_MOVE_ENCODED, CHECK_EN_PASSANT, GEN_CASTLING_MOVES,
-  SEARCH_POSITION, NEGAMAX, QUIESCENCE_SEARCH
-- Also fixed short branches pushed out of range (BR→LBR, BZ→LBZ)
-
-**6. Ply Overflow at Ply 8 (negamax.asm)**
-- PLY_STATE array only supports 8 plies (80 bytes at $6450-$649F)
-- Deep searches exceeded this, overwriting variables at $64A0+
-- Fix: Added ply limit check at NEGAMAX entry - returns static eval if ply >= 8
-
-**7. BEST_MOVE Not Set Bug (negamax.asm) - WORKAROUND**
-- Search sometimes fails to update BEST_MOVE, leaving it at $FF $FF (outputs h@h@)
-- Root cause under investigation (CURRENT_PLY, score comparison, or move loop issue)
-- Safeguard: After NEGAMAX returns, if BEST_MOVE is $FF $FF, use first legal move
-
-### Files Modified
-- `makemove.asm` - King castling rights, R10 save/restore
-- `pst.asm` - SEX 2, R15 save/restore, LIFO fix, branch fixes
-- `movegen-helpers.asm` - SEX 2, castling empty checks
-- `movegen-fixed.asm` - SEX 2
-- `evaluate.asm` - SEX 2
-- `negamax.asm` - SEX 2, ply limit check, BEST_MOVE safeguard
-
-### Outstanding Issue
-The search sometimes fails to set BEST_MOVE at root. The safeguard prevents crashes
-but the root cause needs investigation. Possible causes:
-1. CURRENT_PLY not 0 at root
-2. Score comparison logic broken
-3. All moves pruned/filtered incorrectly
-4. TT returning corrupted data
-
-### TODO: Hash-Based Opening Book
-Current book uses exact move-sequence matching (limited transposition handling).
-Plan to use existing Zobrist hash infrastructure for position-based matching.
-
----
-
-## Session: January 20, 2026 - Null Move Pruning (Depth 4 Achievement!)
-
-### Summary
-Implemented Null Move Pruning (NMP) to make depth 4 search playable. Achieved 8.5x speedup
-at depth 4 (6:07 → 0:43). Depth 4 now completes in 18-43 seconds across various positions.
-
-### What is Null Move Pruning?
-If our position is so strong that even "passing" (letting opponent move twice) still beats
-beta, we can prune the entire subtree without searching moves. This works because:
-- Most positions aren't zugzwang (passing hurts in chess)
-- Strong positions remain strong even after passing
-- We use a reduced depth search (R=2) to verify quickly
-
-### Implementation Details
-
-**New Memory Variables ($64A7-$64A8):**
-- `NULL_MOVE_OK` - flag: 1=can try null move, 0=prevent consecutive null moves
-- `NULL_SAVED_EP` - saved EP square for null unmake
-
-**New Routines (makemove.asm):**
-- `NULL_MAKE_MOVE` - Toggle side, update hash, clear EP square
-- `NULL_UNMAKE_MOVE` - Toggle side back, restore EP, update hash
-
-**NMP Conditions (all must be true):**
-1. Depth >= 3 (need sufficient depth for R=2 reduction)
-2. Not in check (can't pass when in check!)
-3. NULL_MOVE_OK = 1 (prevent consecutive null moves)
-4. Ply > 0 (don't do at root)
-
-**NMP Logic:**
-1. Set NULL_MOVE_OK = 0 (prevent child from doing null move)
-2. Call NULL_MAKE_MOVE
-3. Search with depth-3 (R=2 reduction) and zero window (-beta, -beta+1)
-4. Call NULL_UNMAKE_MOVE
-5. Restore NULL_MOVE_OK = 1
-6. If score >= beta, return beta (prune!)
-
-### Test Results
-
-**Depth 4 with NMP (all positions out of book):**
-
-| Position              | Time  | Bestmove | Notes                    |
-|-----------------------|-------|----------|--------------------------|
-| Sicilian (8 ply)      | 43s   | b1c3     | Was 6:07 before NMP!     |
-| Ruy Lopez (10 ply)    | 36s   | b1c3     | Open e4/e5               |
-| Italian Game (8 ply)  | 30s   | b1a3     | Open e4/e5               |
-| QGD (10 ply)          | 19s   | a1b1     | Closed position          |
-| French Defense (8 ply)| 18s   | a1b1     | Semi-closed              |
-
-**Observations:**
-- Closed positions (QGD, French) search faster - NMP prunes more aggressively
-- Open e4/e5 positions take longer but still well under a minute
-- No crashes, hangs, or quit issues across all tests
-- All moves are reasonable/standard opening responses
-
-**Depth 3 Regression:**
-- Before NMP: 1:35
-- After NMP: 1:29
-- Slight improvement, no regression
-
-### Why NMP is So Effective
-At depth 4, the search tree is enormous. NMP can cut off entire subtrees early:
-- If we're winning by enough that passing still beats beta → skip all moves
-- The R=2 reduction means we verify with a depth-1 search (very fast)
-- Zero window (-beta, -beta+1) makes the verification even faster
-
-### Files Modified
-- `board-0x88.asm` - Added NULL_MOVE_OK, NULL_SAVED_EP variables (+6 lines)
-- `makemove.asm` - Added NULL_MAKE_MOVE, NULL_UNMAKE_MOVE routines (+81 lines)
-- `negamax.asm` - Added NMP check at NEGAMAX_CONTINUE, init in SEARCH_POSITION (+325 lines)
-
-### Code Size
-- Before: 28,118 bytes
-- After: 28,926 bytes
-- Added: ~808 bytes for NMP logic
-
-### Bug Fix: Stack Init in BIOS Mode
-Also fixed a critical bug discovered during depth 4 testing: stack pointer was being
-set to $7FFF in BIOS mode, but monitor reserves $7F78-$7FFF for static variables.
-Deep recursion was overwriting monitor state, causing hangs on "quit" command.
-Fix: Don't reset R2 in BIOS mode - use BIOS-initialized stack position ($7F77).
-
----
-
-## Session: January 16, 2026 - LMR Re-search Bug Fix
-
-### Summary
-Fixed critical bug in LMR re-search logic. The `LMR_REDUCED` flag was being cleared by
-recursive calls, so re-searches never triggered. Solution: push/pop around CALL NEGAMAX.
-
-### The Bug
-`LMR_REDUCED` is a global memory variable set when LMR conditions are met. However, when
-the recursive NEGAMAX call processes its own moves, it clears `LMR_REDUCED` at the start
-of each move. When the recursive call returns, `LMR_REDUCED` is always 0.
-
-**Symptom:** Lots of 'L' (LMR applied) but no 'R' (re-search) even when testing with
-threshold=1, which should force re-searches on almost every move.
-
-### The Fix
-Push `LMR_REDUCED` to stack immediately before `CALL NEGAMAX`, pop immediately after.
-Store the popped value in `LMR_OUTER` (new memory variable) for the re-search check.
-
-**Key insight:** Global state that needs to survive recursive calls must either:
-1. Be pushed/popped around the call (stack-based)
-2. Use per-ply indexing (array-based)
-
-### Verification
-With threshold=1 (forcing LMR on all moves after the first):
-- Before fix: No 'R' characters (re-search never triggered)
-- After fix: Multiple 'R' characters (re-search working correctly)
-
-With threshold=4 (production setting):
-- Before fix: 90 seconds, no re-searches
-- After fix: 44 seconds, 3 re-searches (50% additional speedup!)
-
-### Extended Position Testing (with fix)
-| Position | Before Fix | After Fix | Re-searches | Bestmove |
-|----------|------------|-----------|-------------|----------|
-| Sicilian Defense | 90s | 44s | 3 | b1a3 |
-| Ruy Lopez Mainline | 144s | 151s | ~35 | f6g8 |
-| Exchange Ruy Lopez | 147s | 116s (-21%) | ~40 | f3h4 |
-| Italian Game (extended) | N/A | 269s | ~50 | c5b6 |
-
-**Observation:** Re-search now triggers heavily in complex positions. Some positions
-are slightly slower (more thorough), others faster (better pruning from accurate scores).
-The search is now **correct** - previous times had broken re-search.
-
-### Files Modified
-- `board-0x88.asm` - Added `LMR_OUTER` variable at $64A6
-- `negamax.asm` - Push/pop LMR_REDUCED around CALL, check LMR_OUTER for re-search
-
-### Code Size
-- Before: 28,068 bytes
-- After: 28,118 bytes
-- Added: ~50 bytes for stack save/restore
-
----
-
-## Session: January 15, 2026 - Late Move Reductions (LMR)
-
-### Summary
-Implemented Late Move Reductions (LMR) to speed up search. Depth 3 now completes in
-90 seconds, down from 3.5 minutes - a 60% improvement!
-
-### What is LMR?
-Moves are ordered by quality: killer moves first, then captures, then quiet moves.
-Later moves in this ordering are statistically less likely to be best. LMR searches
-these "late moves" at reduced depth. If a reduced search returns a surprisingly good
-score (beats alpha), we re-search at full depth.
-
-### Implementation Details
-
-**New Memory Variables ($64A3-$64A5):**
-- `LMR_MOVE_INDEX` - tracks moves searched at current node
-- `LMR_REDUCED` - flag: 1 if current move was searched at reduced depth
-- `LMR_IS_CAPTURE` - flag: 1 if current move is a capture
-
-**LMR Conditions (all must be true):**
-1. Move index >= 4 (first 4 moves get full search)
-2. Depth >= 3 (need sufficient depth to reduce)
-3. Not a capture (tactical moves always full depth)
-
-**LMR Logic:**
-- Normal: depth-1 for recursive call
-- With LMR: depth-2 for recursive call (one extra reduction)
-- Re-search: if reduced search beats alpha, search again at depth-1
-
-**Files Modified:**
-- `board-0x88.asm` - Added LMR memory variable definitions
-- `negamax.asm` - LMR condition check, depth reduction, re-search logic (~200 lines)
-
-### Test Results - LMR Speedup Confirmed
-```
-Sicilian Defense (depth 3):
-Before LMR: 3.5 minutes, bestmove b1a3
-After LMR:  90 seconds, bestmove b1c3 (60% faster!)
-```
-
-### Extended Testing - Re-search Path Verification
-
-Attempted to trigger re-search ('R') through various positions. All showed LMR reductions
-('L') but no re-searches, confirming move ordering is highly effective.
-
-| Position | Time | LMR | Re-search | Bestmove |
-|----------|------|-----|-----------|----------|
-| Sicilian (original) | 90s | Heavy | 0 | b1c3 |
-| French Defense | 120s | Medium | 0 | a1b1 |
-| Sicilian Extended | 80s | Heavy | 0 | a1b1 |
-| Ruy Lopez Mainline | 144s | Medium | 0 | b1a3 |
-| Larsen's Opening | 58s | Light | 0 | e1g1 |
-| Italian Game | 184s | Medium | 0 | c5d6 |
-| Pawn-only Opening | 60s | Light | 0 | a1a2 |
-| Exchange Ruy Lopez | 147s | Medium | 0 | e1g1 |
-
-**Observation:** First LMR cluster consistently appears around 50 seconds across all tests,
-suggesting predictable time to reach depth-3 nodes where LMR applies.
-
-### Why No Re-searches?
-Move ordering (killers + captures first) is effective enough that late quiet moves
-genuinely don't beat alpha even on reduced search. Re-search is a safety net that
-rarely triggers - which is actually optimal for performance.
-
-### DONE: Re-search Code Path Verified (Jan 16)
-Bug found and fixed! `LMR_REDUCED` was being cleared by recursive calls. Now uses
-stack push/pop around `CALL NEGAMAX`. Re-search verified working with threshold=1.
-See Session: January 16, 2026 for details.
-
-### Code Size
-- Before: 27,208 bytes
-- After: 28,068 bytes
-- Added: ~860 bytes for LMR logic
-
----
-
-## Session: January 13, 2026 (Evening) - Depth 3 Achievement
-
-### Summary
-Major milestone achieved: depth 3 search is now practical! Internal TT at all nodes
-provides massive speedup, reducing depth 3 time from 8+ minutes (never finished) to
-~3.5 minutes. This puts the engine on par with historical microcomputer chess programs
-like Sargon, which defaulted to depth 2.
-
-### Key Optimization: Internal Transposition Table
-The breakthrough was enabling TT probe/store at ALL nodes, not just root:
-- **W15 (earlier today):** Removed ply==0 restrictions on TT_PROBE and TT_STORE
-- **Result at depth 2:** ~7% speedup (61s → 57s → 44s)
-- **Result at depth 3:** From "never finishes" to 3.5 minutes!
-
-### Futility Pruning (Experimental)
-Added futility pruning infrastructure but it had limited effect in test positions:
-- Added STATIC_EVAL cache at depth-1 nodes
-- Added futility check for quiet moves
-- Challenge: signed comparison in negamax alpha-beta is tricky
-- In equal positions, futility rarely triggers
-- Code remains in place for potential future benefit in unbalanced positions
-
-### Technical Details
-
-**Files Modified:**
-- `negamax.asm` - Futility pruning setup and check in move loop
-- `board-0x88.asm` - Added STATIC_EVAL_HI/LO, FUTILITY_OK, FUTILITY_MARGIN constants
-
-**Futility Logic:**
-- At depth 1 (frontier nodes), cache static eval before move loop
-- For each non-capture move, check if static_eval + margin < 0
-- If losing by more than margin, skip the quiet move
-- Margin set to 150 centipawns (1.5 pawns)
-
-**Signed Comparison Challenge:**
-- Initial implementation used unsigned subtraction - pruned everything!
-- Tried XOR $80 on high bytes for signed-to-unsigned conversion
-- Simplified to just checking if (eval + margin) is negative
-- In equal positions, this rarely triggers, but doesn't hurt
-
-### Why Internal TT is So Effective
-At depth 3, many positions are reached via different move orders (transpositions).
-The TT detects these and returns cached results instead of re-searching:
-- Depth 2: ~40 TT stores per search
-- Depth 3: ~170 TT stores per search
-- Each TT hit at an internal node saves an entire subtree search!
-
-### Performance Summary
-| Depth | Before Internal TT | After Internal TT | Speedup |
-|-------|-------------------|-------------------|---------|
-| 2     | ~61 seconds       | ~44 seconds       | ~28%    |
-| 3     | 8+ min (DNF)      | ~3.5 minutes      | >50%    |
-
-### Next Steps (Optional)
-1. Remove debug output for cleaner play
-2. Try Late Move Reductions (LMR) for additional speedup
-3. Consider depth 4 feasibility (would likely need more optimizations)
-
----
-
-## Session: January 9, 2026 (Evening) - Incremental Hash Updates
-
-### Summary
-Added incremental Zobrist hash updates to MAKE_MOVE and UNMAKE_MOVE. Found and fixed a critical bug in HASH_XOR_PIECE_SQ that was clobbering the hash.
-
-### Approach: Careful, Incremental Steps
-After previous session's complexity caused bugs, took methodical approach:
-1. **Step 1:** Add HASH_XOR_SIDE only (simplest change) - tested, committed
-2. **Step 2:** Add piece-square XOR - tested, found bug, fixed, committed
-3. **Step 3:** Enable internal TT (deferred to next session)
-
-### Memory Audit
-Before adding piece-square XOR, conducted thorough audit:
-- Verified no duplicate/conflicting memory definitions
-- Confirmed UNDO_* locations distinct from MOVE_* locations
-- Separated QS_MOVE_LIST ($6F00) from UCI_BUFFER ($6500) for debugging
-
-### Bug Found: R7 Clobber in HASH_XOR_PIECE_SQ
-**Symptom:** Hash drifted during search (start "D", end "c")
-
-**Root cause:** Line 637 stored temp value in R7.0, but R7 held the hash!
-```asm
-PLO 7               ; R7.0 = rank*8 (WRONG - clobbers hash!)
-```
-
-**Fix:** Use R11.0 for temp instead of R7.0
-
-### Hash Update Logic
-
-**MAKE_MOVE (after board modified):**
-1. XOR [moving piece, from] - remove from origin
-2. XOR [captured piece, to] - remove captured (skips if EMPTY)
-3. XOR [moving piece, to] - add to destination
-4. XOR side
-
-**UNMAKE_MOVE (after board restored):**
-1. XOR [moving piece, to] - remove from destination
-2. XOR [captured piece, to] - restore captured (skips if EMPTY)
-3. XOR [moving piece, from] - restore to origin
-4. XOR side
-
-### Test Results
-- Same position twice: "D" start, "d" end (hash matches!), second search instant
-- Different position: "O" hash, works correctly
-- TT hit confirmed on repeated searches
-
-### Debug Output (still present)
-- Uppercase letter (A-P) at search start
-- Lowercase letter (a-p) at TT_STORE
+Fixed three TT bugs that together rendered the transposition table completely non-functional
+for the main search. The store depth bug (reading high byte = always 0) was the most critical —
+identical bug class to the Feb 4 probe-side fix, but on the store side. Also implemented
+per-ply bound flags and tested full ALPHA/BETA probe logic (rolled back due to 16-bit hash
+collision risk).
+
+### Bug 1: TT Store Depth (negamax.asm)
+`RLDI 10, SEARCH_DEPTH` read the high byte (always 0) instead of `SEARCH_DEPTH + 1` (low byte).
+Every TT entry stored depth=0. The probe (fixed Feb 4) correctly read the low byte, so the
+depth check (`entry_depth >= required_depth`) failed for ALL probes at depth >= 1. **The TT
+was completely non-functional for the main search.**
+
+Fix: `RLDI 10, SEARCH_DEPTH + 1` — one-line fix, biggest impact.
+
+### Bug 2: TT Store Flags (negamax.asm)
+All paths through NEGAMAX_RETURN hardcoded `LDI TT_FLAG_EXACT`. Added per-ply NODE_TT_FLAGS
+array (8 bytes, indexed by CURRENT_PLY) with STORE_NODE_FLAG/LOAD_NODE_FLAG subroutines.
+Flags set at 5 locations: init=ALPHA, alpha update=EXACT, beta cutoff=BETA,
+checkmate=EXACT, stalemate=EXACT.
+
+### Bug 3: TT Probe Bounds (negamax.asm)
+Implemented full ALPHA/BETA/EXACT probe with signed 16-bit comparisons. First test match
+showed engine "obliterated" — suspiciously low depth-1 node counts (5 nodes in positions
+with 30+ legal moves) suggested hash collision false cutoffs. **Rolled back to EXACT-only
+probe.** Correct flags are stored for future use with a larger hash.
+
+### Match Result (EXACT-only probe)
+23-move French Defense, 21-minute match:
+- Moves 2-11 (opening): All depth-2 timeout (~90s each). Kf1 on move 3 lost castling rights.
+- Move 12 (Qf3): First middlegame depth 3 — 2158 nodes, 84s
+- Move 15 (Qxa8): Depth 3 — 1534 nodes, 63s. Won the exchange (rook capture via Nc6 fork).
+- Moves 16-23: ALL depth 3 in sub-second! 35-89 nodes. TT EXACT hits cutting huge branches.
+- Lost to Qd1# (back-rank mate, consequence of early Kf1 blunder).
 
 ### Commits
-- W13: Add HASH_XOR_SIDE to MAKE_MOVE/UNMAKE_MOVE
-- W14: Add piece-square XOR + fix R7 clobber bug
-- Also: Separate QS_MOVE_LIST from UCI_BUFFER
+- TT correctness fix (this commit)
 
-### Next Steps (for future session)
-1. Remove debug output
-2. Enable internal TT probe/store (remove ply==0 checks)
-3. Test for speedup from transposition detection
+### Files Changed
+- `board-0x88.asm`: Added NODE_TT_FLAGS EQU $64D2 (8 bytes)
+- `negamax.asm`: STORE_NODE_FLAG/LOAD_NODE_FLAG subroutines, 5 flag store points,
+  depth fix (SEARCH_DEPTH → SEARCH_DEPTH + 1), EXACT-only probe with explanatory comment
 
----
-
-## Session: January 9, 2026 (Morning) - Transposition Table Fix
-
-### Summary
-Fixed TT implementation that was broken from previous session. Simplified to root-only probe/store for correctness.
-
-### Problem Identified
-Previous session added TT with incremental hash updates in MAKE_MOVE/UNMAKE_MOVE. Multiple bugs:
-1. Hash updates in MAKE/UNMAKE were complex and error-prone
-2. Internal TT probes were corrupting search (all nodes had same hash as root)
-3. Opening book (ply 0-7) was masking the bug - "instant" responses were book hits, not TT hits
-
-### Solution: Simplify to Root-Only TT
-1. **Removed** incremental hash updates from MAKE_MOVE and UNMAKE_MOVE
-2. **Added** ply check to TT_PROBE - only probe at ply 0 (root)
-3. **Added** ply check to TT_STORE - only store at ply 0 (root)
-4. Hash computed once via HASH_INIT at start of SEARCH_POSITION
-
-### How It Works Now
-- HASH_INIT computes Zobrist hash from current board position
-- Hash stays constant during search (no incremental updates)
-- TT probe/store only at root - caches root position results
-- Same position searched twice = instant TT hit
-- Different positions get different hashes (verified: "D" vs "O")
-
-### Test Results
-```
-position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 g8f6
-go depth 2  -> "D", 61 seconds, bestmove f3g5
-go depth 2  -> "D", instant, bestmove f3g5  (TT hit!)
-
-position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 d2d3 a7a6
-go depth 2  -> "O", 61 seconds, bestmove f3g5  (different hash)
-go depth 2  -> "O", instant, bestmove f3g5  (TT hit!)
-```
-
-### Limitations
-- TT only caches root positions (no internal transposition detection)
-- Incremental hash updates can be added later as an optimization
-- Current implementation is simple and correct - good foundation
-
-### Files Modified
-- `makemove.asm` - Removed hash update sections (~150 lines)
-- `negamax.asm` - Added ply checks for TT_PROBE and TT_STORE
-
-### Commit
-- W12: Fix TT to root-only probe/store (simplified, working)
+### Build
+12,842 bytes (.bin), clean assembly, zero errors
 
 ---
 
-## Session: January 8, 2026 - Transposition Table Implementation (WIP)
+## Session: February 9, 2026 - CDP1806 RLDI Migration + Pawn Shield Analysis
 
 ### Summary
-Implemented transposition table infrastructure with Zobrist hashing. TT appeared to work but was actually broken - opening book was masking the bug.
+Migrated entire codebase from vanilla CDP1802 instructions to use CDP1806 RLDI opcode.
+401 replacements via automated Python script. Also diagnosed pawn shield performance
+issue (speed, not values) and added timestamped bridge logging.
 
-### Components Added
+### Pawn Shield Investigation
+Tested pawn shield at reduced 4cp bonus (down from 8cp). Match showed erratic play —
+no castling, queen mutual annihilation. Analysis of timestamped debug log revealed the
+real problem: pawn shield overhead (~200 extra instructions per EVALUATE call) pushed
+depth-3 search past the 90-second time budget. Engine fell back to depth-2 for nearly
+every move. Re-disabled with explanatory comment. Future: replace with lightweight
+open-file king penalty (covers queen AND rook attacks on open files).
 
-**1. Zobrist Key Generator (`tools/gen_zobrist.py`)**
-- Generates 16-bit Zobrist keys for piece-square combinations
-- Uses seed 0x1802CAFE for reproducibility
-- 781 keys total: 12 pieces × 64 squares + side + 4 castling + 8 EP files
+### CDP1806 RLDI Migration
+- Added `CPU 1805` directive to build.sh to enable 1806 extended opcodes
+- Wrote `convert-rldi.py` automation script for `LDI HIGH/PHI/LDI LOW/PLO` → `RLDI Rn, addr`
+- 401 conversions (366 exact match, 35 mismatched HIGH/LOW expressions)
+- One assembly fix: `BZ` → `LBZ` in movegen-helpers.asm (page boundary shifted by compression)
+- Binary: 13,582 → 12,783 bytes (799 saved, 5.9%)
+- RLDI preserves D register (unlike LOAD pseudo-op), eliminating follow-up reloads
 
-**2. Zobrist Keys (`zobrist-keys.asm`)**
-- 1,562 bytes of key data
-- Labels: ZOBRIST_PIECE_SQ, ZOBRIST_SIDE, ZOBRIST_CASTLE, ZOBRIST_EP
+### Performance Impact
+- First depth-3 search (opening): 85s → 59s (30% speedup)
+- 44-move Caro-Kann match (~59 minutes): castled O-O move 4, but only 2 middlegame
+  moves completed depth 3, plus 5 endgame moves. Most middlegame positions still
+  exhaust the 90s budget at depth 2.
 
-**3. TT Variables (`board-0x88.asm`)**
-- HASH_HI/LO at $6601-$6602 (current position hash)
-- TT_TABLE at $6700 (256 entries × 8 bytes = 2KB)
-- TT entry: hash_hi, hash_lo, score_hi, score_lo, depth, flag, move_hi, move_lo
+### Deferred 1806 Optimizations
+- **RSXD/RLXA** (16-bit push/pop): Byte order differs from manual GHI/STXD/GLO/STXD.
+  RSXD stores low byte first; manual stores high byte first. Must use matched pairs.
+  ~42 bytes savings. Separate careful pass needed.
+- **SCAL/SRET**: Pushes bytes in OPPOSITE order from BIOS SCRT. NOT interchangeable.
+- **DBNZ**: Only 2 candidates in check.asm, minimal impact.
 
-**4. TT Functions (`transposition.asm`)**
-- HASH_INIT: Compute full hash from board position
-- TT_CLEAR: Zero all TT entries
-- TT_PROBE: Look up position, return hit/miss
-- TT_STORE: Store search result in TT
-- HASH_XOR_PIECE_SQ: XOR piece-square key into hash
-- HASH_XOR_SIDE: Toggle side-to-move in hash
-
-**5. Incremental Hash Updates (`makemove.asm`)**
-- Added hash XOR updates in MAKE_MOVE and UNMAKE_MOVE
-- XOR out piece from origin, XOR in at destination
-- XOR captured piece, XOR side-to-move
-
-### Bug Discovery
-Opening book covers ply 0-7, so "instant" responses were book hits, not TT hits. At 8+ ply (out of book), TT didn't work - both searches took ~61 seconds.
-
-### Bugs Found (not fully fixed this session)
-1. Internal TT probes corrupted BEST_MOVE (fixed: only update at ply 0)
-2. MAKE_MOVE used wrong address for castling state (fixed: use GAME_STATE+STATE_CASTLING)
-3. Hash updates in MAKE/UNMAKE had register clobbering issues
-4. All internal nodes had same hash as root (search corruption)
-
-### Debug Output Added
-- Single character (A-P) printed before search showing hash high nibble
-- Helps verify hash consistency between searches
-
-### Files Added/Modified
-- `tools/gen_zobrist.py` (new)
-- `zobrist-keys.asm` (new)
-- `transposition.asm` (new)
-- `board-0x88.asm` (TT variables)
-- `makemove.asm` (hash updates - later removed)
-- `negamax.asm` (TT integration)
-
-### Commit
-- W11: Add transposition table infrastructure (WIP)
-
-### Status
-TT infrastructure in place but not working correctly. Deferred to next session.
-
----
-
-## Session: January 7, 2026 - Search Optimizations
-
-### Summary
-Added multiple search optimizations to improve alpha-beta pruning efficiency. No measurable speedup at depth 2 (overhead cancels gains), but these are foundational for deeper searches.
-
-### Optimizations Implemented
-
-**1. Killer Move Ordering (`ORDER_KILLER_MOVES`)**
-- Stores moves that caused beta cutoffs in KILLER_MOVES table
-- Promotes killer1/killer2 to front of move list
-- Limited to ply 0-2 to reduce overhead
-- Fixed STORE_KILLER_MOVE to use CURRENT_PLY (was using SEARCH_DEPTH)
-
-**2. Quiescence Search Alpha-Beta Pruning**
-- Stand-pat beta cutoff: if stand-pat >= beta, return immediately
-- Alpha update: if stand-pat > alpha, tighten the window
-- Delta pruning: if stand-pat + QUEEN_VALUE < alpha, prune
-- Loop beta cutoff: stop searching captures when score >= beta
-
-**3. Capture-First Ordering (`ORDER_CAPTURES_FIRST`)**
-- Scans move list, identifies captures by checking target square
-- Moves all captures to front of list before quiet moves
-- Foundation for full MVV-LVA (victim-attacker scoring)
-- Limited to ply 0-2 to reduce overhead
-
-### Performance Results
-- Baseline (d4 from startpos): 38 seconds - unchanged
-- Complex position (ply 9): ~63 seconds - unchanged
-- No regression, no improvement at depth 2
-- Benefits expected at depth 4+ where pruning has more impact
+### Bridge Timestamps
+Added `log_write()` helper to elph-bridge.py with MM:SS.mmm elapsed time format.
+Critical for move-time analysis — showed depth-3 completion times per move.
 
 ### Commits
-- WX: Opening book support
-- WY: Killer move ordering
-- WZ: QS alpha-beta pruning
-- W10: Capture-first ordering
+- `7cf0491`: Migrate to CDP1806 RLDI instructions and add bridge timestamps
+
+### Files Changed
+- `build.sh`: Added `CPU 1805` directive
+- All 15 `.asm` source files: RLDI conversions
+- `movegen-helpers.asm`: BZ→LBZ page boundary fix
+- `evaluate.asm`: Pawn shield re-disabled with updated comment
+- `elph-bridge.py`: Timestamped logging
+- `convert-rldi.py`: New automation script
+- `docs/1806-ADDITIONS.md`: New CDP1806 instruction reference
+
+### Build
+12,783 bytes (.bin), clean assembly, zero errors
 
 ---
 
-## Session: January 7, 2026 - Opening Book Implementation
+## Session: February 7-9, 2026 - PST Fix, Promotion Fix, Match Testing
 
 ### Summary
-Implemented opening book support for instant moves in the opening phase. Engine now plays the Giuoco Piano/Italian Game instantly through 7-8 moves.
+Fixed two critical bugs that transformed engine play quality: inverted PST tables and
+broken promotion handling. Ran multiple CuteChess matches showing dramatically improved
+positional play — engine now castles, develops pieces, and survives 38+ moves.
 
-### Components Added
+### Bug 1: Inverted PST Tables (pst.asm)
 
-**1. Book Data Generator (`tools/pgn_to_book.py`)**
-- Parses PGN files and generates assembly book data
-- Tracks board state to convert algebraic notation to 0x88 squares
-- Includes `can_piece_reach()` for proper piece disambiguation
-- Generated from GiuocoPiano.pgn (52,811 games)
+**Root Cause:** All 6 PST tables had row order inverted relative to the EVAL_PST code.
+Code computes `index = rank*8 + file` where rank 0 = chess Rank 1 (White's back rank).
+But tables stored "Rank 8" values at index 0-7 and "Rank 1" at index 56-63.
 
-**2. Book Data (`opening-book.asm`)**
-- 47 entries, 640 bytes
-- Format: `[ply] [move1_from] [move1_to] ... [response_from] [response_to]`
-- Sorted by ply for efficient early-exit
-- Terminated with $FF marker
+**Impact:** White's positional evaluation was completely backwards:
+- King on g1 (castled) got -30 penalty instead of +40 bonus
+- Pawns on rank 2 got +50 ("about to promote") instead of -20 ("starting position")
+- Black was unaffected because XOR $38 flip compensated
 
-**3. Book Lookup (`opening-book-lookup.asm`)**
-- `BOOK_LOOKUP` function searches book for current position
-- Returns D=1 if hit (response in BOOK_MOVE_FROM/TO), D=0 if miss
-- Early exit when book ply exceeds game ply
+**Fix:** Reversed all 6 table row orders. Also strengthened King PST castling squares
+(b1/g1=+60, d1/e1=-20, Rank 2 flanks=+30, center=-10) and added bishop c1/f1
+undevelopment penalty (-15).
 
-**4. Game Move Tracking**
-- Added `GAME_PLY` variable to track moves since start position
-- UCI position parsing now records moves to `MOVE_HIST` buffer
-- `INIT_MOVE_HISTORY` clears both HISTORY_PTR and GAME_PLY
+### Bug 2: Promotion Handling (negamax.asm, uci.asm)
 
-**5. UCI Integration**
-- `UCI_CMD_GO` calls `BOOK_LOOKUP` before search
-- If book hit, returns instantly without searching
-- If miss, falls back to normal search
+Three interrelated promotion bugs:
 
-### Files Modified
-- `board-0x88.asm` - Added GAME_PLY, BOOK_MOVE_FROM/TO; updated INIT_MOVE_HISTORY
-- `uci.asm` - Move recording in position parsing; book check in go command
-- `build.sh` - Added opening-book-lookup.asm and opening-book.asm
+**2a. Stale UNDO_PROMOTION after opponent promotion:**
+After UCI parser applies opponent's promotion (e.g., `f2f1q`), UNDO_PROMOTION stays set
+to QUEEN_TYPE ($05). Every subsequent MAKE_MOVE during search sees this and "promotes"
+every piece it moves — total board corruption, producing `h@h@` output with only 3 nodes.
 
-### Test Results
-```
-position startpos
-go depth 2
-→ bestmove e2e4 (instant - book hit)
+**Fix:** Clear UNDO_PROMOTION = 0 in UCI_GO_SEARCH before SEARCH_POSITION.
 
-position startpos moves e2e4
-go depth 2
-→ bestmove e7e5 (instant - book hit)
+**2b. Engine's own promotions during search:**
+When engine generates promotion moves (DECODED_FLAGS = MOVE_PROMOTION), the search never
+set UNDO_PROMOTION. Pawns reaching the 8th rank stayed as pawns on the board during search.
 
-position startpos moves e2e4 e7e5
-go depth 2
-→ bestmove g1f3 (instant - book hit)
+**Fix:** Before each MAKE_MOVE in negamax and QS, check DECODED_FLAGS. If MOVE_PROMOTION,
+set UNDO_PROMOTION = QUEEN_TYPE. Added UNDO_PROMOTION to save/restore stack (7 bytes).
 
-position startpos moves e2e4 e7e5 g1f3
-go depth 2
-→ bestmove b8c6 (instant - book hit)
-```
+**2c. UCI bestmove promotion suffix:**
+UCI_SEND_BEST_MOVE didn't append 'q' for promotion moves.
 
-### Size Impact
-- Previous: 17,170 bytes
-- Current: 19,250 bytes
-- Added: ~2KB for book lookup code + 640 bytes book data
+**Fix:** After outputting from/to, check if piece at from is a pawn and to is on last rank.
+If so, append 'q'.
+
+### Pawn Shield (evaluate.asm) — Implemented but Disabled
+
+Added king safety evaluation: for each side, if king is on back rank, check 3 squares
+ahead (+$10, +$0F, +$11 for White; -$10, -$0F, -$11 for Black) for friendly pawns.
+Each pawn found adds/subtracts 8 centipawns. Uses ANI $88 for 0x88 validity.
+
+Currently disabled with `LBR BKS_DONE` after `CALL EVAL_PST` to isolate PST fix effects.
+Earlier testing with pawn shield enabled showed erratic play — may need re-evaluation.
+
+### Decimal Node Output (serial-io.asm, negamax.asm, board-0x88.asm)
+
+Replaced hex SERIAL_PRINT_HEX calls with BIOS F_UINTOUT ($FF60) for UCI-compliant
+decimal node count. F_UINTOUT: R13=16-bit value, R15=buffer pointer, null-terminate
+after call. UINT_BUFFER at $64CC (6 bytes).
+
+### CuteChess Match Analysis
+
+**Match 1 (pre-PST-fix, 31 moves):** King never castled (Kd1 instead of O-O), c1 bishop
+never moved, rooks shuffled a1↔b1. Good Queen/Knight play but terrible king defense.
+
+**Match 2 (PST-fix + pawn shield, 20 moves):** Castled early (good!) but catastrophic
+material blunders (Nxe5, Qxg4). Very fast, erratic play. Pawn shield may have caused
+bad evaluation swings → aggressive pruning → shallow effective search.
+
+**Match 3 (PST-fix only, 45 moves):** French Defense, queenless middlegame. Excellent
+development (Nc3, Bf4). Hit promotion bug at move 45 (a2b1b → h@h@ crash).
+
+**Match 4 (all fixes, 38 moves):** Caro-Kann. Castled O-O move 13, both bishops developed.
+Creative Bxf7+ sacrifice. Lost to Black's two rooks in endgame. Promotion (a2b1b) handled
+correctly — no crash. Engine's main weakness: depth-3 tactical horizon (g4 weakening king,
+letting a-pawn march to promotion).
+
+### Commits
+- `de238c7`: Use BIOS F_UINTOUT for UCI-compliant decimal node count output
+- `629d54a`: Fix inverted PST tables and add pawn shield evaluation
+- `7f87eec`: Fix promotion handling: clear stale flag, support search promotions, UCI output
+
+### Files Changed
+- `pst.asm`: All 6 PST tables reversed, King PST strengthened, bishop c1/f1 penalty
+- `evaluate.asm`: Pawn shield code (disabled via LBR BKS_DONE)
+- `negamax.asm`: UNDO_PROMOTION handling in search (set from DECODED_FLAGS, save/restore)
+- `uci.asm`: Clear UNDO_PROMOTION before search, promotion suffix in bestmove output
+- `serial-io.asm`: Added F_UINTOUT EQU $FF60
+- `board-0x88.asm`: Added UINT_BUFFER EQU $64CC
+
+### Build
+13,582 bytes (.bin), clean assembly, zero errors
 
 ---
 
-## Session: January 6, 2026 - Critical Slider Bug Fixes
+## Session: February 6, 2026 - Iterative Deepening + RFP
 
 ### Summary
-Fixed two critical bugs in slider (bishop/rook/queen) move generation that were causing memory corruption and incorrect move generation.
+Implemented iterative deepening with RTC-based time management and Reverse Futility
+Pruning. Also fixed stale RAM bug and ran first CuteChess depth-2 matches.
 
-### Bug #1: R7 Clobbered by ADD_MOVE_ENCODED (movegen-helpers.asm)
+### Iterative Deepening (negamax.asm)
+SEARCH_POSITION loops d1→d2→d3, saving ITER_BEST after each completed depth. DS12887 RTC
+reads seconds via OUT 2 ($80) / INP 3, aborts at 90s budget. Falls back to last completed
+depth's bestmove on abort.
 
-**Symptom:** Memory corruption with repeating $03F0 pattern starting at $6346, eventually crashing into stack.
+Results: Italian d3: 85s/2012 nodes (completes). Queen's Attack d3: 89s abort (falls back
+to d2). Three LDI-clobbers-D bugs fixed during development.
 
-**Root Cause:** Slider loops use R7.0 to track current position along the ray. ADD_MOVE_ENCODED was clobbering R7 when storing flags to MOVE_FLAGS_TEMP:
-```asm
-ADD_MOVE_ENCODED:
-    LDI HIGH(MOVE_FLAGS_TEMP)
-    PHI 7               ; <-- Clobbers R7!
-    LDI LOW(MOVE_FLAGS_TEMP)
-    PLO 7               ; R7 = $6406, not slider position!
-```
+### Reverse Futility Pruning (negamax.asm)
+At non-root nodes with depth <= 2, if static_eval - margin >= beta, return static_eval
+(position too good, opponent won't allow it). Margin: 100cp at depth 1, 300cp at depth 2.
+15% speedup on quiet positions. Extended futility and razoring tested but reverted
+(EVALUATE overhead > benefit on 1802).
 
-After ADD_MOVE_ENCODED returned, slider loop did `GLO 7; ADI direction` using garbage value, causing incorrect moves and eventual memory corruption.
+### Stale RAM Fix (board-0x88.asm)
+Added WORKSPACE_CLEAR zeroing $6200-$64FF at startup and ucinewgame. Prevents stale
+variable bugs between games. Note: TT at $6700-$6EFF is NOT cleared by WORKSPACE_CLEAR
+(cleared separately by TT_CLEAR in ucinewgame).
 
-**Fix:** Save/restore R7 in ADD_MOVE_ENCODED:
-```asm
-ADD_MOVE_ENCODED:
-    ; Save R7 (used by slider loops for current position!)
-    GLO 7
-    STXD
-    GHI 7
-    STXD
-    ; ... rest of function ...
-    ; Restore R7
-    IRX
-    LDXA
-    PHI 7
-    LDX
-    PLO 7
-    RETN
-```
+### CuteChess Depth-2 Matches
+Two matches confirmed poor play quality at depth 2 — engine couldn't see basic tactics.
+Depth 3 with iterative deepening is the target for competitive play.
 
-### Bug #2: R8 Clobbered Before Capture Detection (movegen-fixed.asm)
+### Commits
+- `5c959e9`: Fix stale RAM bug: clear workspace $6200-$64FF on startup and ucinewgame
+- `4bebfb2`: Add RFP, PST tuning, delta pruning, and restore elph-bridge
+- `19e1c0d`: Add iterative deepening with RTC-based time management
+- `936ed83`: Update PROGRESS.md with iterative deepening results
 
-**Symptom:** Sliders continued past enemy pieces instead of stopping on captures.
-
-**Root Cause:** Slider loops saved CHECK_TARGET_SQUARE result to R8.0, but ENCODE_MOVE_16BIT (called by ADD_MOVE_ENCODED) uses R8 for the encoded move output. The capture detection after ADD_MOVE_ENCODED read garbage:
-```asm
-    CALL CHECK_TARGET_SQUARE
-    PLO 8               ; Save result (0=blocked, 1=empty, 2=capture)
-    ...
-    CALL ADD_MOVE_ENCODED  ; <-- ENCODE_MOVE_16BIT clobbers R8!
-    GLO 8               ; <-- Returns encoded move low byte, NOT result!
-    XRI 2
-    LBZ GEN_SLIDE_N_RET  ; Capture detection broken
-```
-
-**Fix:** Save result to R11.0 instead (target square no longer needed after setting up R13):
-```asm
-    CALL CHECK_TARGET_SQUARE
-    PLO 11              ; Save result to R11.0 (R8 clobbered by ADD_MOVE_ENCODED)
-    ...
-    CALL ADD_MOVE_ENCODED
-    GLO 11              ; Get result from R11.0
-    XRI 2
-    LBZ GEN_SLIDE_N_RET  ; Capture detection works
-```
-
-Applied to all 8 slider directions (N, NE, E, SE, S, SW, W, NW).
-
-### Bug #3: 128-Byte Ply Buffer Calculation (negamax.asm)
-
-**Symptom:** Move list buffer overflow when >32 moves generated.
-
-**Root Cause:** Code used 64 bytes per ply (32 moves max), but positions can have 40+ moves. Also, the 8-bit calculation `ply × 64` was being used, but 128-byte buffers need 16-bit math since `ply × 128` overflows for ply ≥ 2.
-
-**Fix:** Use 128 bytes per ply with proper 16-bit calculation:
-```asm
-    ; offset_hi = ply >> 1, offset_lo = (ply & 1) << 7
-    LDN 10              ; D = current ply (0-3)
-    SHR                 ; D = ply >> 1 (0 or 1)
-    ADI HIGH(MOVE_LIST) ; D = $62 + (ply >> 1)
-    PHI 9
-    LDN 10              ; D = ply (reload)
-    ANI $01
-    BZ NEGAMAX_PLY_EVEN
-    LDI $80             ; Odd ply: low byte = $80
-    BR NEGAMAX_PLY_DONE
-NEGAMAX_PLY_EVEN:
-    LDI $00
-NEGAMAX_PLY_DONE:
-    PLO 9               ; R9 = ply-indexed move list
-```
-
-Buffer layout: Ply 0=$6200, Ply 1=$6280, Ply 2=$6300, Ply 3=$6380
-
-### Other Fixes
-- **uci.asm:** Changed short branches (BM, BDF, BZ) to long branches (LBNF, LBDF, LBZ) for UCI_GO_SET_DEPTH target
-- **negamax.asm:** Fixed STORE_KILLER_MOVE pointer calculation (was using clobbered R13.0)
-
-### Verification
-Memory dump (engine-memdump2.out) confirmed correct operation:
-- Move buffers contain valid encoded moves (no $03F0 corruption)
-- NODES_SEARCHED = 15,659 for interrupted depth 3 search
-- Engine returned valid `bestmove b1c3` at depth 2
-
-### Files Modified
-- `movegen-helpers.asm` - R7 save/restore in ADD_MOVE_ENCODED
-- `movegen-fixed.asm` - R8→R11 for capture detection in all 8 slider directions
-- `negamax.asm` - 128-byte ply buffers, STORE_KILLER_MOVE fix, QS bypass for testing
-- `uci.asm` - Long branch fixes
+### Build
+13,192 bytes (.bin), clean
 
 ---
 
-## Session: December 30, 2025 - Multiple Critical Bug Fixes
-
-### Summary
-
-Continued debugging the "bestmove h@h@" bug. Found and fixed multiple issues, narrowed down to DECODE_MOVE_16BIT extracting wrong values.
-
-### Bugs Found & Fixed
-
-#### Bug #1: PIECE_VALUES Lookup (evaluate.asm)
-
-**Symptom:** All evaluations returned $90F0 (constant score for all moves).
-
-**Root Cause:** Address calculation for piece value table was wrong:
-```asm
-; BUGGY - GLO/PLO 11 is a no-op!
-    GLO 8               ; Piece type
-    SHL                 ; x2 for table offset
-    PLO 11              ; R11.0 = offset
-    LDI HIGH(PIECE_VALUES)
-    PHI 11
-    GLO 11              ; Load offset back
-    PLO 11              ; Store it again - NO-OP!
-```
-
-**Fix:**
-```asm
-    GLO 8               ; Piece type
-    SHL                 ; x2 for table offset
-    STR 2               ; Save offset to stack
-    LDI LOW(PIECE_VALUES)
-    ADD                 ; D = LOW(PIECE_VALUES) + offset
-    PLO 11
-    LDI HIGH(PIECE_VALUES)
-    ADCI 0              ; Add carry
-    PHI 11              ; R11 = PIECE_VALUES + offset
-```
-
-#### Bug #2: QS_MOVE_LIST Clobbering Parent's Moves (negamax.asm)
-
-**Symptom:** After first move, subsequent moves decoded as garbage ({70:00}, {00:70}).
-
-**Root Cause:** QUIESCENCE_SEARCH used same MOVE_LIST buffer ($6200) as parent NEGAMAX. When QS generated moves, it overwrote the parent's move list.
-
-**Fix:** Added separate QS_MOVE_LIST at $6300.
-
-#### Bug #3: R9 Not Reset After GENERATE_MOVES (negamax.asm)
-
-**Symptom:** First move from garbage address, not from $6200.
-
-**Root Cause:** GENERATE_MOVES advances R9 as it writes moves. After returning, R9 points PAST the end of the move list, not to the start.
-
-**Fix:** Reset R9 to START of move list after GENERATE_MOVES.
-
-#### Bug #4: UNDO_* in ROM Instead of RAM (makemove.asm, board-0x88.asm)
-
-**Symptom:** UNDO_FROM showed invalid value $7F in memory dumps.
-
-**Root Cause:** UNDO_* variables were defined with DS (Define Storage) in the code section, placing them in ROM. Writes had no effect.
-
-**Fix:** Changed to EQU definitions in RAM.
-
-### Files Modified
-
-- **evaluate.asm:** Fixed PIECE_VALUES lookup
-- **board-0x88.asm:** Added QS_MOVE_LIST, UNDO_* EQUs in RAM
-- **negamax.asm:** Added R9 reset after GENERATE_MOVES, QS uses QS_MOVE_LIST
-- **makemove.asm:** Removed UNDO_* DS definitions
-
----
-
-## Session: January 1, 2026
-
-### Summary
-
-Major refactoring to eliminate stack-based math operations. User pointed out design decision: never touch the stack for math, always use ADI/SMI/ORI/etc with immediate values, and X should always = R2.
-
-### Key Design Principle (from user)
-
-> "We agreed not to touch the stack, and always leave X = R2. All the back-and-forth stack operations, prone to error, would be replaced with index table lookups in memory. Every math and logical operation has an immediate mode. This together with register INC and DEC instructions provides everything we need to index through tables in memory."
-
-The largest chess move offset is $21 (knight NNE), which fits in ADI's immediate byte.
-
-### Refactoring Completed
-
-#### 1. ENCODE_MOVE_16BIT (movegen-helpers.asm)
-- **Before:** Used `STR 2` / `OR` pattern (stack-based OR)
-- **After:** Uses conditional `ORI` with immediate values
-
-#### 2. DECODE_MOVE_16BIT (movegen-helpers.asm)
-- **Before:** Used `STR 2` / `OR` and `STXD`/`IRX`/`LDX` patterns
-- **After:** Uses conditional `ORI $01` for to.bit0, direct memory store for flags
-
-#### 3. GEN_KNIGHT (movegen-fixed.asm)
-- **Before:** Loop with offset table, `STR 2` / `ADD` pattern
-- **After:** Unrolled 8 directions with hardcoded ADI:
-  - NNE: `ADI $21`, NNW: `ADI $1F`, NEE: `ADI $12`, NWW: `ADI $0E`
-  - SSE: `ADI $E1`, SSW: `ADI $DF`, SEE: `ADI $F2`, SWW: `ADI $EE`
-
-#### 4. GEN_KING (movegen-fixed.asm)
-- **Before:** Loop with offset table
-- **After:** Unrolled 8 directions with hardcoded ADI
-
-#### 5. GEN_SLIDING -> 8 Direction-Specific Functions
-- **Before:** Single parameterized `GEN_SLIDING` with stack-based direction storage
-- **After:** 8 separate functions: `GEN_SLIDE_N`, `GEN_SLIDE_NE`, etc.
-
-### Bug Fix: GEN_SLIDE_* Target Register (WM)
-
-**Symptom:** Crash at first move, encoded move showing from=$00
-
-**Root Cause:** After `ANI $88` (board bounds check), D was destroyed. Then `PLO 11` stored the wrong value.
-
-**Fix:** Reload target from R7 before PLO 11.
-
-### Files Modified
-
-- **movegen-helpers.asm:** ENCODE/DECODE use conditional ORI
-- **movegen-fixed.asm:** Unrolled GEN_KNIGHT/GEN_KING, 8 GEN_SLIDE_* functions
-- **serial-io.asm:** SERIAL_READ_LINE uses R7 instead of R8
-
----
-
-## Session: January 1, 2026 (continued) - SQUARE_TO_ALGEBRAIC Bug Fix
-
-### Summary
-
-Found and fixed the real cause of "bestmove b1b1" output. Debug prints during search were a red herring - the actual bug was in UCI output formatting.
-
-### The Real Bug: SQUARE_TO_ALGEBRAIC (uci.asm)
-
-```asm
-SQUARE_TO_ALGEBRAIC:
-    PLO 13              ; Save square <- CLOBBERS R13.0!
-    ANI $07
-    ADI 'a'
-    CALL SERIAL_WRITE_CHAR
-    GLO 13              ; Get square back
-    ...
-```
-
-UCI_SEND_BEST_MOVE loads:
-- R13.1 = from square (e.g., $01 = b1)
-- R13.0 = to square (e.g., $22 = c3)
-
-Then calls SQUARE_TO_ALGEBRAIC with `GHI 13` (from), which does `PLO 13` - **overwriting the 'to' square!**
-
-### The Fix
-
-Changed SQUARE_TO_ALGEBRAIC to use R7.0 instead of R13.0.
-
-### Lesson Learned
-
-**Debug output can be misleading.** When prints show stale/intermediate values during a complex search, they may not reflect the final state. Memory dumps after execution reveal the truth.
-
-### Final Build
-
-- **Size:** 16,436 bytes
-- **Output:** `bestmove b1c3` (valid knight move!)
-
----
-
-## Session: January 5, 2026 - Depth 2 Working, Depth 3 Investigation
-
-### Summary
-
-Fixed multiple bugs to get depth 2 search working correctly. Identified and implemented fix for depth 3 crash. Depth 3 now hangs rather than crashing - investigation ongoing.
-
-### Bugs Found & Fixed
-
-#### 1. SERIAL_PRINT_HEX Clobbering Low Nibble
-
-- **Symptom:** Debug output showed `{00:20}` instead of `{00:23}` - low nibble always 0
-- **Cause:** Original code stored byte in R14.0, but F_TYPE clobbers R14.0 during first nibble print
-- **Fix:** Changed to use stack instead of R14.0
-
-```asm
-; BEFORE (broken):
-SERIAL_PRINT_HEX:
-    PLO 14              ; Save byte in R14.0 (clobbered by F_TYPE!)
-    ...
-    GLO 14              ; Gets garbage
-
-; AFTER (fixed):
-SERIAL_PRINT_HEX:
-    STXD                ; Save byte on stack
-    ...
-    IRX
-    LDX                 ; Pop original byte from stack
-```
-
-#### 2. PLY Check Using Clobbered D
-
-- **Symptom:** PLY==0 check never triggered at root
-- **Cause:** After `CALL SERIAL_PRINT_HEX`, D register was garbage
-- **Fix:** Reload CURRENT_PLY before the LBNZ check
-
-#### 3. R9 Clobbered by UNMAKE_MOVE in QS
-
-- **Symptom:** Scores corrupted after captures in quiescence search
-- **Cause:** QS stored score in R9, but UNMAKE_MOVE clobbers R9
-- **Fix:** Push/pop R9 around UNMAKE_MOVE call in QS
-
-```asm
-QS_NO_NEG:
-    ; Save score (R9) before UNMAKE_MOVE clobbers it
-    GHI 9
-    STXD
-    GLO 9
-    STXD
-    CALL UNMAKE_MOVE
-    ; Restore score (R9)
-    IRX
-    LDXA
-    PLO 9
-    LDX
-    PHI 9
-```
-
-#### 4. Beta Comparison Inverted (SD vs SM)
-
-- **Symptom:** Alpha-beta pruning not working correctly
-- **Cause:** SD does M(X) - D, not D - M(X). Was computing beta - score instead of score - beta.
-- **Fix:** Changed to SM/SMB for correct score - beta calculation
-
-```asm
-; BEFORE (wrong):
-    GLO 13              ; D = score_lo
-    SD                  ; D = M(X) - D = beta - score (WRONG!)
-
-; AFTER (correct):
-    GLO 13              ; D = score_lo
-    SM                  ; D = D - M(X) = score - beta (CORRECT!)
-```
-
-#### 5. Move List Overwrite During Recursion (Depth 3 Crash)
-
-- **Symptom:** Depth 3 crashed after ~40 seconds, RAM filled with "03 83" pattern from $6206 to stack
-- **Cause:** Every NEGAMAX call wrote moves to same MOVE_LIST address ($6200). Child recursion overwrites parent's move list.
-- **Fix:** Implemented ply-indexed move lists. Each ply gets 64 bytes (32 moves).
-
-```asm
-; Calculate move list base as MOVE_LIST + (CURRENT_PLY x 64)
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
-    LDN 10              ; D = current ply (0-7)
-    ; Multiply by 64: shift left 6 times
-    SHL                 ; x2
-    SHL                 ; x4
-    SHL                 ; x8
-    SHL                 ; x16
-    SHL                 ; x32
-    SHL                 ; x64
-    ; Add to MOVE_LIST base
-    ADI LOW(MOVE_LIST)
-    PLO 9
-    LDI HIGH(MOVE_LIST)
-    ADCI 0              ; Add carry
-    PHI 9               ; R9 = ply-indexed move list
-```
-
-### Other Changes
-
-- **uci.asm:** Added 'quit' command (LBR $8003 for BIOS warm start)
-- **uci.asm:** Fixed branch error - changed `BM` to `LBNF` (1802 has no long BM instruction)
-
-### Current Status
-
-- **Depth 2:** Working correctly, produces `bestmove b1c3`
-- **Depth 3:** No longer crashes with "03 83" pattern, but hangs indefinitely
-
-### Next Steps
-
-1. Add minimal debug to check if search is progressing or stuck in loop
-2. Investigate if infinite loop in move generation or recursion
-3. Consider timeout/move limit for debugging
-
-### Files Modified
-
-- **negamax.asm:** QS R9 save/restore, beta comparison fix (SD->SM), ply-indexed move lists
-- **serial-io.asm:** SERIAL_PRINT_HEX uses stack instead of R14.0
-- **uci.asm:** Added quit command, fixed BM->LBNF branch error
+> **Older sessions archived to:** `docs/archive/sessions-dec30-jan30.md`

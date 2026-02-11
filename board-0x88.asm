@@ -232,6 +232,9 @@ SEARCH_PREV_SECS  EQU $64CA   ; 1 byte - last RTC seconds reading (for delta)
 SEARCH_ELAPSED    EQU $64CB   ; 1 byte - accumulated elapsed seconds (0-255)
 UINT_BUFFER       EQU $64CC   ; 6 bytes - ASCII scratch for F_UINTOUT ($64CC-$64D1)
 
+; Node TT flag per ply: $64D2-$64D9 (8 bytes)
+NODE_TT_FLAGS     EQU $64D2   ; 8 bytes - TT bound type per ply (ALPHA/EXACT/BETA)
+
 ; ------------------------------------------------------------------------------
 ; UCI input buffer: $6500-$66FF (512 bytes)
 ; ------------------------------------------------------------------------------
