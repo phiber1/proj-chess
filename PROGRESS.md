@@ -9,59 +9,51 @@
 
 ---
 
-## Current Status (February 10, 2026)
+## Current Status (February 11, 2026)
 
-- **Opening Book:** Working! Instant response for Giuoco Piano/Italian Game (47 entries)
+- **Opening Book:** Working but shallow — only Giuoco Piano/Italian Game (47 entries). **Expansion is top priority.**
 - **CDP1806 RLDI Migration:** 401 conversions across 15 files, 799 bytes saved (5.9%)
-- **Transposition Table:** Fixed (Feb 10) — depth store bug + per-ply bound flags (EXACT-only probe)
-- **Depth 3:** ~59s opening, ~120s middlegame; TT per-search cleared to avoid cross-move collisions
-- **Depth 4:** Playable in 18-43 seconds with Null Move Pruning
+- **Transposition Table:** Fixed (Feb 11) — depth store, R9 clobber, inline per-ply bound flags
+- **Depth 3:** Only reachable after piece exchanges reduce tree; opening/middlegame stuck at depth 2
+- **Depth 4:** Not viable for opening/middlegame (exceeds time budget)
 - **Iterative Deepening:** SEARCH_POSITION loops d1→d2→d3, DS12887 RTC-based 120s abort
+- **Time Budget:** 120s, RTC tracked on every node (fixed d1/d2 tracking gap)
 - **PST Tables:** Fixed (Feb 7) — all 6 tables had inverted row order for White
 - **Pawn Promotion:** Fully working — opponent promotions, search promotions, UCI output suffix
 - **Evaluation:** Material + PST (pawn shield implemented but disabled — speed overhead)
 - **Castling:** Fully working — rook/king moves revoke rights, rook movement + Zobrist
 - **Checkmate/Stalemate:** Properly detected even when all pseudo-legal moves are illegal
 - **Fifty-Move Rule:** Halfmove clock tracked in GAME_STATE, checked >= 100 in NEGAMAX
-- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches — 88 plies reached
+- **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches
 - **UCI Node Output:** Decimal via BIOS F_UINTOUT routine
-- **UCI Buffer:** 512 bytes (supports games up to ~48 full moves)
-- **Engine size:** 12,849 bytes (out of 32K available)
+- **UCI Buffer:** 640 bytes (supports games up to ~59 full moves)
+- **Engine size:** 12,867 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP, futility pruning
 - **ELPH Bridge:** Dynamic delay scaling, echo detection, go-param stripping, timestamped logging (pyserial)
 
-### Comparison to Historical Engines
-- **Sargon (Z80)** defaulted to depth 2 for casual play
-- This 1802/1806 engine does depth 3 routinely, depth 4 with NMP — exceeds 8-bit era expectations!
+### Key Insight: Depth-2 Opening Problem
+The engine hits the 120s time budget on nearly every opening move (first ~20 moves). Depth 3 is only reachable after piece exchanges reduce the search tree. This makes the engine essentially a depth-2 player in the opening/middlegame — unable to see piece safety beyond one move, castling's long-term value, or tactical sequences. **Expanding the opening book to skip the first 6-10 moves** would land the engine in simpler middlegame positions where depth 3 is achievable, for zero runtime cost.
 
-### Match Results (Feb 7-10, 2026)
-- **40-move Alekhine's Defense (TT clear + 120s, Feb 10):** Longest match yet! 80 ply, ~54 minutes. Castled O-O (move 6). Queen actively placed (Qf3→Qg3→Qg5→Qd5→Qc6→Qb6). Knight shuttle Ne2↔Ng3 for 4 moves (no repetition detection). Nb5xd6 exchanges twice. Late game: Qxe8+ blunder (took protected knight, lost queen). Led to investigation → futility pruning missing IS_IN_CHECK guard. Pawn promoted to rook (a2a1r). Mated after Rxe1.
-- **33-move Caro-Kann (TT clear, Feb 10):** Tested TT clear fix. No more sub-second garbage moves — node counts proper throughout. But rook shuffling (Rd1→Re1→Ra1, back and forth) and knight shuttle at depth 2. Ba6 blundered queen (Nxe2). Lost to Qxd1# back-rank mate. 23 minutes.
-- **23-move French Defense (TT fix, Feb 10):** Won exchange via Nc6 fork + Qxa8. Late-game TT transformed: moves 16-23 all depth 3 sub-second (35-89 nodes). But Kf1 (move 3, depth-2 blunder) lost castling rights → Qd1# back-rank mate. 21 minutes.
-- **44-move Caro-Kann (post-RLDI, Feb 9):** Castled O-O on move 4, ~59-minute match. First depth-3 in 59s (down from 85s pre-RLDI). Only 2 middlegame moves reached depth 3; 5 endgame moves did. Mated at move 44.
-- **38-move Caro-Kann (Feb 7):** Castled O-O (move 13), both bishops developed, creative Bxf7+ sac. Lost to Black's two rooks in endgame. Promotion handled correctly.
-- **45-move French Defense (queenless):** Earlier match, hit promotion bug at move 45 (now fixed). Good positional play — Nc3, Bf4, accurate recaptures.
+### Match Results (Feb 11, 2026)
+- **50-move Caro-Kann (7cf0491 baseline):** Real chess! Castled O-O, active piece play, ~45 min. King shuttled g1↔g2 (no repetition detection). Ended with illegal move at move 50 — UCI buffer overflow (fixed in fc0c0f5).
+- **26-move match (TT depth fix + flags, 120s budget):** Castled O-O move 10. Hit 120s budget on nearly every move through move 20. Queen was aggressively placed but couldn't close (depth-2 horizon). Queen surrounded and captured, checkmate at move 26.
+- **Earlier match (TT depth fix only, no flags):** Kf1 squandering castling on move 6 (depth-2 artifact). TT with wrong flags (all EXACT) caused search corruption.
 
 ### Next Up
-- **Investigate time budget bug** — depth-4 test match showed move taking 179s (budget is 120s). RTC elapsed calc or SMI 120 comparison may overflow/wrap. Check negamax.asm RTC_DELTA_POS path.
-- **LMR check guard** — also lacks IS_IN_CHECK (lower priority: depth>=3 only, captures exempt)
-- **Repetition detection** — engine shuffles pieces in drawn positions (knight shuttle, rook shuttle a1↔b1)
+- **Expand opening book** — deeper lines, more variations, skip depth-2 opening phase
+- **LMR check guard** — lacks IS_IN_CHECK (lower priority: depth>=3 only, captures exempt)
+- **Repetition detection** — engine shuffles pieces in drawn positions
 - **Open-file king penalty** — lightweight king safety (replaces pawn shield approach)
+- **Wider hash for TT** — 32-bit hash needed for reliable TT at scale
 - **RSXD/RLXA optimization** — ~42 bytes savings, requires matched-pair conversion
-- Consider expanding opening book beyond Italian Game
 
 ### Recent Milestones
-- **Feb 10:** TT correctness fix (3 bugs: depth store, flag store, probe bounds). TT clear per-search (cross-move collision poisoning). Time budget 90s→120s. Futility pruning IS_IN_CHECK guard (depth-1 quiet moves incorrectly pruned when in check). 4 test matches, longest 40 moves/80 ply. Engine size: 12,849 bytes.
-- **Feb 9:** CDP1806 RLDI migration — 401 conversions across 15 files via automated script. Binary: 13,582 → 12,783 bytes (799 saved, 5.9%). First depth-3 search: 85s → 59s (30% speedup). Pawn shield tested at 4cp bonus — confirmed speed overhead (not values) causes depth-2 fallback; re-disabled. Bridge timestamps added.
-- **Feb 9:** Fixed promotion handling — three bugs: stale UNDO_PROMOTION corrupting search after opponent promotion, engine's own promotions during search not setting UNDO_PROMOTION from DECODED_FLAGS, UCI bestmove output missing 'q' suffix. UNDO_PROMOTION now saved/restored in search stack (7 bytes). Engine size: 13,582 bytes.
-- **Feb 7:** Fixed inverted PST tables — all 6 tables had rows in wrong order for White. King PST strengthened (b1/g1=+60, d1/e1=-20), bishop c1/f1 penalty (-15). Pawn shield code added but disabled. Engine now castles and develops bishops properly.
-- **Feb 7:** Added decimal node count output via BIOS F_UINTOUT ($FF60). UCI "info depth N nodes NNNNN" now outputs decimal instead of hex.
-- **Feb 6 (late):** Iterative deepening with RTC-based time management. DS12887 RTC reads seconds via OUT 2/INP 3, aborts at 90s. Three LDI-clobbers-D bugs fixed.
-- **Feb 6 (eve):** RFP implemented (15% speedup on quiet positions). Tested and reverted extended futility and razoring (EVALUATE overhead > benefit on 1802).
-- **Feb 6:** Fixed stale RAM bug — added WORKSPACE_CLEAR ($6200-$64FF) at startup and ucinewgame.
-- **Feb 4:** Fixed queen blindness (TT depth bug), futility pruning, h@h@, rook castling rights, and added pawn promotion support for UCI opponent moves.
-- **Jan 30 (eve):** Four CuteChess match fixes: alpha-beta re-enabled (11x speedup), TT root skip, UCI buffer 256→512, castling rook movement + Zobrist.
-- Earlier sessions archived to `docs/archive/sessions-dec30-jan30.md`
+- **Feb 11:** Reverted to 7cf0491 baseline after bd514ee/895dcd6 regression. UCI buffer 512→640 bytes ($6000-$6FFF layout). Fixed TT_PROBE R9 clobber (dead PLO 9). Fixed TT depth store (SEARCH_DEPTH→SEARCH_DEPTH+1). Added inline per-ply TT bound flags (no CALL overhead). Fixed time budget tracking (RTC reads on every node, not just d3+). Budget 90s→120s. Engine size: 12,867 bytes.
+- **Feb 10:** TT correctness fix (3 bugs: depth store, flag store, probe bounds). TT clear per-search. Futility pruning IS_IN_CHECK guard. 4 test matches, longest 40 moves/80 ply.
+- **Feb 9:** CDP1806 RLDI migration — 799 bytes saved (5.9%). Depth-3: 85s → 59s. Pawn shield re-disabled (speed overhead).
+- **Feb 9:** Fixed promotion handling — stale UNDO_PROMOTION, search promotions, UCI suffix.
+- **Feb 7:** Fixed inverted PST tables. King PST strengthened. Engine now castles properly.
+- Earlier milestones archived to `docs/archive/sessions-dec30-jan30.md`
 
 ### Depth 4 Test Results (with NMP)
 ```
@@ -78,6 +70,63 @@ All positions tested at depth 4, out of book:
 Baseline before NMP: Sicilian depth 4 = 6 min 7 sec
 After NMP: 43 seconds = 8.5x speedup!
 ```
+
+---
+
+## Session: February 11, 2026 - TT Rebuild, Time Budget Fix, UCI Buffer
+
+### Summary
+Reverted to 7cf0491 baseline after bd514ee/895dcd6 regression caused terrible play quality.
+Rebuilt TT fixes from scratch (inline, no CALL overhead), fixed UCI buffer overflow, fixed
+time budget tracking bug, and identified depth-2 opening problem as the key strategic issue.
+
+### Revert to 7cf0491 Baseline
+Post-7cf0491 commits (bd514ee + 895dcd6) caused play regression: Kf1 on move 3, endgame
+collapse (20-50 node d3 searches), rapid checkmates. Disabling TT_PROBE alone didn't help —
+overhead from 6 CALL/RETN pairs per node (STORE/LOAD_NODE_FLAG) was part of the problem.
+Reverted negamax.asm and board-0x88.asm to 7cf0491, confirmed with 50-move Caro-Kann match.
+
+### UCI Buffer Overflow Fix (fc0c0f5)
+Buffer was 512 bytes, overflowed at ~94 half-moves (~47 full moves). Position string at move
+50 (98 half-moves = 514 chars) was truncated, corrupting the board → illegal move. Expanded
+to 640 bytes. Reorganized memory to fit within $6000-$6FFF: UCI $6500-$677F, QS $6780-$67FF,
+TT $6800-$6FFF.
+
+### TT Fixes Rebuilt (40a948d)
+1. **R9 clobber fix:** Removed dead `PLO 9` in TT_PROBE (saved masked index, never read back)
+2. **Depth store fix:** SEARCH_DEPTH → SEARCH_DEPTH+1 (was storing high byte = 0)
+3. **Inline per-ply flags:** 5 store sites + 1 load site, indexed by CURRENT_PLY into
+   NODE_TT_FLAGS ($64D2, 8 bytes). No CALL/RETN overhead (~17-25 instructions per node vs
+   ~120 for the bd514ee CALL approach). Flag values: entry=ALPHA, alpha update=EXACT,
+   beta cutoff=BETA, checkmate=EXACT, stalemate=EXACT.
+
+### Time Budget Tracking Fix (40a948d)
+**Bug:** RTC reads were skipped during d1/d2 iterations (gated by CURRENT_MAX_DEPTH >= 3).
+D2 search in opening takes 90+ seconds untracked. When d3 starts, SEARCH_PREV_SECS is stale,
+and RTC delta wraps modulo 60 — losing whole minutes of elapsed time. This caused 180s moves
+on a 120s budget.
+
+**Fix:** RTC reads and SEARCH_ELAPSED updates now run on every node regardless of iteration
+depth. Only the abort decision (SMI 120 comparison) is gated to d3+.
+
+### Depth-2 Opening Problem Identified
+Match testing revealed the engine hits the 120s budget on nearly every opening move (first
+~20 moves). Depth 3 only becomes reachable after piece exchanges simplify the position.
+The engine is essentially a depth-2 player in the opening/middlegame. A deeper opening book
+would skip this weak phase entirely for zero runtime cost.
+
+### Commits
+- `fc0c0f5`: Revert to 7cf0491 baseline and expand UCI buffer to 640 bytes
+- `40a948d`: Fix TT correctness and time budget tracking
+
+### Files Changed
+- `board-0x88.asm`: Memory layout reorganization ($6000-$6FFF), NODE_TT_FLAGS EQU
+- `negamax.asm`: Inline TT flags (5 stores + 1 load), RTC tracking on all nodes, 120s budget
+- `transposition.asm`: Removed dead PLO 9 in TT_PROBE
+- `uci.asm`: UCI_BUFFER_LEN 511→639
+
+### Build
+12,867 bytes (.bin), clean assembly, zero errors
 
 ---
 
