@@ -77,10 +77,6 @@ NEGAMAX_PLY_OK:
     ; Save context to ply-indexed state array (no stack manipulation!)
     CALL SAVE_PLY_STATE
 
-    ; Initialize TT bound flag: assume upper bound (fail-low) until proven otherwise
-    LDI TT_FLAG_ALPHA
-    CALL STORE_NODE_FLAG
-
     ; Increment node counter (for statistics)
     CALL INC_NODE_COUNT
 
@@ -137,9 +133,9 @@ RTC_DELTA_POS:
 RTC_NO_SAT:
     STR 13                      ; SEARCH_ELAPSED = updated value
 
-    ; Check: elapsed >= 120 seconds?
-    SMI 120                     ; D = elapsed - 120
-    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 120, continue
+    ; Check: elapsed >= 90 seconds?
+    SMI 90                      ; D = elapsed - 90
+    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 90, continue
 
     ; Time exceeded — set abort flag
     RLDI 13, SEARCH_ABORTED
@@ -205,17 +201,13 @@ NEGAMAX_NOT_FIFTY:
     CALL TT_PROBE       ; D = required depth, returns D = 1 if hit
     LBZ NEGAMAX_TT_MISS ; No hit, continue with search
 
-    ; TT hit - check if it's usable (EXACT bound only)
-    ; ALPHA/BETA bounds disabled: 16-bit hash too collision-prone for
-    ; safe non-exact cutoffs. Correct flags ARE stored (for future use
-    ; with a larger hash), but only EXACT entries produce TT cutoffs.
+    ; TT hit - check if it's usable (EXACT bound)
     RLDI 10, TT_FLAG
     LDN 10              ; D = TT flag
     XRI TT_FLAG_EXACT
-    LBNZ NEGAMAX_TT_MISS    ; Not exact, skip
+    LBNZ NEGAMAX_TT_MISS    ; Not exact, can't use directly (for now)
 
-NEGAMAX_TT_USE_SCORE:
-    ; TT score is usable — load, save, restore, and return
+    ; EXACT hit at non-root node - use the stored score
     ; (Root is excluded above, so no BEST_MOVE copy needed)
 
     ; Get the score and save to SCORE_HI/LO BEFORE restore
@@ -769,12 +761,7 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     XRI 1               ; Check if depth == 1
     LBNZ NEGAMAX_SKIP_FUTILITY  ; Not depth 1, skip
 
-    ; Don't enable futility when in check — static eval is meaningless
-    ; and all responses are forced (must escape check)
-    CALL IS_IN_CHECK
-    LBNZ NEGAMAX_SKIP_FUTILITY  ; In check, skip futility entirely
-
-    ; Depth == 1, not in check: Cache static eval for futility pruning
+    ; Depth == 1: Cache static eval for futility pruning
     CALL EVALUATE       ; Returns score in R9
     ; Store in STATIC_EVAL (big-endian)
     RLDI 10, STATIC_EVAL_HI
@@ -893,11 +880,11 @@ LMR_CAPTURE_DONE:
     ; by parent before recursion), so check SEARCH_DEPTH == 1 directly.
     ; This matches the futility setup code which also checks depth == 1.
 
-    ; Check: is futility pruning enabled for this node?
-    ; (Setup only enables it at depth 1 AND not in check)
-    RLDI 10, FUTILITY_OK
-    LDN 10
-    LBZ NEGAMAX_NOT_FUTILE  ; Futility not enabled, skip
+    ; Check: is remaining depth == 1? (SEARCH_DEPTH low byte)
+    RLDI 10, SEARCH_DEPTH + 1
+    LDN 10              ; D = SEARCH_DEPTH low byte (remaining depth)
+    XRI 1               ; Check if depth == 1
+    LBNZ NEGAMAX_NOT_FUTILE  ; Not frontier node, skip futility
 
     ; Check if move is a capture (target square non-empty)
     RLDI 10, MOVE_TO
@@ -1630,10 +1617,6 @@ NEGAMAX_BETA_NOT_ROOT:
     ; Store killer move (for move ordering optimization)
     CALL STORE_KILLER_MOVE
 
-    ; Beta cutoff — score is a lower bound
-    LDI TT_FLAG_BETA
-    CALL STORE_NODE_FLAG
-
     LBR NEGAMAX_RETURN
 
 NEGAMAX_NO_BETA_CUTOFF:
@@ -1790,10 +1773,6 @@ NEGAMAX_ALPHA_DO_UPDATE:
     GLO 13
     STR 10              ; ALPHA = score
 
-    ; Alpha raised — this is a PV node (exact score)
-    LDI TT_FLAG_EXACT
-    CALL STORE_NODE_FLAG
-
 NEGAMAX_NEXT_MOVE:
     ; -----------------------------------------------
     ; Increment LMR move counter (move was processed)
@@ -1865,8 +1844,9 @@ NEGAMAX_RETURN:
     ; so TT works correctly at all nodes.
 
     ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
-    CALL LOAD_NODE_FLAG  ; R8.0 = flag from NODE_TT_FLAGS[ply]
-    RLDI 10, SEARCH_DEPTH + 1
+    LDI TT_FLAG_EXACT
+    PLO 8               ; R8.0 = flag
+    RLDI 10, SEARCH_DEPTH
     LDN 10              ; D = depth low byte
     CALL TT_STORE
 
@@ -1953,9 +1933,6 @@ NEGAMAX_NO_MOVES:
     INC 10
     GLO 9               ; Score low byte
     STR 10
-    ; Checkmate score is exact
-    LDI TT_FLAG_EXACT
-    CALL STORE_NODE_FLAG
     LBR NEGAMAX_RETURN
 
 NEGAMAX_STALEMATE:
@@ -1966,9 +1943,6 @@ NEGAMAX_STALEMATE:
     STR 10              ; BEST_SCORE_HI = 0
     INC 10
     STR 10              ; BEST_SCORE_LO = 0
-    ; Stalemate score is exact
-    LDI TT_FLAG_EXACT
-    CALL STORE_NODE_FLAG
     LBR NEGAMAX_RETURN
 
 ; ==============================================================================
@@ -3037,46 +3011,6 @@ INC_NODE_COUNT:
 INC_NODE_DONE:
     RETN
 
-; ------------------------------------------------------------------------------
-; STORE_NODE_FLAG - Store TT bound flag for current ply
-; ------------------------------------------------------------------------------
-; Input:  D = flag (TT_FLAG_ALPHA, TT_FLAG_EXACT, or TT_FLAG_BETA)
-; Output: None
-; Clobbers: R10, D
-; ------------------------------------------------------------------------------
-STORE_NODE_FLAG:
-    STXD                ; Push flag to stack
-    RLDI 10, CURRENT_PLY
-    LDN 10              ; D = current ply (0-7)
-    ADI LOW(NODE_TT_FLAGS)
-    PLO 10
-    LDI HIGH(NODE_TT_FLAGS)
-    ADCI 0
-    PHI 10              ; R10 = &NODE_TT_FLAGS[ply]
-    IRX
-    LDX                 ; Pop flag back to D
-    STR 10              ; Store flag at NODE_TT_FLAGS[ply]
-    RETN
-
-; ------------------------------------------------------------------------------
-; LOAD_NODE_FLAG - Load TT bound flag for current ply into R8.0
-; ------------------------------------------------------------------------------
-; Input:  None
-; Output: R8.0 = flag, D = flag
-; Clobbers: R10
-; ------------------------------------------------------------------------------
-LOAD_NODE_FLAG:
-    RLDI 10, CURRENT_PLY
-    LDN 10              ; D = current ply (0-7)
-    ADI LOW(NODE_TT_FLAGS)
-    PLO 10
-    LDI HIGH(NODE_TT_FLAGS)
-    ADCI 0
-    PHI 10              ; R10 = &NODE_TT_FLAGS[ply]
-    LDN 10              ; D = flag
-    PLO 8               ; R8.0 = flag (TT_STORE expects this)
-    RETN
-
 ; ==============================================================================
 ; SEARCH_POSITION - Iterative Deepening Entry Point
 ; ==============================================================================
@@ -3102,12 +3036,6 @@ SEARCH_POSITION:
     RLDI 10, SEARCH_ABORTED
     LDI 0
     STR 10
-
-    ; --- Clear TT to avoid stale cross-move entries ---
-    ; With only 256 entries and 16-bit hash, collisions accumulate over
-    ; multiple moves and poison the search with wrong cached scores.
-    ; Clearing per-search preserves within-move ID benefits (d1→d2→d3).
-    CALL TT_CLEAR
 
     ; --- Clear ITER_BEST (no bestmove yet) ---
     RLDI 10, ITER_BEST_FROM

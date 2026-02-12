@@ -47,7 +47,7 @@ KING_TYPE   EQU 6
 ; ------------------------------------------------------------------------------
 ; Memory Layout - ALL engine data consolidated at $6000
 ; ------------------------------------------------------------------------------
-; Total: ~1792 bytes ($6000-$66FF)
+; Total: ~4096 bytes ($6000-$6FFF)
 ;
 ; Board and game data: $6000-$63FF
 BOARD       EQU $6000   ; 128 bytes - 0x88 board array ($6000-$607F)
@@ -55,7 +55,7 @@ GAME_STATE  EQU $6080   ; Game state structure (16 bytes) ($6080-$608F)
 MOVE_HIST   EQU $6090   ; Move history for undo (256 bytes) ($6090-$618F)
 MOVE_LIST   EQU $6200   ; Ply-indexed move lists (512 bytes) ($6200-$63FF)
                         ; Each ply gets 128 bytes (64 moves max): ply×128 + $6200
-QS_MOVE_LIST EQU $6F00  ; Quiescence moves (256 bytes) ($6F00-$6FFF) - separate from UCI_BUFFER
+QS_MOVE_LIST EQU $6780  ; Quiescence moves (128 bytes) ($6780-$67FF) - 64 captures max
 
 ; ------------------------------------------------------------------------------
 ; Engine Variables: $6400-$64FF
@@ -232,20 +232,17 @@ SEARCH_PREV_SECS  EQU $64CA   ; 1 byte - last RTC seconds reading (for delta)
 SEARCH_ELAPSED    EQU $64CB   ; 1 byte - accumulated elapsed seconds (0-255)
 UINT_BUFFER       EQU $64CC   ; 6 bytes - ASCII scratch for F_UINTOUT ($64CC-$64D1)
 
-; Node TT flag per ply: $64D2-$64D9 (8 bytes)
-NODE_TT_FLAGS     EQU $64D2   ; 8 bytes - TT bound type per ply (ALPHA/EXACT/BETA)
+; ------------------------------------------------------------------------------
+; UCI input buffer: $6500-$677F (640 bytes)
+; ------------------------------------------------------------------------------
+UCI_BUFFER      EQU $6500   ; 640 bytes - input buffer ($6500-$677F)
 
 ; ------------------------------------------------------------------------------
-; UCI input buffer: $6500-$66FF (512 bytes)
-; ------------------------------------------------------------------------------
-UCI_BUFFER      EQU $6500   ; 512 bytes - input buffer ($6500-$66FF)
-
-; ------------------------------------------------------------------------------
-; Transposition Table: $6700-$6EFF (256 entries × 8 bytes = 2KB)
+; Transposition Table: $6800-$6FFF (256 entries × 8 bytes = 2KB)
 ; ------------------------------------------------------------------------------
 
 ; TT table base address and sizing
-TT_TABLE        EQU $6700   ; 256 entries × 8 bytes = 2KB ($6700-$6EFF)
+TT_TABLE        EQU $6800   ; 256 entries × 8 bytes = 2KB ($6800-$6FFF)
 TT_ENTRIES      EQU 256     ; Number of entries (power of 2 for masking)
 TT_ENTRY_SIZE   EQU 8       ; Bytes per entry
 TT_INDEX_MASK   EQU $FF     ; Mask for 256 entries (hash_lo & $FF)
