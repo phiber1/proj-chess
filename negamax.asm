@@ -77,23 +77,24 @@ NEGAMAX_PLY_OK:
     ; Save context to ply-indexed state array (no stack manipulation!)
     CALL SAVE_PLY_STATE
 
+    ; -- TT node flag: default ALPHA (upper bound) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_ALPHA
+    STR 10
+
     ; Increment node counter (for statistics)
     CALL INC_NODE_COUNT
 
     ; -----------------------------------------------
-    ; ABORT/TIME CHECK: Skip entirely for depth 1-2
+    ; RTC TIME TRACKING: Always update elapsed time
     ; -----------------------------------------------
-    ; Depth 1-2 never abort, so skip all checks (7 instructions)
-    ; Depth 3+: check abort flag, then check RTC elapsed time
-    RLDI 13, CURRENT_MAX_DEPTH
-    LDN 13                      ; D = current iteration depth
-    SMI 3
-    LBNF NEGAMAX_BUDGET_OK      ; depth < 3, skip all checks
-
-    ; --- Abort flag check (propagate up recursion during d3) ---
-    RLDI 13, SEARCH_ABORTED
-    LDN 13
-    LBNZ NEGAMAX_ABORT_RETURN   ; Already aborted, bail out
+    ; Read RTC on every node so elapsed time is accurate.
+    ; Only check abort flag and enforce budget during d3+.
 
     ; --- RTC elapsed time check ---
     ; Read current seconds from DS12887 (binary mode)
@@ -133,9 +134,25 @@ RTC_DELTA_POS:
 RTC_NO_SAT:
     STR 13                      ; SEARCH_ELAPSED = updated value
 
-    ; Check: elapsed >= 90 seconds?
-    SMI 90                      ; D = elapsed - 90
-    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 90, continue
+    ; -----------------------------------------------
+    ; ABORT CHECK: Only enforce budget during d3+
+    ; -----------------------------------------------
+    ; Depth 1-2 always complete; only abort d3+ if over budget
+    RLDI 13, CURRENT_MAX_DEPTH
+    LDN 13                      ; D = current iteration depth
+    SMI 3
+    LBNF NEGAMAX_BUDGET_OK      ; depth < 3, skip abort check
+
+    ; --- Abort flag check (propagate up recursion during d3) ---
+    RLDI 13, SEARCH_ABORTED
+    LDN 13
+    LBNZ NEGAMAX_ABORT_RETURN   ; Already aborted, bail out
+
+    ; Check: elapsed >= 120 seconds?
+    RLDI 13, SEARCH_ELAPSED
+    LDN 13                      ; Reload elapsed (clobbered above)
+    SMI 120                     ; D = elapsed - 120
+    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 120, continue
 
     ; Time exceeded — set abort flag
     RLDI 13, SEARCH_ABORTED
@@ -1617,6 +1634,16 @@ NEGAMAX_BETA_NOT_ROOT:
     ; Store killer move (for move ordering optimization)
     CALL STORE_KILLER_MOVE
 
+    ; -- TT node flag: BETA (lower bound) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_BETA
+    STR 10
+
     LBR NEGAMAX_RETURN
 
 NEGAMAX_NO_BETA_CUTOFF:
@@ -1773,6 +1800,16 @@ NEGAMAX_ALPHA_DO_UPDATE:
     GLO 13
     STR 10              ; ALPHA = score
 
+    ; -- TT node flag: EXACT (PV node) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_EXACT
+    STR 10
+
 NEGAMAX_NEXT_MOVE:
     ; -----------------------------------------------
     ; Increment LMR move counter (move was processed)
@@ -1844,10 +1881,17 @@ NEGAMAX_RETURN:
     ; so TT works correctly at all nodes.
 
     ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
-    LDI TT_FLAG_EXACT
+    ; -- Load TT node flag for current ply --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDN 10              ; D = flag
     PLO 8               ; R8.0 = flag
-    RLDI 10, SEARCH_DEPTH
-    LDN 10              ; D = depth low byte
+    RLDI 10, SEARCH_DEPTH + 1
+    LDN 10              ; D = depth (low byte = actual depth)
     CALL TT_STORE
 
     ; Restore caller's context (clobbers R7, R8, R9, R11, R12)
@@ -1933,6 +1977,17 @@ NEGAMAX_NO_MOVES:
     INC 10
     GLO 9               ; Score low byte
     STR 10
+
+    ; -- TT node flag: EXACT (checkmate) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_EXACT
+    STR 10
+
     LBR NEGAMAX_RETURN
 
 NEGAMAX_STALEMATE:
@@ -1943,6 +1998,17 @@ NEGAMAX_STALEMATE:
     STR 10              ; BEST_SCORE_HI = 0
     INC 10
     STR 10              ; BEST_SCORE_LO = 0
+
+    ; -- TT node flag: EXACT (stalemate) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_EXACT
+    STR 10
+
     LBR NEGAMAX_RETURN
 
 ; ==============================================================================

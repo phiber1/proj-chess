@@ -340,7 +340,6 @@ TT_PROBE:
     ; Redo: hash_lo * 8
     GLO 7               ; hash_lo
     ANI TT_INDEX_MASK
-    PLO 9               ; Save masked index
     SHL                 ; x2, carry into DF
     PLO 10
     LDI 0
