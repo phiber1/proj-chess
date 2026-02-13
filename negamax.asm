@@ -778,6 +778,27 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     XRI 1               ; Check if depth == 1
     LBNZ NEGAMAX_SKIP_FUTILITY  ; Not depth 1, skip
 
+    ; --- Check guard: don't enable futility if in check ---
+    ; IS_IN_CHECK clobbers R9 (and others), so save/restore R9
+    GHI 9
+    STXD
+    GLO 9
+    STXD                ; Push R9 to stack
+
+    CALL IS_IN_CHECK    ; Check our king (R12 = our color)
+    ; D = 1 if in check (RLDI does NOT clobber D)
+    RLDI 10, CHECK_EXT_FLAG
+    STR 10              ; Temp save result
+
+    IRX
+    LDXA
+    PLO 9
+    LDX
+    PHI 9               ; R9 restored from stack
+
+    LDN 10              ; D = check result
+    LBNZ NEGAMAX_SKIP_FUTILITY  ; In check, skip futility
+
     ; Depth == 1: Cache static eval for futility pruning
     CALL EVALUATE       ; Returns score in R9
     ; Store in STATIC_EVAL (big-endian)
@@ -1007,12 +1028,31 @@ NM_SET_PROMO:
 
 NEGAMAX_MOVE_LEGAL:
     ; -----------------------------------------------
+    ; Check extension: does this move give check?
+    ; -----------------------------------------------
+    GLO 12
+    XRI 8
+    PLO 12              ; R12 = opponent's color
+    CALL IS_IN_CHECK    ; Check opponent's king
+    ; D = 1 if giving check (RLDI does NOT clobber D)
+    RLDI 10, CHECK_EXT_FLAG
+    STR 10              ; Save result
+    GLO 12
+    XRI 8
+    PLO 12              ; R12 = our color restored
+
+    ; -----------------------------------------------
     ; LMR Check: Should we reduce this move's search?
     ; -----------------------------------------------
     ; Clear LMR_REDUCED flag first
     RLDI 10, LMR_REDUCED
     LDI 0
     STR 10              ; LMR_REDUCED = 0 (default)
+
+    ; Condition 0: Not a checking move? (check extension overrides LMR)
+    RLDI 10, CHECK_EXT_FLAG
+    LDN 10
+    LBNZ LMR_SKIP       ; Checking move, skip LMR
 
     ; Condition 1: LMR_MOVE_INDEX >= 4?
     RLDI 10, LMR_MOVE_INDEX
@@ -1077,6 +1117,26 @@ LMR_SKIP:
     STR 13              ; depth_hi-- (with borrow)
 
 LMR_NO_EXTRA_DEC:
+
+    ; -----------------------------------------------
+    ; Check extension: undo depth reduction for checking moves
+    ; -----------------------------------------------
+    RLDI 10, CHECK_EXT_FLAG
+    LDN 10              ; D = check flag
+    LBZ CE_DONE         ; Not giving check, skip
+
+    ; Undo normal depth decrement (+1)
+    ; LMR cannot fire on checking moves (guarded above), so only undo the normal -1
+    RLDI 13, SEARCH_DEPTH + 1
+    LDN 13              ; D = depth low
+    ADI 1
+    STR 13              ; depth_lo++
+    DEC 13
+    LDN 13              ; D = depth high
+    ADCI 0
+    STR 13              ; depth_hi++ (with carry)
+
+CE_DONE:
 
     ; -----------------------------------------------
     ; Negate and swap alpha/beta (memory-based - R6 is SCRT linkage!)
@@ -1250,9 +1310,9 @@ LMR_NO_EXTRA_DEC:
     LDN 10              ; D = LMR_OUTER flag
     LBZ LMR_NO_RESEARCH ; Not reduced, skip re-search check
 
-    ; Peek alpha from stack (alpha_hi at R2+12, alpha_lo at R2+11)
+    ; Peek alpha from stack (alpha_hi at R2+13, alpha_lo at R2+12)
     GLO 2
-    ADI 12              ; Calculate offset to alpha_hi
+    ADI 13              ; Calculate offset to alpha_hi
     PLO 10
     GHI 2
     ADCI 0
@@ -1328,9 +1388,9 @@ LMR_DO_RESEARCH:
     STR 13              ; depth_hi++ (with carry)
 
     ; Re-setup alpha/beta for child (same swap as original)
-    ; Peek parent's beta from stack (beta_hi at R2+10, beta_lo at R2+9)
+    ; Peek parent's beta from stack (beta_hi at R2+11, beta_lo at R2+10)
     GLO 2
-    ADI 10
+    ADI 11
     PLO 10
     GHI 2
     ADCI 0
@@ -1349,9 +1409,9 @@ LMR_DO_RESEARCH:
     SDBI 0
     PHI 7               ; R7 = -beta = new_alpha
 
-    ; Peek parent's alpha again (R2+12, R2+11)
+    ; Peek parent's alpha again (R2+13, R2+12)
     GLO 2
-    ADI 12
+    ADI 13
     PLO 10
     GHI 2
     ADCI 0

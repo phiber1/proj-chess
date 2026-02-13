@@ -97,7 +97,7 @@ BL_COMPARE_LOOP:
     STR 2
     LDN 9               ; History to
     XOR                 ; Compare
-    LBNZ BL_SKIP_ENTRY  ; Mismatch
+    LBNZ BL_SKIP_TO     ; TO mismatch - different skip path
 
     ; Move to next pair
     INC 8
@@ -121,11 +121,16 @@ BL_MATCH_FOUND:
     LDI 1
     RETN
 
+BL_SKIP_TO:
+    ; TO byte mismatch: R8 points to TO byte (already past FROM via INC 8)
+    ; Advance past TO and count this pair as consumed, then fall through
+    INC 8               ; Past TO byte -> R8 at start of next pair
+    DEC 10              ; This pair consumed
+    ; Fall through to BL_SKIP_ENTRY
+
 BL_SKIP_ENTRY:
-    ; Mismatch during comparison, skip to next entry
-    ; We need to find where we are and skip to end of entry
-    ; Entry format: [ply] [moves...] [response]
-    ; R10.0 has remaining moves to compare
+    ; FROM byte mismatch: R8 points to FROM byte of mismatched pair
+    ; R10.0 = remaining move pairs to skip (not yet compared)
     ; Skip: remaining_moves*2 + 2 (response bytes)
     GLO 10              ; Remaining moves
     SHL                 ; * 2

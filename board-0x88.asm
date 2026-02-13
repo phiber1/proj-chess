@@ -180,14 +180,14 @@ LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive c
 EVAL_SKIP_PST     EQU $64AA   ; 1 byte - flag: 1=skip PST in EVALUATE (for QS speed)
 
 ; ------------------------------------------------------------------------------
-; Move Loop Pointer Save: $64B0-$64B7
+; Move Loop Pointer Save: $64DB-$64EA
 ; ------------------------------------------------------------------------------
 ; Ply-indexed save for R9 (move list pointer) during negamax move loop.
 ; Avoids fragile stack save/restore across hundreds of instructions.
-; 2 bytes per ply (hi, lo), 4 plies max = 8 bytes.
-; NOTE: Must not overlap NULL_MOVE_OK ($64A7), NULL_SAVED_EP ($64A8),
-;       or ENEMY_COLOR_TEMP ($64A9)!
-LOOP_MOVE_PTR     EQU $64B0   ; 8 bytes - R9 save per ply ($64B0-$64B7)
+; 2 bytes per ply (hi, lo), 8 plies max = 16 bytes.
+; NOTE: Previous location $64B0 only had 8 bytes — plies 4-7 overlapped
+;       UCI_STATE/HASH/TT variables, causing corruption with check extensions.
+LOOP_MOVE_PTR     EQU $64DB   ; 16 bytes - R9 save per ply ($64DB-$64EA)
 
 ; ------------------------------------------------------------------------------
 ; Null Move Pruning: $64A7-$64A8
@@ -232,6 +232,7 @@ SEARCH_PREV_SECS  EQU $64CA   ; 1 byte - last RTC seconds reading (for delta)
 SEARCH_ELAPSED    EQU $64CB   ; 1 byte - accumulated elapsed seconds (0-255)
 UINT_BUFFER       EQU $64CC   ; 6 bytes - ASCII scratch for F_UINTOUT ($64CC-$64D1)
 NODE_TT_FLAGS     EQU $64D2   ; 8 bytes - TT bound type per ply ($64D2-$64D9)
+CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extension)
 
 ; ------------------------------------------------------------------------------
 ; UCI input buffer: $6500-$677F (640 bytes)
