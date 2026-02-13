@@ -9,9 +9,9 @@
 
 ---
 
-## Current Status (February 11, 2026)
+## Current Status (February 12, 2026)
 
-- **Opening Book:** Working but shallow — only Giuoco Piano/Italian Game (47 entries). **Expansion is top priority.**
+- **Opening Book:** 455 entries, 8,610 bytes — 8 openings at ply 12 (6 moves/side): Giuoco Piano, Sicilian Rossolimo, French Advance, Caro-Kann Advance, QGD Exchange, Alekhine Modern, Scandinavian, Pirc Austrian
 - **CDP1806 RLDI Migration:** 401 conversions across 15 files, 799 bytes saved (5.9%)
 - **Transposition Table:** Fixed (Feb 11) — depth store, R9 clobber, inline per-ply bound flags
 - **Depth 3:** Only reachable after piece exchanges reduce tree; opening/middlegame stuck at depth 2
@@ -27,32 +27,26 @@
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches
 - **UCI Node Output:** Decimal via BIOS F_UINTOUT routine
 - **UCI Buffer:** 640 bytes (supports games up to ~59 full moves)
-- **Engine size:** 12,867 bytes (out of 32K available)
+- **Engine size:** 20,839 bytes (out of 32K available)
 - **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP, futility pruning
 - **ELPH Bridge:** Dynamic delay scaling, echo detection, go-param stripping, timestamped logging (pyserial)
 
-### Key Insight: Depth-2 Opening Problem
-The engine hits the 120s time budget on nearly every opening move (first ~20 moves). Depth 3 is only reachable after piece exchanges reduce the search tree. This makes the engine essentially a depth-2 player in the opening/middlegame — unable to see piece safety beyond one move, castling's long-term value, or tactical sequences. **Expanding the opening book to skip the first 6-10 moves** would land the engine in simpler middlegame positions where depth 3 is achievable, for zero runtime cost.
-
-### Match Results (Feb 11, 2026)
-- **50-move Caro-Kann (7cf0491 baseline):** Real chess! Castled O-O, active piece play, ~45 min. King shuttled g1↔g2 (no repetition detection). Ended with illegal move at move 50 — UCI buffer overflow (fixed in fc0c0f5).
-- **26-move match (TT depth fix + flags, 120s budget):** Castled O-O move 10. Hit 120s budget on nearly every move through move 20. Queen was aggressively placed but couldn't close (depth-2 horizon). Queen surrounded and captured, checkmate at move 26.
-- **Earlier match (TT depth fix only, no flags):** Kf1 squandering castling on move 6 (depth-2 artifact). TT with wrong flags (all EXACT) caused search corruption.
+### Match Results (Feb 12, 2026)
+- **51-move French Defense (4d2b7fe):** Best match to date. Engine repelled Black's queen raid (Qb6-Qxb2-Qa3, chased back with Rb3!), developed all pieces, played sharp knight maneuvers (Ng3, Ne4, Nf6+, Ne4, Ng5, Nf3). Middlegame outstanding through move 35. Endgame collapsed — Nh4?? blundered knight, king shuffled aimlessly, couldn't coordinate defense. No hangs, no invalid moves.
+- **30-move Caro-Kann (8758ed9):** Opening book worked perfectly (e4 c6 d4 d5 e5 Bf5 Nf3). Aggressive e6! pawn push. Queens traded by move 13. Endgame fell apart — Bb5+ blunder, no pawn defense plan.
 
 ### Next Up
-- **Expand opening book** — deeper lines, more variations, skip depth-2 opening phase
-- **LMR check guard** — lacks IS_IN_CHECK (lower priority: depth>=3 only, captures exempt)
+- **Futility check guard** — IS_IN_CHECK at depth 1, prevents pruning escape moves when in check
+- **Check extension** — extend search depth for checking moves (fixes horizon checkmates). CE detection code produced invalid moves in some positions; root cause TBD. Also needs ply cap to prevent search explosion on long check sequences
+- **Endgame evaluation** — king activity, passed pawn awareness (the #1 weakness now)
 - **Repetition detection** — engine shuffles pieces in drawn positions
-- **Open-file king penalty** — lightweight king safety (replaces pawn shield approach)
 - **Wider hash for TT** — 32-bit hash needed for reliable TT at scale
-- **RSXD/RLXA optimization** — ~42 bytes savings, requires matched-pair conversion
 
 ### Recent Milestones
-- **Feb 11:** Reverted to 7cf0491 baseline after bd514ee/895dcd6 regression. UCI buffer 512→640 bytes ($6000-$6FFF layout). Fixed TT_PROBE R9 clobber (dead PLO 9). Fixed TT depth store (SEARCH_DEPTH→SEARCH_DEPTH+1). Added inline per-ply TT bound flags (no CALL overhead). Fixed time budget tracking (RTC reads on every node, not just d3+). Budget 90s→120s. Engine size: 12,867 bytes.
-- **Feb 10:** TT correctness fix (3 bugs: depth store, flag store, probe bounds). TT clear per-search. Futility pruning IS_IN_CHECK guard. 4 test matches, longest 40 moves/80 ply.
-- **Feb 9:** CDP1806 RLDI migration — 799 bytes saved (5.9%). Depth-3: 85s → 59s. Pawn shield re-disabled (speed overhead).
-- **Feb 9:** Fixed promotion handling — stale UNDO_PROMOTION, search promotions, UCI suffix.
-- **Feb 7:** Fixed inverted PST tables. King PST strengthened. Engine now castles properly.
+- **Feb 12:** Expanded opening book to 455 entries (8 openings, ply 12). Fixed book lookup skip bug (BL_SKIP_TO). Fixed LOOP_MOVE_PTR overlap ($64B0→$64DB, 8→16 bytes). Fixed LMR re-search stack peek offsets (ADI 12→13, 10→11). Check extension attempted but reverted — produced invalid moves and search explosion. Engine size: 20,839 bytes.
+- **Feb 11:** Reverted to 7cf0491 baseline after bd514ee/895dcd6 regression. UCI buffer 512→640 bytes. Fixed TT_PROBE R9 clobber, TT depth store, inline per-ply TT bound flags. Fixed time budget tracking. Budget 90s→120s.
+- **Feb 10:** TT correctness fix (3 bugs). TT clear per-search. Futility pruning IS_IN_CHECK guard discovered needed.
+- **Feb 9:** CDP1806 RLDI migration — 799 bytes saved (5.9%). Pawn shield re-disabled.
 - Earlier milestones archived to `docs/archive/sessions-dec30-jan30.md`
 
 ### Depth 4 Test Results (with NMP)
@@ -70,6 +64,71 @@ All positions tested at depth 4, out of book:
 Baseline before NMP: Sicilian depth 4 = 6 min 7 sec
 After NMP: 43 seconds = 8.5x speedup!
 ```
+
+---
+
+## Session: February 12, 2026 - Opening Book Expansion, Bug Fixes, Best Match
+
+### Summary
+Expanded opening book from 47 to 455 entries (8 openings). Fixed two latent search bugs
+(LOOP_MOVE_PTR overlap, LMR stack peek offsets). Attempted check extension for horizon
+checkmate fix but reverted after it produced invalid moves and search explosion. Played
+the best match to date — 51 moves of strong middlegame chess.
+
+### Opening Book Expansion (opening-book.asm, opening-book-lookup.asm)
+Expanded from 47 entries (Giuoco Piano only) to 455 entries across 8 openings, all at
+ply 12 (6 moves/side). Built with `tools/pgn_to_book.py` (PGN→ASM) and
+`tools/merge_books.py` (merge+sort+dedup). Fixed book lookup skip bug: BL_SKIP_TO
+label added for TO-byte mismatches (was falling through to wrong entry).
+
+Openings: Giuoco Piano (97, freq 200), Sicilian Rossolimo (91, freq 500), French
+Advance (46), Caro-Kann Advance (81), QGD Exchange (62), Alekhine Modern (30),
+Scandinavian (31), Pirc Austrian (23). PGN sources in `openingbooks/` subdirectory.
+
+### LOOP_MOVE_PTR Overlap Fix (board-0x88.asm)
+LOOP_MOVE_PTR at $64B0 was allocated 8 bytes (4 plies) but needed 16 (8 plies × 2
+bytes). Plies 4-7 overlapped UCI_STATE/HASH/TT variables ($64B8-$64BF). Latent bug —
+only reachable at higher search depths. Moved to $64DB (16 bytes, $64DB-$64EA).
+
+### LMR Re-search Stack Peek Fix (negamax.asm)
+All three stack peek offsets for alpha/beta in LMR re-search were off by 1. With 17
+per-move pushes and 2 pops, R2+13=alpha_hi (not R2+12). Fixed ADI 12→13 (alpha) and
+ADI 10→11 (beta) at 3 locations. Bug was dormant pre-check-extension (LMR needs
+depth≥3, rarely reached before extensions made it reachable).
+
+### Check Extension — Attempted and Reverted
+Implemented check extension (detect IS_IN_CHECK after each legal move, undo depth
+decrement for checking moves) to fix the #1 losing pattern: queen checkmates at search
+horizon where QS doesn't detect mate. CE worked for one test position (g1h2 king
+defense) but produced invalid moves (a3b8, c8g4) in other positions during CuteChess
+matches. Also caused 10-minute search explosion on positions with long check sequences.
+Ply cap attempted but didn't fix invalid moves. CE reverted; root cause of invalid
+moves not yet found. Futility check guard (IS_IN_CHECK at depth 1) also implemented
+but reverted with the batch — needs separate testing.
+
+### Match Results
+**51-move French Defense (best match to date):** Caro-Kann Advance opening from book.
+Engine repelled Black's queen raid with Rb3!, developed all pieces (both knights, bishop,
+queen, both rooks active). Sharp knight play: Ng3→Ne4→Nf6+→Ne4→Ng5→Nf3. Pawn advances:
+e5, d5, c4, c5. Middlegame outstanding through move 35. Endgame collapsed: Nh4??
+blundered knight, king shuffled Ke2-Kf1-Ke2-Kd2-Kc1-Kb1, couldn't coordinate defense.
+63 minutes total, no hangs, no invalid moves.
+
+### Commits
+- `2f29872`: Add check extensions, fix LMR re-search stack bug, expand opening book
+- `8758ed9`: Revert search changes from 2f29872, keep expanded opening book
+- `4d2b7fe`: Fix LOOP_MOVE_PTR overlap and LMR re-search stack peek offsets
+
+### Files Changed
+- `opening-book.asm`: 455 entries (was 47)
+- `opening-book-lookup.asm`: BL_SKIP_TO fix
+- `board-0x88.asm`: LOOP_MOVE_PTR $64B0→$64DB (16 bytes), CHECK_EXT_FLAG $64DA
+- `negamax.asm`: LMR peek offsets (ADI 12→13, 10→11)
+- `openingbooks/`: 8 PGN files + per-opening ASM files
+- `tools/pgn_to_book.py`, `tools/merge_books.py`: New book generation tools
+
+### Build
+20,839 bytes (.bin), clean assembly, zero errors
 
 ---
 
@@ -364,44 +423,5 @@ letting a-pawn march to promotion).
 
 ---
 
-## Session: February 6, 2026 - Iterative Deepening + RFP
-
-### Summary
-Implemented iterative deepening with RTC-based time management and Reverse Futility
-Pruning. Also fixed stale RAM bug and ran first CuteChess depth-2 matches.
-
-### Iterative Deepening (negamax.asm)
-SEARCH_POSITION loops d1→d2→d3, saving ITER_BEST after each completed depth. DS12887 RTC
-reads seconds via OUT 2 ($80) / INP 3, aborts at 90s budget. Falls back to last completed
-depth's bestmove on abort.
-
-Results: Italian d3: 85s/2012 nodes (completes). Queen's Attack d3: 89s abort (falls back
-to d2). Three LDI-clobbers-D bugs fixed during development.
-
-### Reverse Futility Pruning (negamax.asm)
-At non-root nodes with depth <= 2, if static_eval - margin >= beta, return static_eval
-(position too good, opponent won't allow it). Margin: 100cp at depth 1, 300cp at depth 2.
-15% speedup on quiet positions. Extended futility and razoring tested but reverted
-(EVALUATE overhead > benefit on 1802).
-
-### Stale RAM Fix (board-0x88.asm)
-Added WORKSPACE_CLEAR zeroing $6200-$64FF at startup and ucinewgame. Prevents stale
-variable bugs between games. Note: TT at $6700-$6EFF is NOT cleared by WORKSPACE_CLEAR
-(cleared separately by TT_CLEAR in ucinewgame).
-
-### CuteChess Depth-2 Matches
-Two matches confirmed poor play quality at depth 2 — engine couldn't see basic tactics.
-Depth 3 with iterative deepening is the target for competitive play.
-
-### Commits
-- `5c959e9`: Fix stale RAM bug: clear workspace $6200-$64FF on startup and ucinewgame
-- `4bebfb2`: Add RFP, PST tuning, delta pruning, and restore elph-bridge
-- `19e1c0d`: Add iterative deepening with RTC-based time management
-- `936ed83`: Update PROGRESS.md with iterative deepening results
-
-### Build
-13,192 bytes (.bin), clean
-
----
-
 > **Older sessions archived to:** `docs/archive/sessions-dec30-jan30.md`
+> Sessions Feb 6-9 archived from this file — see git history for details.
