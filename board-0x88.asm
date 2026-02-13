@@ -180,14 +180,14 @@ LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive c
 EVAL_SKIP_PST     EQU $64AA   ; 1 byte - flag: 1=skip PST in EVALUATE (for QS speed)
 
 ; ------------------------------------------------------------------------------
-; Move Loop Pointer Save: $64B0-$64B7
+; Move Loop Pointer Save: $64DB-$64EA
 ; ------------------------------------------------------------------------------
 ; Ply-indexed save for R9 (move list pointer) during negamax move loop.
 ; Avoids fragile stack save/restore across hundreds of instructions.
-; 2 bytes per ply (hi, lo), 4 plies max = 8 bytes.
-; NOTE: Must not overlap NULL_MOVE_OK ($64A7), NULL_SAVED_EP ($64A8),
-;       or ENEMY_COLOR_TEMP ($64A9)!
-LOOP_MOVE_PTR     EQU $64B0   ; 8 bytes - R9 save per ply ($64B0-$64B7)
+; 2 bytes per ply (hi, lo), 8 plies max = 16 bytes.
+; NOTE: Previous location $64B0 only had 8 bytes — plies 4-7 overlapped
+;       UCI_STATE/HASH/TT variables, causing corruption at higher plies.
+LOOP_MOVE_PTR     EQU $64DB   ; 16 bytes - R9 save per ply ($64DB-$64EA)
 
 ; ------------------------------------------------------------------------------
 ; Null Move Pruning: $64A7-$64A8

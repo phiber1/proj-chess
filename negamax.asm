@@ -1250,9 +1250,9 @@ LMR_NO_EXTRA_DEC:
     LDN 10              ; D = LMR_OUTER flag
     LBZ LMR_NO_RESEARCH ; Not reduced, skip re-search check
 
-    ; Peek alpha from stack (alpha_hi at R2+12, alpha_lo at R2+11)
+    ; Peek alpha from stack (alpha_hi at R2+13, alpha_lo at R2+12)
     GLO 2
-    ADI 12              ; Calculate offset to alpha_hi
+    ADI 13              ; Calculate offset to alpha_hi
     PLO 10
     GHI 2
     ADCI 0
@@ -1328,9 +1328,9 @@ LMR_DO_RESEARCH:
     STR 13              ; depth_hi++ (with carry)
 
     ; Re-setup alpha/beta for child (same swap as original)
-    ; Peek parent's beta from stack (beta_hi at R2+10, beta_lo at R2+9)
+    ; Peek parent's beta from stack (beta_hi at R2+11, beta_lo at R2+10)
     GLO 2
-    ADI 10
+    ADI 11
     PLO 10
     GHI 2
     ADCI 0
@@ -1349,9 +1349,9 @@ LMR_DO_RESEARCH:
     SDBI 0
     PHI 7               ; R7 = -beta = new_alpha
 
-    ; Peek parent's alpha again (R2+12, R2+11)
+    ; Peek parent's alpha again (R2+13, R2+12)
     GLO 2
-    ADI 12
+    ADI 13
     PLO 10
     GHI 2
     ADCI 0
