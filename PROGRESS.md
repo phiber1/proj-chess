@@ -9,8 +9,9 @@
 
 ---
 
-## Current Status (February 12, 2026)
+## Current Status (February 13, 2026)
 
+- **FIRST WIN: Qg7# checkmate in 38 moves** (Alekhine's Defense, Feb 13)
 - **Opening Book:** 455 entries, 8,610 bytes — 8 openings at ply 12 (6 moves/side): Giuoco Piano, Sicilian Rossolimo, French Advance, Caro-Kann Advance, QGD Exchange, Alekhine Modern, Scandinavian, Pirc Austrian
 - **CDP1806 RLDI Migration:** 401 conversions across 15 files, 799 bytes saved (5.9%)
 - **Transposition Table:** Fixed (Feb 11) — depth store, R9 clobber, inline per-ply bound flags
@@ -27,26 +28,24 @@
 - **CuteChess Integration:** Engine plays via ELPH bridge, depth 3 matches
 - **UCI Node Output:** Decimal via BIOS F_UINTOUT routine
 - **UCI Buffer:** 640 bytes (supports games up to ~59 full moves)
-- **Engine size:** 20,839 bytes (out of 32K available)
-- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP, futility pruning
+- **Engine size:** 20,845 bytes (out of 32K available)
+- **Search optimizations:** Killer moves, QS alpha-beta, capture ordering, internal TT, LMR, NMP, RFP, futility pruning (with check guard)
 - **ELPH Bridge:** Dynamic delay scaling, echo detection, go-param stripping, timestamped logging (pyserial)
 
-### Match Results (Feb 12, 2026)
-- **51-move French Defense (4d2b7fe):** Best match to date. Engine repelled Black's queen raid (Qb6-Qxb2-Qa3, chased back with Rb3!), developed all pieces, played sharp knight maneuvers (Ng3, Ne4, Nf6+, Ne4, Ng5, Nf3). Middlegame outstanding through move 35. Endgame collapsed — Nh4?? blundered knight, king shuffled aimlessly, couldn't coordinate defense. No hangs, no invalid moves.
-- **30-move Caro-Kann (8758ed9):** Opening book worked perfectly (e4 c6 d4 d5 e5 Bf5 Nf3). Aggressive e6! pawn push. Queens traded by move 13. Endgame fell apart — Bb5+ blunder, no pawn defense plan.
+### Match Results (Feb 13, 2026) — FIRST WIN
+- **38-move Alekhine's Defense WIN (1d0dfdb): Qg7# CHECKMATE.** Nc4/Nxd6+ queen sacrifice (bishop for queen), flawless endgame conversion: Nxf5 (won rook), Re7/Rxc7 (invaded 7th rank, captured bishop), Qxd2 (recaptured knight), c4-c5-c6 passed pawn advance, Rxb7 (plundered queenside), Qxf7/Qg7# back-rank mate. No endgame collapse. 43 minutes total.
+- Previous best: 51-move French Defense (Feb 12) — outstanding middlegame but endgame collapsed.
 
 ### Next Up
-- **Futility check guard** — IS_IN_CHECK at depth 1, prevents pruning escape moves when in check
 - **Check extension** — extend search depth for checking moves (fixes horizon checkmates). CE detection code produced invalid moves in some positions; root cause TBD. Also needs ply cap to prevent search explosion on long check sequences
-- **Endgame evaluation** — king activity, passed pawn awareness (the #1 weakness now)
+- **Endgame evaluation** — king activity, passed pawn awareness (still a weakness, though less critical after first win)
 - **Repetition detection** — engine shuffles pieces in drawn positions
 - **Wider hash for TT** — 32-bit hash needed for reliable TT at scale
 
 ### Recent Milestones
+- **Feb 13:** FIRST ENGINE WIN — Qg7# checkmate in 38 moves (Alekhine's Defense). Added futility pruning check guard (6 bytes). Engine size: 20,845 bytes.
 - **Feb 12:** Expanded opening book to 455 entries (8 openings, ply 12). Fixed book lookup skip bug (BL_SKIP_TO). Fixed LOOP_MOVE_PTR overlap ($64B0→$64DB, 8→16 bytes). Fixed LMR re-search stack peek offsets (ADI 12→13, 10→11). Check extension attempted but reverted — produced invalid moves and search explosion. Engine size: 20,839 bytes.
 - **Feb 11:** Reverted to 7cf0491 baseline after bd514ee/895dcd6 regression. UCI buffer 512→640 bytes. Fixed TT_PROBE R9 clobber, TT depth store, inline per-ply TT bound flags. Fixed time budget tracking. Budget 90s→120s.
-- **Feb 10:** TT correctness fix (3 bugs). TT clear per-search. Futility pruning IS_IN_CHECK guard discovered needed.
-- **Feb 9:** CDP1806 RLDI migration — 799 bytes saved (5.9%). Pawn shield re-disabled.
 - Earlier milestones archived to `docs/archive/sessions-dec30-jan30.md`
 
 ### Depth 4 Test Results (with NMP)
@@ -64,6 +63,53 @@ All positions tested at depth 4, out of book:
 Baseline before NMP: Sicilian depth 4 = 6 min 7 sec
 After NMP: 43 seconds = 8.5x speedup!
 ```
+
+---
+
+## Session: February 13, 2026 - Futility Check Guard, FIRST ENGINE WIN
+
+### Summary
+Added futility pruning check guard — 6 bytes, 2 instructions. First match with this
+change produced the engine's first-ever victory: Qg7# checkmate in 38 moves via the
+Alekhine's Defense. Complete game from opening through endgame conversion with no collapse.
+
+### Futility Pruning Check Guard (negamax.asm)
+At depth 1, futility pruning can discard moves whose static eval + margin falls below
+alpha. But when the side to move is in check, ALL moves are escape moves — pruning them
+loses the only legal options. Added `CALL IS_IN_CHECK` / `LBNZ NEGAMAX_SKIP_FUTILITY`
+after the depth==1 confirmation, mirroring the existing RFP check guard (line 563).
+
+No new variables needed. IS_IN_CHECK doesn't touch R9 (move list pointer). Clobbered
+registers (R10, R13, R15) are all reset before next use. 6 bytes total.
+
+### The Winning Game — Alekhine's Defense, 38 Moves, Qg7#
+```
+1. e4 Nf6 2. e5 Nd5 3. d4 c5 4. dxc5 Qa5 5. Nd2 Qxc5 6. Qf3 d6
+7. exd6 Nd7 8. Qf5 Qxd6 9. Nf3 g6 10. Qe4 Bh6 11. Bd3 Nb4
+12. O-O Bf4 13. Nc4 Nxd3 14. Nxd6+ Bxd6 15. Qxd3 O-O 16. Be3 Re8
+17. Rae1 Nf6 18. Nd4 Bg4 19. Qc3 Rc8 20. Qd3 Rc5 21. c3 Rd5
+22. c4! Re5 23. Bd2 Rf5 24. Nxf5! Bxf5 25. Qd4 Bc7 26. Re7! Ne4
+27. Rxc7! Nxd2 28. Qxd2 Be4 29. g4 Rf8 30. c5! Bf3 31. g5! Re8
+32. Rfe1 Rf8 33. Qd3 h6 34. Qxf3! hxg5 35. Rxb7! a6 36. c6!! Rc8
+37. Qxf7! Kh8 38. Qg7# 1-0
+```
+
+Key moments:
+- **Nc4/Nxd6+ (moves 13-14):** Bishop sacrifice to win Black's queen
+- **Qxd3 (move 15):** Recaptured Black's knight — up Q+pawns vs 2B+2N
+- **Nxf5 (move 24):** Knight captures rook on f5
+- **Re7/Rxc7 (moves 26-27):** Rook invasion on 7th rank, captures bishop
+- **c4-c5-c6 (moves 22-30-36):** Passed pawn advance, unstoppable
+- **Qxf7/Qg7# (moves 37-38):** Queen + rook battery delivers back-rank mate
+
+### Commits
+- `1d0dfdb`: Add futility pruning check guard — first engine win (Qg7# in 38 moves)
+
+### Files Changed
+- `negamax.asm`: 4-line insertion (2 comment lines + CALL IS_IN_CHECK + LBNZ)
+
+### Build
+20,845 bytes (.bin), clean assembly, zero errors
 
 ---
 
