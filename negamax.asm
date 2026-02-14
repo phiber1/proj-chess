@@ -778,6 +778,11 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     XRI 1               ; Check if depth == 1
     LBNZ NEGAMAX_SKIP_FUTILITY  ; Not depth 1, skip
 
+    ; Check guard: don't enable futility if side is in check
+    ; (escape moves must not be pruned — mirrors RFP guard at line 563)
+    CALL IS_IN_CHECK    ; R12 = our color; D = 1 if in check
+    LBNZ NEGAMAX_SKIP_FUTILITY  ; in check, skip futility
+
     ; Depth == 1: Cache static eval for futility pruning
     CALL EVALUATE       ; Returns score in R9
     ; Store in STATIC_EVAL (big-endian)
