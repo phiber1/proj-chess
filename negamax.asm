@@ -286,7 +286,7 @@ NEGAMAX_CONTINUE:
     LDN 10
     LBZ NMP_SKIP        ; null move not allowed (already did one)
 
-    ; Condition 4: NOT in check?
+    ; Condition 4: NOT in check? (already verified above for non-CE path)
     CALL IS_IN_CHECK
     ; D = 1 if in check, 0 if safe
     LBNZ NMP_SKIP       ; in check, can't pass
@@ -1011,6 +1011,18 @@ NM_SET_PROMO:
     LBR NEGAMAX_NEXT_MOVE   ; Skip this illegal move
 
 NEGAMAX_MOVE_LEGAL:
+    ; --- Check extension: does this move give check? ---
+    GLO 12
+    XRI 8
+    PLO 12              ; R12 = opponent's color
+    CALL IS_IN_CHECK    ; Check opponent's king
+    ; D = 1 if giving check (RLDI does NOT clobber D)
+    RLDI 10, CHECK_EXT_FLAG
+    STR 10              ; Save result (0 or 1)
+    GLO 12
+    XRI 8
+    PLO 12              ; R12 = our color restored
+
     ; -----------------------------------------------
     ; LMR Check: Should we reduce this move's search?
     ; -----------------------------------------------
@@ -1082,7 +1094,29 @@ LMR_SKIP:
     STR 13              ; depth_hi-- (with borrow)
 
 LMR_NO_EXTRA_DEC:
+    ; -----------------------------------------------
+    ; Check extension: if move gives check AND depth is
+    ; at the horizon (depth <= 0 after decrement), undo
+    ; the decrement so checking move stays in main search
+    ; where checkmate can be detected (QS can't detect it)
+    ; -----------------------------------------------
+    RLDI 10, CHECK_EXT_FLAG
+    LDN 10              ; D = check flag
+    LBZ CE_DONE         ; Not giving check, skip
 
+    ; Only extend at horizon: depth <= 0 after decrement
+    RLDI 13, SEARCH_DEPTH
+    LDA 13              ; D = depth_hi
+    LBNZ CE_DONE        ; depth_hi != 0, not at horizon
+    LDN 13              ; D = depth_lo
+    LBNZ CE_DONE        ; depth_lo != 0, not at horizon
+
+    ; Depth is 0 — about to drop to QS. Undo decrement (+1)
+    LDI 1
+    STR 13              ; depth_lo = 1
+    ; depth_hi stays 0 (already confirmed)
+
+CE_DONE:
     ; -----------------------------------------------
     ; Negate and swap alpha/beta (memory-based - R6 is SCRT linkage!)
     ; -----------------------------------------------
