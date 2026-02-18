@@ -27,7 +27,7 @@ STR_STOP        DB "stop", 0
 
 ; Response strings (CR+LF for terminal display)
 STR_ID_NAME     DB "id name RCA-Chess-1806", 13, 10, 0
-STR_ID_AUTHOR   DB "id author Claude Code", 13, 10, 0
+STR_ID_AUTHOR   DB "id author Mark Abene & Claude Code", 13, 10, 0
 STR_OPTION_DEPTH DB "option name Depth type spin default 4 min 1 max 6", 13, 10, 0
 STR_UCIOK       DB "uciok", 13, 10, 0
 STR_READYOK     DB "readyok", 13, 10, 0
