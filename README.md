@@ -1,207 +1,167 @@
 # RCA 1802/1806 Chess Engine
 
-A complete chess engine for the RCA 1802/1806 microprocessor, targeting 1400-1700 ELO playing strength.
+A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has won its first match by checkmate.
 
 ## Quick Stats
 
-- **Target CPU**: RCA 1806 @ 12 MHz
-- **RAM**: 32KB
-- **Search Depth**: 6-7 ply (3-3.5 full moves)
-- **Playing Strength**: ~1400-1700 ELO (with all enhancements)
-- **Code Size**: ~9-11KB
-- **Status**: 95% complete, playable in 1-2 hours (just needs serial I/O config)
+| Stat | Value |
+|------|-------|
+| **CPU** | RCA CDP1806 @ 3.58 MHz |
+| **RAM** | 32KB |
+| **Code Size** | 20,845 bytes |
+| **Search** | Iterative deepening, depth 2-3 (depth 4 in simplified positions) |
+| **Opening Book** | 455 entries, 8 openings, 12 ply deep |
+| **Time Control** | 120 seconds per move (DS12887 RTC) |
+| **First Win** | Qg7# checkmate in 38 moves (Alekhine's Defense, Feb 13 2026) |
 
 ## Features
 
-### Implemented ✓
-- Negamax search with alpha-beta pruning
-- 0x88 board representation
-- Complete move generation (all piece types)
-- Check and checkmate detection
-- Material evaluation
-- UCI protocol interface
-- Make/unmake move with full state restoration
+### Search
+- Negamax with alpha-beta pruning
+- Iterative deepening (depth 1 through target depth)
+- Transposition table (256 entries, Zobrist hashing)
+- Null move pruning (NMP)
+- Late move reductions (LMR)
+- Reverse futility pruning (RFP) with check guard
+- Futility pruning at frontier nodes with check guard
+- Killer move ordering
+- Quiescence search with alpha-beta and capture ordering
+- Checkmate and stalemate detection
+- Fifty-move rule
 
-### Planned
-- Piece-square table evaluation
-- Transposition table (16-20KB)
-- Opening book (4-6KB)
-- Advanced evaluation features
+### Evaluation
+- Material counting
+- Piece-square tables (all 6 piece types)
+- Endgame heuristics
 
-## Performance
+### Board Representation
+- 0x88 board format (fast off-board detection)
+- Complete move generation for all piece types
+- Make/unmake with full state restoration (Zobrist-incremental)
+- Castling (kingside/queenside, rights revocation)
+- En passant
+- Pawn promotion (all piece types, in search and UCI output)
 
-| Metric | Value |
-|--------|-------|
-| Nodes/second | ~8,000 |
-| 6-ply search time | 10-30 seconds |
-| Current strength | ~1100-1300 ELO (material only) |
-| Target strength | ~1500-1700 ELO (with enhancements) |
+### Opening Book
+- 455 entries across 8 openings at ply 12 (6 moves per side)
+- Giuoco Piano, Sicilian Rossolimo, French Advance, Caro-Kann Advance, QGD Exchange, Alekhine Modern, Scandinavian, Pirc Austrian
+- Built from PGN databases with `tools/pgn_to_book.py`
 
-## File Structure
+### Interface
+- UCI protocol over serial (19200 baud via BIOS)
+- CuteChess integration via Python serial bridge (`elph-bridge.py`)
+- RTC-based time management (DS12887 real-time clock)
 
-### Core Engine
-- `support.asm` - 16-bit arithmetic library
-- `math.asm` - Software multiply/divide
-- `stack.asm` - Stack management for recursion
-- `negamax.asm` - Alpha-beta search algorithm
+## Building
 
-### Board & Moves
-- `board.asm` - 0x88 board representation
-- `movegen.asm` + `movegen-helpers.asm` - Move generation
-- `makemove.asm` + `makemove-helpers.asm` - Move execution
-- `check.asm` - Check detection
-
-### Evaluation & Interface
-- `evaluate.asm` - Position evaluation
-- `uci.asm` - UCI protocol
-- `main.asm` - Entry point and main loop
-
-### Documentation
-- `INTEGRATION-GUIDE.md` - **START HERE** for assembly
-- `SESSION-SUMMARY.md` - What we built
-- `PROJECT-STATUS.md` - Detailed component status
-- `conversation-log.md` - Design rationale
-- `board-layout.md` - 0x88 reference
-- `movegen-status.md` - Move gen integration guide
-
-## Quick Start
-
-### 1. Read Documentation
 ```bash
-cat INTEGRATION-GUIDE.md
+bash build.sh
 ```
 
-### 2. Build
-Option A - Single file:
-```bash
-cat support.asm math.asm stack.asm board.asm check.asm \
-    movegen-helpers.asm movegen.asm makemove-helpers.asm \
-    makemove.asm evaluate.asm negamax.asm uci.asm \
-    main.asm > chess-engine.asm
+This preprocesses `config.asm`, concatenates all modules in dependency order, and assembles with the A18 cross-assembler. Output: `chess-engine.hex` (Intel HEX) and `chess-engine.bin`.
 
-asm1802 chess-engine.asm -o chess-engine.hex
+### Configuration
+
+Edit `config.asm` to select between:
+- **BIOS mode** (default): Uses Elf/OS BIOS for serial I/O and SCRT
+- **Standalone mode**: Bit-bang serial for bare hardware
+
+## Playing
+
+1. Flash `chess-engine.hex` to the target system
+2. Connect serial at 19200 baud
+3. Run the CuteChess bridge:
+   ```bash
+   python3 elph-bridge.py
+   ```
+4. Configure CuteChess with the bridge as an engine
+
+The engine responds to standard UCI commands:
 ```
-
-Option B - With includes (see INTEGRATION-GUIDE.md)
-
-### 3. Complete Integration Tasks
-See INTEGRATION-GUIDE.md sections 1-4:
-1. Fix movegen.asm (use helpers)
-2. Clean up makemove.asm (remove stubs)
-3. Wire negamax.asm (replace stubs)
-4. Implement serial I/O (hardware-specific)
-
-### 4. Test
-```assembly
-CALL INIT_BOARD
-CALL TEST_MOVE_GEN      ; Should return 20 moves
-CALL TEST_SEARCH        ; Depth 3 search
-```
-
-### 5. Play
-Connect via UCI to Arena, Cutechess, or other GUI.
-
-## UCI Commands
-
-```
-uci                     → id name RCA-Chess-1806
-                          uciok
-isready                 → readyok
-position startpos
+uci              -> id name RCA-Chess-1806 / uciok
+isready          -> readyok
 position startpos moves e2e4 d7d5
-go depth 6              → bestmove e2e4
-quit
+go depth 3       -> bestmove e2e4
 ```
 
 ## Memory Map
 
 ```
-$0000-$1FFF: Code (8KB)
-$2000-$2FFF: PST tables & opening book (4KB)
-$3000-$67FF: Transposition table (16KB)
-$5000-$507F: Board array (128 bytes)
-$5080-$5087: Game state (8 bytes)
-$6800-$6FFF: Working memory (2KB)
-$7800-$7FFF: Stack (2KB)
+$0000-$51FF  Code (~20.8KB)
+$6000-$607F  Board array (128 bytes, 0x88 format)
+$6080-$60FF  Game state (castling, en passant, king positions, etc.)
+$6100-$61FF  Move history (undo stack)
+$6200-$64FF  Search workspace (killers, scores, depths, move pointers)
+$6500-$677F  UCI input buffer (640 bytes)
+$6780-$67FF  Quiescence search workspace
+$6800-$6FFF  Transposition table (2KB, 256 entries x 8 bytes)
+$7000-$7FFF  Stack (4KB)
 ```
 
-## Architecture Highlights
+## File Structure
 
-### 0x88 Board
-- Fast off-board detection: `square & 0x88 == 0`
-- 128 bytes (16×8 array)
-- Natural rank/file encoding
+### Core Engine
+| File | Purpose |
+|------|---------|
+| `negamax.asm` | Alpha-beta search, iterative deepening, all pruning |
+| `evaluate.asm` | Material + PST evaluation |
+| `pst.asm` | Piece-square tables (6 piece types) |
+| `endgame.asm` | Endgame heuristics |
+| `transposition.asm` | TT probe/store, Zobrist hash update |
+| `zobrist-keys.asm` | Zobrist hash key tables |
 
-### Move Encoding (16-bit)
-```
-Bits 0-6:   From square
-Bits 7-13:  To square
-Bits 14-15: Flags (normal/castle/EP/promotion)
-```
+### Board & Moves
+| File | Purpose |
+|------|---------|
+| `board-0x88.asm` | Board representation, constants, memory layout |
+| `movegen-fixed.asm` | Complete move generation (all pieces) |
+| `movegen-helpers.asm` | Move generation support routines |
+| `makemove.asm` | Move execution with full undo support |
+| `makemove-helpers.asm` | Castling, en passant, promotion handling |
+| `check.asm` | Check and attack detection |
 
-### Register Usage (Search)
-```
-R5: depth    R6: alpha     R7: beta      R8: score
-R9: moves    RA: board     RB: move      RC: color
-```
+### Interface & Support
+| File | Purpose |
+|------|---------|
+| `uci.asm` | UCI protocol parser and response |
+| `serial-io.asm` | Serial I/O (BIOS or standalone) |
+| `opening-book.asm` | Opening book data (455 entries) |
+| `opening-book-lookup.asm` | Book position matching |
+| `main.asm` | Entry point, initialization |
+| `config.asm` | Build configuration |
+| `support.asm` | 16-bit arithmetic library |
+| `math.asm` | Multiply/divide routines |
+| `stack.asm` | Stack management for recursion |
 
-## Comparison: Mephisto II (1981)
+### Tools
+| File | Purpose |
+|------|---------|
+| `tools/pgn_to_book.py` | Convert PGN files to opening book ASM |
+| `tools/merge_books.py` | Merge and deduplicate opening books |
+| `tools/gen_zobrist.py` | Generate Zobrist hash key tables |
+| `elph-bridge.py` | CuteChess serial bridge (Python/pyserial) |
+| `build.sh` | Build script (preprocess, concat, assemble) |
 
-| Feature | Mephisto II | RCA-Chess-1806 |
-|---------|-------------|----------------|
-| CPU | RCA 1802 @ 6.1 MHz | RCA 1806 @ 12 MHz |
-| RAM | 2KB | 32KB |
-| ELO | 1332 | ~1500-1700 (target) |
-| Advantage | — | 2× speed, 16× RAM |
+## Historical Context
 
-## Development Status
+The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, space probes (Voyager, Galileo), and early hobbyist computers. The Mephisto II (1981) was a commercial chess computer built on the 1802.
 
-### Complete (100%) ✓
-- Core algorithms
-- Board representation
-- Check detection
-- Material evaluation
-
-### Needs Integration (90%) ⚠
-- Move generation (connect helpers)
-- Make/unmake (remove stubs)
-- Negamax (replace stubs)
-- UCI (add serial I/O)
-
-### Future Enhancements (0%)
-- Piece-square tables
-- Transposition table
-- Opening book
-
-## Contributing
-
-This engine was built with Claude Code (Sonnet 4.5) in a single session as a demonstration of inside-out development for constrained systems.
-
-Integration and enhancement opportunities:
-- Complete integration tasks (INTEGRATION-GUIDE.md)
-- Implement hardware-specific serial I/O
-- Generate PST data
-- Create opening book builder
-- Tune evaluation weights
-
-## License
-
-Educational/demonstration project. Use as you wish.
+| | Mephisto II (1981) | This Engine |
+|--|-------------------|-------------|
+| **CPU** | RCA 1802 @ 6.1 MHz | RCA 1806 @ 3.58 MHz |
+| **RAM** | 2KB | 32KB |
+| **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility |
+| **Opening Book** | Small | 455 entries, 8 openings |
+| **First Win** | N/A | Qg7# in 38 moves |
 
 ## Credits
 
-- Architecture & Implementation: Claude Code (Anthropic)
-- Target System: RCA 1802/1806 (RCA Corporation, 1970s)
-- Historical Reference: Mephisto II (1981)
-- UCI Protocol: Rudolf Huber & Stefan Meyer-Kahlen
+- **Engine design and implementation**: Claude Code (Anthropic) in collaboration with Mark Abene
+- **Target platform**: RCA CDP1802/CDP1806 (RCA Corporation, 1976)
+- **BIOS**: Elf/OS (Mike Riley)
+- **UCI protocol**: Stefan Meyer-Kahlen
+- **CuteChess**: Ilari Pihlajisto, Arto Jonsson
 
-## Support
+## License
 
-See documentation:
-- **INTEGRATION-GUIDE.md** for assembly and testing
-- **SESSION-SUMMARY.md** for project overview
-- **PROJECT-STATUS.md** for detailed component status
-
----
-
-**Ready to play chess on a 1970s CPU? Let's go! 🎯♟️**
+Educational/hobbyist project. Use as you wish.
