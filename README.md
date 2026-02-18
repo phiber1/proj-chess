@@ -6,7 +6,7 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 
 | Stat | Value |
 |------|-------|
-| **CPU** | RCA CDP1806 @ 3.58 MHz |
+| **CPU** | RCA CDP1806 @ 12 MHz |
 | **RAM** | 32KB |
 | **Code Size** | 20,845 bytes |
 | **Search** | Iterative deepening, depth 2-3 (depth 4 in simplified positions) |
@@ -148,7 +148,7 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 
 | | Mephisto II (1981) | This Engine |
 |--|-------------------|-------------|
-| **CPU** | RCA 1802 @ 6.1 MHz | RCA 1806 @ 3.58 MHz |
+| **CPU** | RCA 1802 @ 6.1 MHz | RCA 1806 @ 12 MHz |
 | **RAM** | 2KB | 32KB |
 | **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility |
 | **Opening Book** | Small | 455 entries, 8 openings |
