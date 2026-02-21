@@ -235,6 +235,12 @@ NODE_TT_FLAGS     EQU $64D2   ; 8 bytes - TT bound type per ply ($64D2-$64D9)
 CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extension)
 
 ; ------------------------------------------------------------------------------
+; Repetition Detection: $6190-$61FF, $64EB
+; ------------------------------------------------------------------------------
+HASH_HIST       EQU $6190   ; 112 bytes - position hash history ($6190-$61FF)
+HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
+
+; ------------------------------------------------------------------------------
 ; UCI input buffer: $6500-$677F (640 bytes)
 ; ------------------------------------------------------------------------------
 UCI_BUFFER      EQU $6500   ; 640 bytes - input buffer ($6500-$677F)
@@ -634,6 +640,10 @@ INIT_MOVE_HISTORY:
     RLDI 10, GAME_PLY
     LDI 0
     STR 10              ; GAME_PLY = 0
+
+    ; Clear HASH_HIST_COUNT for repetition detection
+    RLDI 10, HASH_HIST_COUNT   ; D still 0 from LDI above (RLDI doesn't clobber D)
+    STR 10              ; HASH_HIST_COUNT = 0
     RETN
 
 ; ==============================================================================

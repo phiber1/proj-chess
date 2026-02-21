@@ -239,6 +239,19 @@ UCI_CMD_POSITION:
     CALL INIT_BOARD
     CALL INIT_MOVE_HISTORY
 
+    ; --- Compute and store starting position hash for repetition detection ---
+    CALL HASH_INIT          ; Compute hash for starting position
+    RLDI 10, HASH_HIST      ; R10 → first hash history entry
+    RLDI 13, HASH_HI
+    LDA 13                  ; D = HASH_HI, R13 → HASH_LO
+    STR 10
+    INC 10
+    LDN 13                  ; D = HASH_LO
+    STR 10
+    RLDI 10, HASH_HIST_COUNT
+    LDI 1
+    STR 10                  ; count = 1 (starting position stored)
+
     ; Skip past "startpos" (8 chars) to check for " moves"
     ; Buffer now at "startpos..." - need to find " moves "
     RLDI 10, UCI_BUFFER + 17
@@ -393,7 +406,27 @@ UCI_PROMO_DONE:
     LDX
     PHI 10
 
-    ; Continue parsing
+    ; ---- Record hash for repetition detection ----
+    RLDI 13, HASH_HIST_COUNT
+    LDN 13              ; D = count
+    SMI 56              ; DF=1 if count >= 56 (full)
+    LBDF UCI_POS_MOVE_LOOP  ; Full, skip recording
+    LDN 13              ; D = count (reload — SMI clobbered D)
+    SHL                 ; D = count * 2 (DF was 0 from SMI borrow)
+    ADI LOW(HASH_HIST)
+    PLO 8
+    LDI HIGH(HASH_HIST)
+    ADCI 0              ; carry from ADI
+    PHI 8               ; R8 = &HASH_HIST[count]
+    RLDI 9, HASH_HI
+    LDA 9               ; D = HASH_HI
+    STR 8
+    INC 8
+    LDN 9               ; D = HASH_LO
+    STR 8
+    LDN 13              ; count (R13 still at HASH_HIST_COUNT)
+    ADI 1
+    STR 13              ; count++
     LBR UCI_POS_MOVE_LOOP
 
 UCI_POS_DONE:

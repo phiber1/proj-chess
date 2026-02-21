@@ -178,7 +178,8 @@ NEGAMAX_BUDGET_OK:
     SMI 100             ; D = halfmove - 100
     LBNF NEGAMAX_NOT_FIFTY ; If < 100, continue normally (long branch - crosses page)
 
-    ; Fifty-move rule triggered - return draw (score = 0)
+    ; Draw return — shared by fifty-move rule and repetition detection
+RETURN_DRAW:
     LDI 0
     PHI 9
     PLO 9               ; R9 = 0 (draw score) - R6 is SCRT linkage!
@@ -199,6 +200,55 @@ NEGAMAX_BUDGET_OK:
     RETN
 
 NEGAMAX_NOT_FIFTY:
+    ; -----------------------------------------------
+    ; REPETITION DETECTION: Check game position history
+    ; -----------------------------------------------
+    ; Skip at root (ply 0) — root position is the last HASH_HIST
+    ; entry and would always match itself.
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    LBZ REP_NO_MATCH
+
+    ; Load current hash into R8
+    RLDI 10, HASH_HI
+    LDA 10              ; D = HASH_HI
+    PHI 8
+    LDN 10              ; D = HASH_LO
+    PLO 8               ; R8 = current position hash
+
+    ; Load history count
+    RLDI 13, HASH_HIST_COUNT
+    LDN 13
+    LBZ REP_NO_MATCH    ; Empty history
+    PLO 11              ; R11.0 = loop counter
+
+    RLDI 9, HASH_HIST   ; R9 → first entry
+
+REP_CHECK_LOOP:
+    ; Compare hi byte
+    LDA 9               ; D = hist[i].hi, R9→lo byte
+    STR 2               ; temp at M(R2)
+    GHI 8               ; D = current.hi
+    XOR                 ; compare
+    LBNZ REP_SKIP_LO   ; Hi mismatch
+
+    ; Hi matched — compare lo byte
+    LDA 9               ; D = hist[i].lo, R9→next entry
+    STR 2
+    GLO 8               ; D = current.lo
+    XOR
+    LBZ RETURN_DRAW     ; MATCH! Return draw (shared code)
+    LBR REP_DEC         ; Mismatch, R9 already past both bytes
+
+REP_SKIP_LO:
+    INC 9               ; Skip lo byte
+
+REP_DEC:
+    DEC 11
+    GLO 11
+    LBNZ REP_CHECK_LOOP
+
+REP_NO_MATCH:
     ; -----------------------------------------------
     ; Transposition Table Probe
     ; -----------------------------------------------
