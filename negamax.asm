@@ -1154,6 +1154,13 @@ LMR_NO_EXTRA_DEC:
     LDN 10              ; D = check flag
     LBZ CE_DONE         ; Not giving check, skip
 
+    ; Ply guard: don't extend if ply >= 3 (child would be ply 4,
+    ; overflowing MOVE_LIST into engine variables at $6400+)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = current ply
+    SMI 3
+    LBDF CE_DONE        ; ply >= 3, skip extension
+
     ; Only extend at horizon: depth <= 0 after decrement
     RLDI 13, SEARCH_DEPTH
     LDA 13              ; D = depth_hi

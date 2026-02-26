@@ -59,8 +59,8 @@ CHECK_TARGET_INVALID:
     LDI 0               ; D = 0, DF unchanged
     RETN
 
-; MOVE_FLAGS_TEMP defined in board-0x88.asm ($6806)
-; All engine variables consolidated at $6800+ region
+; MOVE_FLAGS_TEMP defined in board-0x88.asm ($6406)
+; All engine variables consolidated at $6400+ region
 
 ; ------------------------------------------------------------------------------
 ; ENCODE_MOVE_16BIT - Properly encode move as 16-bit value
@@ -123,8 +123,8 @@ ENCODE_FLAG_1:
 ENCODE_HI_DONE:
     RETN
 
-; DECODED_FLAGS defined in board-0x88.asm ($6805)
-; All engine variables consolidated at $6800+ region
+; DECODED_FLAGS defined in board-0x88.asm ($6405)
+; All engine variables consolidated at $6400+ region
 
 ; ------------------------------------------------------------------------------
 ; DECODE_MOVE_16BIT - Decode 16-bit move
