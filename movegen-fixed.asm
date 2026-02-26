@@ -14,8 +14,8 @@
 ; are now defined in board.asm to avoid duplication and make them available
 ; to all modules
 
-; GM_SCAN_IDX defined in board-0x88.asm ($6807)
-; All engine variables consolidated at $6800+ region
+; GM_SCAN_IDX defined in board-0x88.asm ($6407)
+; All engine variables consolidated at $6400+ region
 
 ; ==============================================================================
 ; GENERATE_MOVES - Main entry
