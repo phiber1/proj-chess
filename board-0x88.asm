@@ -239,6 +239,7 @@ CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extensio
 ; ------------------------------------------------------------------------------
 HASH_HIST       EQU $6190   ; 112 bytes - position hash history ($6190-$61FF)
 HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
+EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detection
 
 ; ------------------------------------------------------------------------------
 ; UCI input buffer: $6500-$677F (640 bytes)

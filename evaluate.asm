@@ -60,6 +60,10 @@ EVALUATE:
     LDI 0
     STR 13              ; EVAL_SQ_INDEX = 0
 
+    ; Initialize piece counter in memory (D is still 0)
+    RLDI 11, EG_PIECE_COUNT
+    STR 11              ; EG_PIECE_COUNT = 0
+
 EVAL_SCAN:
     ; Check if square is valid (R13 points to EVAL_SQ_INDEX)
     LDN 13
@@ -86,6 +90,12 @@ EVAL_SCAN:
     ; Skip king (type 6)
     XRI 6
     LBZ EVAL_NEXT_SQUARE
+
+    ; Count non-king piece (memory variable — R12 is side-to-move, off limits)
+    RLDI 11, EG_PIECE_COUNT
+    LDN 11
+    ADI 1
+    STR 11
 
     ; Get piece value from table
     ; R8.0 = piece type (1-6), need to look up in PIECE_VALUES table
@@ -144,203 +154,121 @@ EVAL_DONE:
     ; Add piece-square table bonuses
     CALL EVAL_PST
 
-    ; Pawn shield DISABLED — overhead pushes depth 3 past 90s time budget,
-    ; causing fallback to depth 2. Need lighter-weight king safety (open-file
-    ; penalty) or 1806 RLDI speedup before re-enabling eval features.
-    LBR BKS_DONE
+    ; ==================================================================
+    ; Endgame King Centralization
+    ; If few pieces remain (<=10 non-king), add centralization bonuses
+    ; using KING_CENTER_TABLE (in endgame.asm) scaled 4x via SHL SHL.
+    ; Overcomes PST_KING middlegame values in endgame positions.
+    ; ==================================================================
 
-    ; === White King Pawn Shield ===
-    ; Load white king square
+    RLDI 11, EG_PIECE_COUNT
+    LDN 11              ; D = piece count
+    SMI 11              ; compare: count - 11
+    LBDF BKS_DONE       ; DF=1 means count >= 11, not endgame, skip
+
+    ; === White king centralization ===
     RLDI 10, GAME_STATE + STATE_W_KING_SQ
-    LDN 10                      ; D = white king 0x88 square
-    ANI $70                     ; Isolate rank bits
-    LBNZ WKS_DONE               ; Rank != 0 (not on back rank), skip
-
-    ; King is on rank 1 — check pawn shield (3 squares ahead)
-    LDN 10                      ; Reload king square
-    PLO 7                       ; R7.0 = king square
-
-    ; Check square directly in front (king_sq + $10)
-    ADI $10                     ; D = king_sq + $10
-    ANI $88
-    LBNZ WKS_SKIP_CENTER        ; Off board (shouldn't happen for rank 0 + $10)
-    ; Set up board pointer: BOARD + (king_sq + $10)
+    LDN 10              ; D = white king 0x88 square
+    ; Convert 0x88 to 0-63 index
+    PLO 13              ; save square
+    SHR
+    SHR
+    SHR
+    SHR                 ; D = rank (0-7)
+    SHL
+    SHL
+    SHL                 ; D = rank * 8
+    STXD                ; push rank*8
+    GLO 13
+    ANI $07             ; D = file (0-7)
+    IRX
+    ADD                 ; D = rank*8 + file = index
+    ; Look up centralization value
+    STR 2               ; save index on stack
+    RLDI 11, KING_CENTER_TABLE
+    GLO 11
+    ADD                 ; D = LOW(table) + index
+    PLO 11
+    GHI 11
+    ADCI 0
+    PHI 11              ; R11 = &KING_CENTER_TABLE[index]
+    LDN 11              ; D = table value (-30 to +30)
+    SHL                 ; D = value * 2
+    SHL                 ; D = value * 4 (-120 to +120)
+    ; Sign-extend to 16 bits and add to R9
+    PLO 7               ; R7.0 = bonus low byte
+    ANI $80             ; check sign
+    LBZ EG_W_POS
+    LDI $FF
+    LBR EG_W_HI
+EG_W_POS:
+    LDI 0
+EG_W_HI:
+    PHI 7               ; R7 = sign-extended 16-bit bonus
+    ; R9 = R9 + R7 (add white king centralization)
+    GLO 9
+    STR 2
     GLO 7
-    ADI $10
-    PLO 10
-    LDI HIGH(BOARD)
-    PHI 10
-    GLO 10
-    STR 2
-    LDI LOW(BOARD)
     ADD
-    PLO 10
-    GHI 10
-    ADCI 0
-    PHI 10
-    LDN 10                      ; D = piece at square
-    XRI W_PAWN
-    LBNZ WKS_SKIP_CENTER
-    ; White pawn found — add 4 to score
-    GLO 9
-    ADI 4
     PLO 9
     GHI 9
-    ADCI 0
-    PHI 9
-WKS_SKIP_CENTER:
-
-    ; Check square diag-left (king_sq + $0F)
-    GLO 7                       ; D = king square
-    ADI $0F
-    PLO 8                       ; R8.0 = candidate square
-    ANI $88
-    LBNZ WKS_SKIP_LEFT          ; Off board (king on a-file)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
     STR 2
-    GLO 8
-    ADD
-    PLO 10
-    GHI 10
-    ADCI 0
-    PHI 10
-    LDN 10
-    XRI W_PAWN
-    LBNZ WKS_SKIP_LEFT
-    GLO 9
-    ADI 4
-    PLO 9
-    GHI 9
-    ADCI 0
-    PHI 9
-WKS_SKIP_LEFT:
-
-    ; Check square diag-right (king_sq + $11)
-    GLO 7                       ; D = king square
-    ADI $11
-    PLO 8                       ; R8.0 = candidate square
-    ANI $88
-    LBNZ WKS_DONE               ; Off board (king on h-file)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    STR 2
-    GLO 8
-    ADD
-    PLO 10
-    GHI 10
-    ADCI 0
-    PHI 10
-    LDN 10
-    XRI W_PAWN
-    LBNZ WKS_DONE
-    GLO 9
-    ADI 4
-    PLO 9
-    GHI 9
-    ADCI 0
+    GHI 7
+    ADC
     PHI 9
 
-WKS_DONE:
-
-    ; === Black King Pawn Shield ===
-    ; Load black king square
+    ; === Black king centralization ===
     RLDI 10, GAME_STATE + STATE_B_KING_SQ
-    LDN 10                      ; D = black king 0x88 square
-    ANI $70                     ; Isolate rank bits
-    XRI $70
-    LBNZ BKS_DONE               ; Rank != 7 (not on back rank), skip
-
-    ; King is on rank 8 — check pawn shield (3 squares ahead for black)
-    LDN 10                      ; Reload king square
-    PLO 7                       ; R7.0 = king square
-
-    ; Check square directly in front (king_sq - $10)
-    SMI $10                     ; D = king_sq - $10
-    ANI $88
-    LBNZ BKS_SKIP_CENTER
-    GLO 7
-    SMI $10
-    PLO 8                       ; R8.0 = candidate square
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
+    LDN 10              ; D = black king 0x88 square
+    ; Convert 0x88 to 0-63 index
+    PLO 13              ; save square
+    SHR
+    SHR
+    SHR
+    SHR                 ; D = rank
+    SHL
+    SHL
+    SHL                 ; D = rank * 8
+    STXD                ; push rank*8
+    GLO 13
+    ANI $07             ; D = file
+    IRX
+    ADD                 ; D = index
+    ; Look up centralization value
     STR 2
-    GLO 8
+    RLDI 11, KING_CENTER_TABLE
+    GLO 11
     ADD
-    PLO 10
-    GHI 10
+    PLO 11
+    GHI 11
     ADCI 0
-    PHI 10
-    LDN 10
-    XRI B_PAWN
-    LBNZ BKS_SKIP_CENTER
-    ; Black pawn found — subtract 4 from score (benefits black)
-    GLO 9
-    SMI 4
-    PLO 9
-    GHI 9
-    SMBI 0
-    PHI 9
-BKS_SKIP_CENTER:
-
-    ; Check square diag-left for black (king_sq - $11)
+    PHI 11              ; R11 = &KING_CENTER_TABLE[index]
+    LDN 11              ; D = table value (-30 to +30)
+    SHL                 ; D * 2
+    SHL                 ; D * 4 (-120 to +120)
+    ; Sign-extend to 16 bits into R7
+    PLO 7
+    ANI $80
+    LBZ EG_B_POS
+    LDI $FF
+    LBR EG_B_HI
+EG_B_POS:
+    LDI 0
+EG_B_HI:
+    PHI 7               ; R7 = sign-extended 16-bit bonus
+    ; R9 = R9 - R7 (subtract black king centralization)
     GLO 7
-    SMI $11
-    PLO 8
-    ANI $88
-    LBNZ BKS_SKIP_LEFT
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
     STR 2
-    GLO 8
-    ADD
-    PLO 10
-    GHI 10
-    ADCI 0
-    PHI 10
-    LDN 10
-    XRI B_PAWN
-    LBNZ BKS_SKIP_LEFT
     GLO 9
-    SMI 4
+    SM                  ; D = R9.0 - R7.0
     PLO 9
-    GHI 9
-    SMBI 0
-    PHI 9
-BKS_SKIP_LEFT:
-
-    ; Check square diag-right for black (king_sq - $0F)
-    GLO 7
-    SMI $0F
-    PLO 8
-    ANI $88
-    LBNZ BKS_DONE
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
+    GHI 7
     STR 2
-    GLO 8
-    ADD
-    PLO 10
-    GHI 10
-    ADCI 0
-    PHI 10
-    LDN 10
-    XRI B_PAWN
-    LBNZ BKS_DONE
-    GLO 9
-    SMI 4
-    PLO 9
     GHI 9
-    SMBI 0
+    SMB                 ; D = R9.1 - R7.1 - borrow
     PHI 9
 
 BKS_DONE:
-
     RETN
 
 ; ------------------------------------------------------------------------------
