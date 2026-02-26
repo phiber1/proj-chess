@@ -8,8 +8,8 @@
 ; ------------------------------------------------------------------------------
 ; UCI Command Buffer - defined in board-0x88.asm
 ; ------------------------------------------------------------------------------
-; UCI_BUFFER ($6500, 640 bytes) and UCI_STATE ($64B8) defined in board-0x88.asm
-UCI_BUFFER_LEN  EQU 639     ; Max chars (16-bit counter, 640-byte buffer)
+; UCI_BUFFER ($7000, 2048 bytes) and UCI_STATE ($64B8) defined in board-0x88.asm
+UCI_BUFFER_LEN  EQU 2047    ; Max chars (16-bit counter, 2048-byte buffer)
 UCI_READY       EQU 1       ; Ready state
 
 ; ------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ UCI_READ_LOOP:
     ; Increment 16-bit count
     INC 13
 
-    ; Check buffer limit (16-bit: UCI_BUFFER_LEN = 511 = $01FF)
+    ; Check buffer limit (16-bit: UCI_BUFFER_LEN = 2047 = $07FF)
     GLO 13
     XRI LOW(UCI_BUFFER_LEN)
     LBNZ UCI_READ_LOOP

@@ -23,7 +23,7 @@ BLKSIZE     equ 128         ; Data bytes per block
 ; R13 = delay routine pointer (for serin/serout)
 ; R15 = used by serin/serout
 
-            org $7000
+            org $7a00
 
 xmodem_recv:
             ; Set up delay routine pointer for serin/serout
@@ -206,7 +206,7 @@ xfer_done:
 ; Serial I/O routines (from serio-test.asm)
 ; ============================================================
 
-            org $7100
+            org $7b00
 ; Entry with char in D
 serout:
             phi 15
@@ -235,7 +235,7 @@ sendct:
             sep 13
             retn
 
-            org $7200
+            org $7c00
 ; Character read into D and R14.0
 serin:
             ldi 8               ; 8 bits to receive

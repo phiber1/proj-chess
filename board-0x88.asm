@@ -242,9 +242,9 @@ HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
 EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detection
 
 ; ------------------------------------------------------------------------------
-; UCI input buffer: $6500-$677F (640 bytes)
+; UCI input buffer: $7000-$77FF (2048 bytes)
 ; ------------------------------------------------------------------------------
-UCI_BUFFER      EQU $6500   ; 640 bytes - input buffer ($6500-$677F)
+UCI_BUFFER      EQU $7000   ; 2048 bytes - input buffer ($7000-$77FF)
 
 ; ------------------------------------------------------------------------------
 ; Transposition Table: $6800-$6FFF (256 entries × 8 bytes = 2KB)
