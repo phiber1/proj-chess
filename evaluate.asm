@@ -64,6 +64,12 @@ EVALUATE:
     RLDI 11, EG_PIECE_COUNT
     STR 11              ; EG_PIECE_COUNT = 0
 
+    ; Initialize advanced pawn counters (D is still 0)
+    RLDI 11, ADV_PAWN_W
+    STR 11              ; ADV_PAWN_W = 0
+    INC 11
+    STR 11              ; ADV_PAWN_B = 0
+
 EVAL_SCAN:
     ; Check if square is valid (R13 points to EVAL_SQ_INDEX)
     LDN 13
@@ -96,6 +102,66 @@ EVAL_SCAN:
     LDN 11
     ADI 1
     STR 11
+
+    ; Check if pawn for advanced pawn bonus (graduated)
+    GLO 8               ; piece type (1-5)
+    XRI 1
+    LBNZ EVAL_NOT_ADV_PAWN  ; not a pawn (+3 instr for non-pawns)
+    ; Pawn — extract rank from 0x88 square
+    LDN 13              ; D = 0x88 square (from EVAL_SQ_INDEX)
+    ANI $70             ; D = rank << 4 ($00-$70)
+    STR 2               ; save rank<<4 on stack
+    GLO 15              ; D = color (0=white, 8=black)
+    LBNZ EVAL_BP_ADV
+    ; === White pawn: rank 7=$60 (+96), rank 6=$50 (+64), rank 5=$40 (+32) ===
+    LDN 2
+    XRI $60
+    LBZ EVAL_WP_R7
+    LDN 2
+    XRI $50
+    LBZ EVAL_WP_R6
+    LDN 2
+    XRI $40
+    LBNZ EVAL_NOT_ADV_PAWN
+    LDI 32              ; rank 5
+    LBR EVAL_WP_ADD
+EVAL_WP_R7:
+    LDI 96              ; rank 7
+    LBR EVAL_WP_ADD
+EVAL_WP_R6:
+    LDI 64              ; rank 6
+EVAL_WP_ADD:
+    STR 2
+    RLDI 11, ADV_PAWN_W
+    LDN 11
+    ADD
+    STR 11              ; ADV_PAWN_W += bonus
+    LBR EVAL_NOT_ADV_PAWN
+EVAL_BP_ADV:
+    ; === Black pawn: rank 2=$10 (+96), rank 3=$20 (+64), rank 4=$30 (+32) ===
+    LDN 2
+    XRI $10
+    LBZ EVAL_BP_R2
+    LDN 2
+    XRI $20
+    LBZ EVAL_BP_R3
+    LDN 2
+    XRI $30
+    LBNZ EVAL_NOT_ADV_PAWN
+    LDI 32              ; rank 4
+    LBR EVAL_BP_ADD
+EVAL_BP_R2:
+    LDI 96              ; rank 2
+    LBR EVAL_BP_ADD
+EVAL_BP_R3:
+    LDI 64              ; rank 3
+EVAL_BP_ADD:
+    STR 2
+    RLDI 11, ADV_PAWN_B
+    LDN 11
+    ADD
+    STR 11              ; ADV_PAWN_B += bonus
+EVAL_NOT_ADV_PAWN:
 
     ; Get piece value from table
     ; R8.0 = piece type (1-6), need to look up in PIECE_VALUES table
@@ -155,6 +221,34 @@ EVAL_DONE:
     CALL EVAL_PST
 
     ; ==================================================================
+    ; Castling Rights Bonus
+    ; +20cp per side that still has castling rights remaining
+    ; Incentivizes preserving the option to castle
+    ; ==================================================================
+    RLDI 11, GAME_STATE + STATE_CASTLING
+    LDN 11              ; D = castling rights byte
+    STR 2               ; save for reuse
+    ANI $03             ; white bits (WK|WQ)
+    LBZ EVAL_NO_W_CASTLE
+    GLO 9
+    ADI 20
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9               ; R9 += 20 (white has castling rights)
+EVAL_NO_W_CASTLE:
+    LDN 2               ; reload castling byte
+    ANI $0C             ; black bits (BK|BQ)
+    LBZ EVAL_NO_B_CASTLE
+    GLO 9
+    SMI 20
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9               ; R9 -= 20 (black has castling rights)
+EVAL_NO_B_CASTLE:
+
+    ; ==================================================================
     ; Endgame King Centralization
     ; If few pieces remain (<=10 non-king), add centralization bonuses
     ; using KING_CENTER_TABLE (in endgame.asm) scaled 4x via SHL SHL.
@@ -183,6 +277,7 @@ EVAL_DONE:
     ANI $07             ; D = file (0-7)
     IRX
     ADD                 ; D = rank*8 + file = index
+    PLO 15              ; save white king index in R15.0
     ; Look up centralization value
     STR 2               ; save index on stack
     RLDI 11, KING_CENTER_TABLE
@@ -234,6 +329,7 @@ EG_W_HI:
     ANI $07             ; D = file
     IRX
     ADD                 ; D = index
+    PHI 15              ; save black king index in R15.1
     ; Look up centralization value
     STR 2
     RLDI 11, KING_CENTER_TABLE
@@ -267,6 +363,111 @@ EG_B_HI:
     GHI 9
     SMB                 ; D = R9.1 - R7.1 - borrow
     PHI 9
+
+    ; ==================================================================
+    ; Advanced Pawn Bonus (endgame only)
+    ; Graduated: +32/+64/+96 cp based on distance from promotion
+    ; ==================================================================
+
+    ; White advanced pawn bonus (accumulated)
+    RLDI 11, ADV_PAWN_W
+    LDN 11              ; D = accumulated white bonus (0-255)
+    LBZ EG_NO_W_ADV     ; none, skip
+    STR 2               ; save bonus on stack
+    GLO 9
+    ADD                 ; R9.0 + bonus
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9               ; R9 += white pawn bonus
+EG_NO_W_ADV:
+
+    ; Black advanced pawn bonus (accumulated)
+    RLDI 11, ADV_PAWN_B
+    LDN 11
+    LBZ EG_NO_B_ADV     ; none, skip
+    STR 2               ; save bonus on stack
+    GLO 9
+    SM                  ; D = R9.0 - bonus
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9               ; R9 -= black pawn bonus
+EG_NO_B_ADV:
+
+    ; ==================================================================
+    ; Enemy King Edge Penalty (endgame only, when winning)
+    ; Uses KING_EDGE_TABLE (already in binary, 64 bytes)
+    ; Values: 0 at edges/corners, 60 at center
+    ; Scaled 2x via SHL for effective range 0-120cp
+    ; ==================================================================
+
+    ; Check if white is winning significantly (score > 200)
+    GHI 9
+    ANI $80             ; sign bit
+    LBNZ EG_CHECK_BLACK ; negative, check if black winning
+    GHI 9
+    LBNZ EG_DRIVE_BLACK ; high byte > 0 → score > 255
+    GLO 9
+    SMI 200
+    LBNF EG_EDGE_DONE   ; score < 200, skip
+
+EG_DRIVE_BLACK:
+    ; White winning — penalize black king for being in center
+    ; R15.1 = black king index (saved during centralization)
+    GHI 15              ; D = black king 0-63 index
+    STR 2               ; save on stack
+    RLDI 11, KING_EDGE_TABLE
+    GLO 11
+    ADD
+    PLO 11
+    GHI 11
+    ADCI 0
+    PHI 11              ; R11 = &KING_EDGE_TABLE[black_king]
+    LDN 11              ; D = edge value (0-60)
+    SHL                 ; D = value * 2 (0-120)
+    STR 2               ; save bonus
+    GLO 9
+    ADD
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9               ; R9 += edge bonus (always positive, no sign extend)
+    LBR EG_EDGE_DONE
+
+EG_CHECK_BLACK:
+    ; Check if black is winning (score < -200)
+    ; Score is negative. Check if <= -201 (i.e., high byte < $FF or low byte <= $37)
+    GHI 9
+    XRI $FF
+    LBNZ EG_DRIVE_WHITE ; high byte < $FF → score < -255
+    GLO 9
+    ADI 200             ; if score_lo + 200 overflows, score_lo > 55 → score > -201
+    LBDF EG_EDGE_DONE   ; score > -201, not winning enough
+
+EG_DRIVE_WHITE:
+    ; Black winning — penalize white king for being in center
+    ; R15.0 = white king index (saved during centralization)
+    GLO 15              ; D = white king 0-63 index
+    STR 2
+    RLDI 11, KING_EDGE_TABLE
+    GLO 11
+    ADD
+    PLO 11
+    GHI 11
+    ADCI 0
+    PHI 11              ; R11 = &KING_EDGE_TABLE[white_king]
+    LDN 11              ; D = edge value (0-60)
+    SHL                 ; D = value * 2 (0-120)
+    STR 2               ; save penalty
+    GLO 9
+    SM                  ; R9.0 - penalty (SM = D - M(R(X)))
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9               ; R9 -= edge penalty
+
+EG_EDGE_DONE:
 
 BKS_DONE:
     RETN

@@ -3395,10 +3395,11 @@ ITER_DONE:
     RETN
 
 ; ==============================================================================
-; SEND_UCI_INFO - Send "info depth N nodes NNNNN" after each iteration
+; SEND_UCI_INFO - Send "info depth N score cp S nodes NNNNN" after each iteration
 ; ==============================================================================
-; Sends: "info depth N nodes NNNNN\r\n"
+; Sends: "info depth N score cp S nodes NNNNN\r\n"
 ;   N = CURRENT_MAX_DEPTH (ASCII digit)
+;   S = ITER_SCORE as signed decimal (centipawns)
 ;   NNNNN = NODES_SEARCHED as decimal via F_UINTOUT (lower 16 bits)
 ; ==============================================================================
 SEND_UCI_INFO:
@@ -3412,6 +3413,48 @@ SEND_UCI_INFO:
     LDN 10                      ; D = depth (1-9)
     ADI '0'                     ; Convert to ASCII
     CALL SERIAL_WRITE_CHAR
+
+    ; Send " score cp "
+    RLDI 15, STR_SCORE_CP
+    SEP 4
+    DW F_MSG
+
+    ; Load score into R13 (big-endian: HI at $64C8, LO at $64C9)
+    RLDI 10, ITER_SCORE_HI
+    LDA 10                      ; D = score high byte, R10 -> LO
+    PHI 13
+    LDN 10                      ; D = score low byte
+    PLO 13                      ; R13 = signed 16-bit score
+
+    ; Check if negative
+    GHI 13
+    ANI $80
+    LBZ SUCI_POSITIVE
+
+    ; Negative: print '-' and negate R13
+    LDI '-'
+    CALL SERIAL_WRITE_CHAR
+    GLO 13
+    SDI 0                       ; D = 0 - low byte
+    PLO 13
+    GHI 13
+    SDBI 0                      ; D = 0 - high byte - borrow
+    PHI 13
+
+SUCI_POSITIVE:
+    ; Convert R13 (now unsigned magnitude) to ASCII decimal
+    RLDI 15, UINT_BUFFER
+    SEP 4
+    DW F_UINTOUT
+
+    ; Null-terminate (R15 points past last digit)
+    LDI 0
+    STR 15
+
+    ; Print the score string
+    RLDI 15, UINT_BUFFER
+    SEP 4
+    DW F_MSG
 
     ; Send " nodes "
     RLDI 15, STR_NODES

@@ -33,6 +33,7 @@ STR_UCIOK       DB "uciok", 13, 10, 0
 STR_READYOK     DB "readyok", 13, 10, 0
 STR_BESTMOVE    DB "bestmove ", 0
 STR_INFO_DEPTH  DB "info depth ", 0
+STR_SCORE_CP    DB " score cp ", 0
 STR_NODES       DB " nodes ", 0
 
 ; ------------------------------------------------------------------------------

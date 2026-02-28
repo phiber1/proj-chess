@@ -124,7 +124,7 @@ PST_KING:
     ; Rank 1 - castled king is safest (b1/g1 = strong castling bonus)
     DB  20, 60, 10,-20,-20, 10, 60, 20
     ; Rank 2 - behind pawn shelter OK
-    DB  30, 30, 10,-10,-10, 10, 30, 30
+    DB  20, 20,-10,-30,-30,-10, 20, 20
     ; Rank 3
     DB -10,-20,-20,-20,-20,-20,-20,-10
     ; Rank 4

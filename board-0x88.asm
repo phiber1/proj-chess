@@ -243,6 +243,8 @@ HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
 EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detection
 FUTILITY_TABLE  EQU $64ED   ; 16 bytes - per-ply futility data ($64ED-$64FC)
                             ; 4 bytes/ply: [flag][eval_hi][eval_lo][pad] × 4 plies
+ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
+ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
 
 ; ------------------------------------------------------------------------------
 ; UCI input buffer: $7000-$77FF (2048 bytes)
