@@ -361,9 +361,13 @@ UCI_PROMO_STORE:
 UCI_PROMO_DONE:
 
     ; ---- Record move in MOVE_HIST for opening book ----
-    ; Calculate offset: GAME_PLY * 2
+    ; Skip recording past book depth (prevents 8-bit GAME_PLY overflow)
     RLDI 8, GAME_PLY
     LDN 8               ; D = GAME_PLY
+    SMI BOOK_PLY_LIMIT  ; past book depth?
+    LBDF UCI_HIST_DONE  ; skip recording + increment
+    ; Calculate offset: GAME_PLY * 2
+    LDN 8               ; reload GAME_PLY (SMI clobbered D)
     SHL                 ; D = GAME_PLY * 2
     PLO 9               ; R9.0 = offset
 
@@ -392,6 +396,7 @@ UCI_PROMO_DONE:
     LDN 8               ; R8 still points to GAME_PLY
     ADI 1
     STR 8
+UCI_HIST_DONE:
     ; ---- End of MOVE_HIST recording ----
 
     ; Apply the move (save R10 - MAKE_MOVE clobbers it!)

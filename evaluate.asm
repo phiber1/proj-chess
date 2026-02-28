@@ -163,8 +163,8 @@ EVAL_DONE:
 
     RLDI 11, EG_PIECE_COUNT
     LDN 11              ; D = piece count
-    SMI 11              ; compare: count - 11
-    LBDF BKS_DONE       ; DF=1 means count >= 11, not endgame, skip
+    SMI 21              ; compare: count - 21
+    LBDF BKS_DONE       ; DF=1 means count >= 21, not endgame, skip
 
     ; === White king centralization ===
     RLDI 10, GAME_STATE + STATE_W_KING_SQ

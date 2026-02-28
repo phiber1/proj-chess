@@ -148,10 +148,10 @@ RTC_NO_SAT:
     LDN 13
     LBNZ NEGAMAX_ABORT_RETURN   ; Already aborted, bail out
 
-    ; Check: elapsed >= 120 seconds?
+    ; Check: elapsed >= 150 seconds?
     RLDI 13, SEARCH_ELAPSED
     LDN 13                      ; Reload elapsed (clobbered above)
-    SMI 120                     ; D = elapsed - 120
+    SMI 150                     ; D = elapsed - 150
     LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 120, continue
 
     ; Time exceeded — set abort flag
@@ -591,10 +591,12 @@ NMP_NO_CUTOFF:
 
 NMP_SKIP:
     ; -----------------------------------------------
-    ; REVERSE FUTILITY PRUNING (RFP)
+    ; REVERSE FUTILITY PRUNING (RFP) - DISABLED
     ; -----------------------------------------------
-    ; At depth 1-2, if static_eval - margin >= beta, prune entire node.
-    ; The position is so good that the opponent can't recover.
+    ; RFP margins (150/300cp) are too aggressive for material+PST eval.
+    ; The coarse eval causes search collapse when any PV child finds
+    ; tactical improvement: beta drops and RFP prunes all siblings.
+    ; R7 beta-reload fix (below) is preserved for future re-enable.
     ;
     ; Conditions: depth <= 2, ply > 0, not in check
 
@@ -669,6 +671,14 @@ RFP_COMPARE:
     ; R9 = eval - margin
     ; Compare: (eval - margin) >= beta (R7)?
     ; Signed 16-bit comparison using same pattern as NMP
+
+    ; Load beta from memory into R7
+    ; (R7 was clobbered by time tracking code at NEGAMAX entry!)
+    RLDI 10, BETA_HI
+    LDA 10              ; D = beta_hi
+    PHI 7
+    LDN 10              ; D = beta_lo
+    PLO 7               ; R7 = beta
 
     RLDI 10, COMPARE_TEMP
     SEX 10
@@ -815,10 +825,18 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     ; -----------------------------------------------
     ; Futility Pruning Setup (depth 1 only)
     ; -----------------------------------------------
-    ; Clear futility flag first
-    RLDI 10, FUTILITY_OK
+    ; Clear futility flag for THIS ply (per-ply table prevents recursion corruption)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL
+    SHL                 ; D = ply * 4
+    ADI LOW(FUTILITY_TABLE)
+    PLO 10
+    LDI HIGH(FUTILITY_TABLE)
+    ADCI 0
+    PHI 10              ; R10 = &FUTILITY_TABLE[ply*4] (flag byte)
     LDI 0
-    STR 10              ; FUTILITY_OK = 0 (disabled by default)
+    STR 10              ; flag = 0 (disabled by default)
 
     ; Check if depth == 1 (frontier node)
     RLDI 13, SEARCH_DEPTH
@@ -828,25 +846,36 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     XRI 1               ; Check if depth == 1
     LBNZ NEGAMAX_SKIP_FUTILITY  ; Not depth 1, skip
 
+    ; Don't enable futility at root — must always search all root moves
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = current ply
+    LBZ NEGAMAX_SKIP_FUTILITY  ; ply == 0, skip
+
     ; Check guard: don't enable futility if side is in check
     ; (escape moves must not be pruned — mirrors RFP guard at line 563)
     CALL IS_IN_CHECK    ; R12 = our color; D = 1 if in check
     LBNZ NEGAMAX_SKIP_FUTILITY  ; in check, skip futility
 
-    ; Depth == 1: Cache static eval for futility pruning
+    ; Depth == 1: Cache static eval for futility pruning (per-ply table)
     CALL EVALUATE       ; Returns score in R9
-    ; Store in STATIC_EVAL (big-endian)
-    RLDI 10, STATIC_EVAL_HI
+    ; Store flag + eval in FUTILITY_TABLE[ply*4]: [flag][eval_hi][eval_lo]
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL
+    SHL                 ; D = ply * 4
+    ADI LOW(FUTILITY_TABLE)
+    PLO 10
+    LDI HIGH(FUTILITY_TABLE)
+    ADCI 0
+    PHI 10              ; R10 = &FUTILITY_TABLE[ply*4]
+    LDI 1
+    STR 10              ; flag = 1 (futility enabled)
+    INC 10
     GHI 9
-    STR 10              ; STATIC_EVAL_HI
+    STR 10              ; eval_hi
     INC 10
     GLO 9
-    STR 10              ; STATIC_EVAL_LO
-
-    ; Enable futility pruning for this node
-    RLDI 10, FUTILITY_OK
-    LDI 1
-    STR 10              ; FUTILITY_OK = 1
+    STR 10              ; eval_lo
 
     ; FIX: EVALUATE clobbered R9 (move list pointer) with eval score.
     ; Re-initialize R9 to move list start for this ply.
@@ -945,18 +974,26 @@ LMR_CAPTURE_DONE:
     STR 10              ; Store flag
 
     ; -----------------------------------------------
-    ; Futility Pruning Check (depth 1 quiet moves)
+    ; Futility Pruning Check (per-ply, depth 1 quiet moves)
     ; -----------------------------------------------
-    ; Only apply at frontier nodes (remaining depth == 1).
-    ; SEARCH_DEPTH is the remaining depth at this node (decremented
-    ; by parent before recursion), so check SEARCH_DEPTH == 1 directly.
-    ; This matches the futility setup code which also checks depth == 1.
 
-    ; Check: is remaining depth == 1? (SEARCH_DEPTH low byte)
-    RLDI 10, SEARCH_DEPTH + 1
-    LDN 10              ; D = SEARCH_DEPTH low byte (remaining depth)
-    XRI 1               ; Check if depth == 1
-    LBNZ NEGAMAX_NOT_FUTILE  ; Not frontier node, skip futility
+    ; Check: is futility pruning enabled for this ply? (per-ply table)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL
+    SHL                 ; D = ply * 4
+    ADI LOW(FUTILITY_TABLE)
+    PLO 10
+    LDI HIGH(FUTILITY_TABLE)
+    ADCI 0
+    PHI 10              ; R10 = &FUTILITY_TABLE[ply*4]
+    LDA 10              ; D = flag, R10 → eval_hi
+    LBZ NEGAMAX_NOT_FUTILE  ; Flag=0, skip futility
+    ; Pre-load static eval while R10 is positioned
+    LDA 10              ; D = eval_hi, R10 → eval_lo
+    PHI 11
+    LDN 10              ; D = eval_lo
+    PLO 11              ; R11 = static eval (from per-ply table)
 
     ; Check if move is a capture (target square non-empty)
     RLDI 10, MOVE_TO
@@ -966,14 +1003,6 @@ LMR_CAPTURE_DONE:
     PHI 10              ; R10 = BOARD + to_square
     LDN 10              ; D = piece at target
     LBNZ NEGAMAX_NOT_FUTILE  ; Non-empty = capture, don't prune
-
-    ; Not a capture - check if static_eval + margin < alpha
-    ; Load STATIC_EVAL into R11
-    RLDI 10, STATIC_EVAL_HI
-    LDA 10              ; STATIC_EVAL_HI
-    PHI 11
-    LDN 10              ; STATIC_EVAL_LO
-    PLO 11              ; R11 = static eval
 
     ; Add FUTILITY_MARGIN (150 = $0096)
     GLO 11

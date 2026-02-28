@@ -124,6 +124,7 @@ MOVE_TEMP_LO    EQU $644C   ; 1 byte - saved encoded move low byte
 
 ; Opening book support
 GAME_PLY        EQU $644D   ; 1 byte - game ply (moves since start position)
+BOOK_PLY_LIMIT  EQU 13      ; Stop MOVE_HIST recording past this ply (book depth + 1)
 BOOK_MOVE_FROM  EQU $644E   ; 1 byte - book response from square
 BOOK_MOVE_TO    EQU $644F   ; 1 byte - book response to square
 
@@ -240,6 +241,8 @@ CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extensio
 HASH_HIST       EQU $6190   ; 112 bytes - position hash history ($6190-$61FF)
 HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
 EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detection
+FUTILITY_TABLE  EQU $64ED   ; 16 bytes - per-ply futility data ($64ED-$64FC)
+                            ; 4 bytes/ply: [flag][eval_hi][eval_lo][pad] × 4 plies
 
 ; ------------------------------------------------------------------------------
 ; UCI input buffer: $7000-$77FF (2048 bytes)
