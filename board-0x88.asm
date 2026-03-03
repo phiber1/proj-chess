@@ -47,7 +47,7 @@ KING_TYPE   EQU 6
 ; ------------------------------------------------------------------------------
 ; Memory Layout - ALL engine data consolidated at $6000
 ; ------------------------------------------------------------------------------
-; Total: ~1792 bytes ($6000-$66FF)
+; Total: ~4096 bytes ($6000-$6FFF)
 ;
 ; Board and game data: $6000-$63FF
 BOARD       EQU $6000   ; 128 bytes - 0x88 board array ($6000-$607F)
@@ -55,7 +55,7 @@ GAME_STATE  EQU $6080   ; Game state structure (16 bytes) ($6080-$608F)
 MOVE_HIST   EQU $6090   ; Move history for undo (256 bytes) ($6090-$618F)
 MOVE_LIST   EQU $6200   ; Ply-indexed move lists (512 bytes) ($6200-$63FF)
                         ; Each ply gets 128 bytes (64 moves max): ply×128 + $6200
-QS_MOVE_LIST EQU $6F00  ; Quiescence moves (256 bytes) ($6F00-$6FFF) - separate from UCI_BUFFER
+QS_MOVE_LIST EQU $6780  ; Quiescence moves (128 bytes) ($6780-$67FF) - 64 captures max
 
 ; ------------------------------------------------------------------------------
 ; Engine Variables: $6400-$64FF
@@ -124,6 +124,7 @@ MOVE_TEMP_LO    EQU $644C   ; 1 byte - saved encoded move low byte
 
 ; Opening book support
 GAME_PLY        EQU $644D   ; 1 byte - game ply (moves since start position)
+BOOK_PLY_LIMIT  EQU 13      ; Stop MOVE_HIST recording past this ply (book depth + 1)
 BOOK_MOVE_FROM  EQU $644E   ; 1 byte - book response from square
 BOOK_MOVE_TO    EQU $644F   ; 1 byte - book response to square
 
@@ -180,14 +181,14 @@ LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive c
 EVAL_SKIP_PST     EQU $64AA   ; 1 byte - flag: 1=skip PST in EVALUATE (for QS speed)
 
 ; ------------------------------------------------------------------------------
-; Move Loop Pointer Save: $64B0-$64B7
+; Move Loop Pointer Save: $64DB-$64EA
 ; ------------------------------------------------------------------------------
 ; Ply-indexed save for R9 (move list pointer) during negamax move loop.
 ; Avoids fragile stack save/restore across hundreds of instructions.
-; 2 bytes per ply (hi, lo), 4 plies max = 8 bytes.
-; NOTE: Must not overlap NULL_MOVE_OK ($64A7), NULL_SAVED_EP ($64A8),
-;       or ENEMY_COLOR_TEMP ($64A9)!
-LOOP_MOVE_PTR     EQU $64B0   ; 8 bytes - R9 save per ply ($64B0-$64B7)
+; 2 bytes per ply (hi, lo), 8 plies max = 16 bytes.
+; NOTE: Previous location $64B0 only had 8 bytes — plies 4-7 overlapped
+;       UCI_STATE/HASH/TT variables, causing corruption at higher plies.
+LOOP_MOVE_PTR     EQU $64DB   ; 16 bytes - R9 save per ply ($64DB-$64EA)
 
 ; ------------------------------------------------------------------------------
 ; Null Move Pruning: $64A7-$64A8
@@ -216,16 +217,46 @@ TT_MOVE_HI      EQU $64C0   ; 1 byte - stored best move high
 TT_MOVE_LO      EQU $64C1   ; 1 byte - stored best move low
 
 ; ------------------------------------------------------------------------------
-; UCI input buffer: $6500-$66FF (512 bytes)
+; Iterative Deepening State: $64C2-$64C9
 ; ------------------------------------------------------------------------------
-UCI_BUFFER      EQU $6500   ; 512 bytes - input buffer ($6500-$66FF)
+ITER_BEST_FROM    EQU $64C2   ; 1 byte - best from square (last completed depth)
+ITER_BEST_TO      EQU $64C3   ; 1 byte - best to square (last completed depth)
+SEARCH_ABORTED    EQU $64C4   ; 1 byte - flag: 1 = current depth search was aborted
+CURRENT_MAX_DEPTH EQU $64C5   ; 1 byte - current iteration's target depth
+TARGET_DEPTH      EQU $64C6   ; 1 byte - overall target depth from UCI "go depth N"
+NODE_BUDGET_HI    EQU $64C7   ; 1 byte - node budget threshold (byte 2 of node counter)
+ITER_SCORE_HI     EQU $64C8   ; 1 byte - score high byte (last completed depth)
+ITER_SCORE_LO     EQU $64C9   ; 1 byte - score low byte (last completed depth)
+
+; RTC-based time management
+SEARCH_PREV_SECS  EQU $64CA   ; 1 byte - last RTC seconds reading (for delta)
+SEARCH_ELAPSED    EQU $64CB   ; 1 byte - accumulated elapsed seconds (0-255)
+UINT_BUFFER       EQU $64CC   ; 6 bytes - ASCII scratch for F_UINTOUT ($64CC-$64D1)
+NODE_TT_FLAGS     EQU $64D2   ; 8 bytes - TT bound type per ply ($64D2-$64D9)
+CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extension)
 
 ; ------------------------------------------------------------------------------
-; Transposition Table: $6700-$6EFF (256 entries × 8 bytes = 2KB)
+; Repetition Detection: $6500-$66FD, $64EB
+; ------------------------------------------------------------------------------
+HASH_HIST       EQU $6500   ; 510 bytes - position hash history ($6500-$66FD, 255 entries)
+HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
+EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detection
+FUTILITY_TABLE  EQU $64ED   ; 16 bytes - per-ply futility data ($64ED-$64FC)
+                            ; 4 bytes/ply: [flag][eval_hi][eval_lo][pad] × 4 plies
+ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
+ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
+
+; ------------------------------------------------------------------------------
+; UCI input buffer: $7000-$77FF (2048 bytes)
+; ------------------------------------------------------------------------------
+UCI_BUFFER      EQU $7000   ; 2048 bytes - input buffer ($7000-$77FF)
+
+; ------------------------------------------------------------------------------
+; Transposition Table: $6800-$6FFF (256 entries × 8 bytes = 2KB)
 ; ------------------------------------------------------------------------------
 
 ; TT table base address and sizing
-TT_TABLE        EQU $6700   ; 256 entries × 8 bytes = 2KB ($6700-$6EFF)
+TT_TABLE        EQU $6800   ; 256 entries × 8 bytes = 2KB ($6800-$6FFF)
 TT_ENTRIES      EQU 256     ; Number of entries (power of 2 for masking)
 TT_ENTRY_SIZE   EQU 8       ; Bytes per entry
 TT_INDEX_MASK   EQU $FF     ; Mask for 256 entries (hash_lo & $FF)
@@ -374,10 +405,7 @@ H8  EQU SQ_H8
 ; ==============================================================================
 INIT_BOARD:
     ; Clear entire 128-byte board to empty
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     LDI 128
     PLO 13
@@ -391,10 +419,7 @@ INIT_CLEAR:
     BNZ INIT_CLEAR
 
     ; Set up white back rank (rank 1 = offset $00)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     LDI W_ROOK
     STR 10
@@ -421,10 +446,7 @@ INIT_CLEAR:
     STR 10
 
     ; Set up white pawns (rank 2 = offset $10)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD + $10)
-    PLO 10
+    RLDI 10, BOARD + $10
 
     LDI 8
     PLO 13
@@ -437,10 +459,7 @@ INIT_WP:
     LBNZ INIT_WP        ; Long branch - target may cross page boundary
 
     ; Set up black pawns (rank 7 = offset $60)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD + $60)
-    PLO 10
+    RLDI 10, BOARD + $60
 
     LDI 8
     PLO 13
@@ -453,10 +472,7 @@ INIT_BP:
     BNZ INIT_BP
 
     ; Set up black back rank (rank 8 = offset $70)
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD + $70)
-    PLO 10
+    RLDI 10, BOARD + $70
 
     LDI B_ROOK
     STR 10
@@ -483,10 +499,7 @@ INIT_BP:
     STR 10
 
     ; Initialize game state
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE)
-    PLO 10
+    RLDI 10, GAME_STATE
 
     LDI WHITE
     STR 10               ; Side to move = white
@@ -528,10 +541,7 @@ INIT_BP:
 ; Uses: A
 ; ==============================================================================
 GET_SIDE_TO_MOVE:
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     LDN 10
     RETN
 
@@ -543,10 +553,7 @@ GET_SIDE_TO_MOVE:
 ; ==============================================================================
 SET_SIDE_TO_MOVE:
     STXD                ; Save D
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     IRX
     LDN 2
     STR 10
@@ -558,10 +565,7 @@ SET_SIDE_TO_MOVE:
 ; Uses: A, D
 ; ==============================================================================
 FLIP_SIDE:
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     LDN 10
     XRI BLACK           ; Toggle between 0 and 8
     STR 10
@@ -574,10 +578,7 @@ FLIP_SIDE:
 ; Uses: A
 ; ==============================================================================
 GET_CASTLING_RIGHTS:
-    LDI HIGH(GAME_STATE)
-    PHI 13                  ; Use R13, not R10 (R10 is board scan pointer!)
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 13
+    RLDI 13, GAME_STATE + STATE_CASTLING
     LDN 13
     RETN
 
@@ -591,10 +592,7 @@ CLEAR_CASTLING_RIGHT:
     XRI $FF             ; Invert to create mask
     PLO 13              ; Save mask in R13.0
 
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_CASTLING
 
     SEX 10              ; Point X to castling rights
     GLO 13              ; Get mask
@@ -637,10 +635,7 @@ GET_PIECE_INVALID:
 ; ==============================================================================
 INIT_MOVE_HISTORY:
     ; Set HISTORY_PTR to point to start of MOVE_HIST buffer
-    LDI HIGH(HISTORY_PTR)
-    PHI 10
-    LDI LOW(HISTORY_PTR)
-    PLO 10
+    RLDI 10, HISTORY_PTR
     LDI HIGH(MOVE_HIST)
     STR 10              ; HISTORY_PTR high byte = $60
     INC 10
@@ -648,12 +643,13 @@ INIT_MOVE_HISTORY:
     STR 10              ; HISTORY_PTR low byte = $90
 
     ; Clear GAME_PLY for opening book tracking
-    LDI HIGH(GAME_PLY)
-    PHI 10
-    LDI LOW(GAME_PLY)
-    PLO 10
+    RLDI 10, GAME_PLY
     LDI 0
     STR 10              ; GAME_PLY = 0
+
+    ; Clear HASH_HIST_COUNT for repetition detection
+    RLDI 10, HASH_HIST_COUNT   ; D still 0 from LDI above (RLDI doesn't clobber D)
+    STR 10              ; HASH_HIST_COUNT = 0
     RETN
 
 ; ==============================================================================

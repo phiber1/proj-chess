@@ -26,10 +26,7 @@ START:
 START:
     ; Initialize system - using Mark Abene's SCRT pattern
     ; Set R6 to continue at MAIN_CONTINUE, then jump to INITCALL
-    LDI HIGH(MAIN_CONTINUE)
-    PHI 6
-    LDI LOW(MAIN_CONTINUE)
-    PLO 6
+    RLDI 6, MAIN_CONTINUE
     LBR INITCALL
 
 MAIN_CONTINUE:
@@ -60,10 +57,7 @@ MAIN_CONTINUE:
     CALL TT_CLEAR
 
     ; Send startup message
-    LDI HIGH(MSG_STARTUP)
-    PHI 15
-    LDI LOW(MSG_STARTUP)
-    PLO 15
+    RLDI 15, MSG_STARTUP
     CALL PRINT_STRING
 
     ; Initialize UCI
@@ -157,15 +151,9 @@ WORKSPACE_CLEAR_LOOP:
 TEST_MOVE_GEN:
     CALL INIT_BOARD
 
-    LDI HIGH(MOVE_LIST)
-    PHI 9
-    LDI LOW(MOVE_LIST)
-    PLO 9
+    RLDI 9, MOVE_LIST
 
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     CALL GET_SIDE_TO_MOVE
     PLO 12
@@ -178,20 +166,14 @@ TEST_MAKE_UNMAKE:
     CALL TEST_MOVE_GEN
 
     ; Load first move from move list into R11 (NOT R6 - R6 is SCRT linkage!)
-    LDI HIGH(MOVE_LIST)
-    PHI 10
-    LDI LOW(MOVE_LIST)
-    PLO 10
+    RLDI 10, MOVE_LIST
 
     LDA 10
     PLO 11
     LDN 10
     PHI 11              ; R11 = first move
 
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     CALL MAKE_MOVE
     CALL UNMAKE_MOVE
@@ -201,10 +183,7 @@ TEST_SEARCH:
     CALL INIT_BOARD
 
     ; Set depth in memory (R5 is SRET - cannot use!)
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH
     LDI 0
     STR 13              ; SEARCH_DEPTH high = 0
     INC 13

@@ -53,10 +53,7 @@ NEGAMAX:
     ; PLY LIMIT CHECK: Prevent array overflow
     ; -----------------------------------------------
     ; If CURRENT_PLY >= MAX_PLY (8), return static eval
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     SMI 8               ; D = ply - MAX_PLY
     LBNF NEGAMAX_PLY_OK ; ply < 8, continue
@@ -80,30 +77,114 @@ NEGAMAX_PLY_OK:
     ; Save context to ply-indexed state array (no stack manipulation!)
     CALL SAVE_PLY_STATE
 
+    ; -- TT node flag: default ALPHA (upper bound) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_ALPHA
+    STR 10
+
     ; Increment node counter (for statistics)
     CALL INC_NODE_COUNT
+
+    ; -----------------------------------------------
+    ; RTC TIME TRACKING: Always update elapsed time
+    ; -----------------------------------------------
+    ; Read RTC on every node so elapsed time is accurate.
+    ; Only check abort flag and enforce budget during d3+.
+
+    ; --- RTC elapsed time check ---
+    ; Read current seconds from DS12887 (binary mode)
+    LDI $80                     ; Seconds register
+    STR 2
+    OUT 2                       ; Select register, R2++
+    DEC 2                       ; Restore R2
+    INP 3                       ; D = current_secs, M(R2) = current_secs
+    PLO 7                       ; R7.0 = current_secs (R7 saved by SAVE_PLY_STATE)
+
+    ; Load prev_secs, save for delta computation
+    RLDI 13, SEARCH_PREV_SECS
+    LDN 13                      ; D = prev_secs
+    PHI 7                       ; R7.1 = prev_secs
+
+    ; Update prev = current
+    GLO 7                       ; D = current_secs
+    STR 13                      ; SEARCH_PREV_SECS = current_secs
+
+    ; Compute delta = current - prev
+    GHI 7                       ; D = prev_secs
+    STR 2                       ; M(R2) = prev_secs
+    GLO 7                       ; D = current_secs
+    SM                          ; D = current - prev (SM = D - M(R(X)))
+    LBDF RTC_DELTA_POS          ; DF=1: no borrow, delta >= 0
+    ADI 60                      ; Wrapped past 59→0: add 60
+RTC_DELTA_POS:
+    ; D = delta seconds (typically 0 or 1)
+
+    ; Add delta to elapsed counter
+    STR 2                       ; M(R2) = delta
+    RLDI 13, SEARCH_ELAPSED
+    LDN 13                      ; D = elapsed so far
+    ADD                         ; D = elapsed + delta
+    LBNF RTC_NO_SAT             ; DF=0: no carry, fits in 8 bits
+    LDI 255                     ; Saturate at 255
+RTC_NO_SAT:
+    STR 13                      ; SEARCH_ELAPSED = updated value
+
+    ; -----------------------------------------------
+    ; ABORT CHECK: Only enforce budget during d3+
+    ; -----------------------------------------------
+    ; Depth 1-2 always complete; only abort d3+ if over budget
+    RLDI 13, CURRENT_MAX_DEPTH
+    LDN 13                      ; D = current iteration depth
+    SMI 3
+    LBNF NEGAMAX_BUDGET_OK      ; depth < 3, skip abort check
+
+    ; --- Abort flag check (propagate up recursion during d3) ---
+    RLDI 13, SEARCH_ABORTED
+    LDN 13
+    LBNZ NEGAMAX_ABORT_RETURN   ; Already aborted, bail out
+
+    ; Check: elapsed >= 150 seconds?
+    RLDI 13, SEARCH_ELAPSED
+    LDN 13                      ; Reload elapsed (clobbered above)
+    SMI 150                     ; D = elapsed - 150
+    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 120, continue
+
+    ; Time exceeded — set abort flag
+    RLDI 13, SEARCH_ABORTED
+    LDI 1
+    STR 13
+
+NEGAMAX_ABORT_RETURN:
+    ; Restore ply state and return dummy score
+    CALL RESTORE_PLY_STATE
+    LDI 0
+    PHI 9
+    PLO 9                       ; R9 = 0 (score irrelevant, will be discarded)
+    RETN
+
+NEGAMAX_BUDGET_OK:
 
     ; -----------------------------------------------
     ; FIFTY-MOVE RULE: Check for draw
     ; -----------------------------------------------
     ; If halfmove clock >= 100, position is a draw
-    LDI HIGH(GAME_STATE)
-    PHI 13
-    LDI LOW(GAME_STATE + STATE_HALFMOVE)
-    PLO 13
+    RLDI 13, GAME_STATE + STATE_HALFMOVE
     LDN 13               ; D = halfmove clock
     SMI 100             ; D = halfmove - 100
     LBNF NEGAMAX_NOT_FIFTY ; If < 100, continue normally (long branch - crosses page)
 
-    ; Fifty-move rule triggered - return draw (score = 0)
+    ; Draw return — shared by fifty-move rule and repetition detection
+RETURN_DRAW:
     LDI 0
     PHI 9
     PLO 9               ; R9 = 0 (draw score) - R6 is SCRT linkage!
     ; Save score to SCORE_HI/LO BEFORE restore (RESTORE clobbers R9!)
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 9
     STR 10
     INC 10
@@ -111,10 +192,7 @@ NEGAMAX_PLY_OK:
     STR 10              ; SCORE_HI/LO = 0 (draw)
     CALL RESTORE_PLY_STATE
     ; Reload R9 from SCORE_HI/LO AFTER restore
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10
     PHI 9
     LDN 10
@@ -122,6 +200,55 @@ NEGAMAX_PLY_OK:
     RETN
 
 NEGAMAX_NOT_FIFTY:
+    ; -----------------------------------------------
+    ; REPETITION DETECTION: Check game position history
+    ; -----------------------------------------------
+    ; Skip at root (ply 0) — root position is the last HASH_HIST
+    ; entry and would always match itself.
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    LBZ REP_NO_MATCH
+
+    ; Load current hash into R8
+    RLDI 10, HASH_HI
+    LDA 10              ; D = HASH_HI
+    PHI 8
+    LDN 10              ; D = HASH_LO
+    PLO 8               ; R8 = current position hash
+
+    ; Load history count
+    RLDI 13, HASH_HIST_COUNT
+    LDN 13
+    LBZ REP_NO_MATCH    ; Empty history
+    PLO 11              ; R11.0 = loop counter
+
+    RLDI 9, HASH_HIST   ; R9 → first entry
+
+REP_CHECK_LOOP:
+    ; Compare hi byte
+    LDA 9               ; D = hist[i].hi, R9→lo byte
+    STR 2               ; temp at M(R2)
+    GHI 8               ; D = current.hi
+    XOR                 ; compare
+    LBNZ REP_SKIP_LO   ; Hi mismatch
+
+    ; Hi matched — compare lo byte
+    LDA 9               ; D = hist[i].lo, R9→next entry
+    STR 2
+    GLO 8               ; D = current.lo
+    XOR
+    LBZ RETURN_DRAW     ; MATCH! Return draw (shared code)
+    LBR REP_DEC         ; Mismatch, R9 already past both bytes
+
+REP_SKIP_LO:
+    INC 9               ; Skip lo byte
+
+REP_DEC:
+    DEC 11
+    GLO 11
+    LBNZ REP_CHECK_LOOP
+
+REP_NO_MATCH:
     ; -----------------------------------------------
     ; Transposition Table Probe
     ; -----------------------------------------------
@@ -131,27 +258,18 @@ NEGAMAX_NOT_FIFTY:
     ; Skip TT at root (ply 0): TT_STORE saves the root's BEST_MOVE
     ; globally, so non-root TT entries have stale/sentinel move data.
     ; Root must always search fully to guarantee a valid BEST_MOVE.
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     LBZ NEGAMAX_TT_MISS ; Root: always search fully
 
     ; Load current search depth for comparison
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH + 1
     LDN 13              ; D = depth low byte (SEARCH_DEPTH+1 = low byte)
     CALL TT_PROBE       ; D = required depth, returns D = 1 if hit
     LBZ NEGAMAX_TT_MISS ; No hit, continue with search
 
     ; TT hit - check if it's usable (EXACT bound)
-    LDI HIGH(TT_FLAG)
-    PHI 10
-    LDI LOW(TT_FLAG)
-    PLO 10
+    RLDI 10, TT_FLAG
     LDN 10              ; D = TT flag
     XRI TT_FLAG_EXACT
     LBNZ NEGAMAX_TT_MISS    ; Not exact, can't use directly (for now)
@@ -161,19 +279,13 @@ NEGAMAX_NOT_FIFTY:
 
     ; Get the score and save to SCORE_HI/LO BEFORE restore
     ; (RESTORE_PLY_STATE clobbers R9!)
-    LDI HIGH(TT_SCORE_HI)
-    PHI 10
-    LDI LOW(TT_SCORE_HI)
-    PLO 10
+    RLDI 10, TT_SCORE_HI
     LDA 10              ; score_hi
     PHI 9
     LDN 10              ; score_lo
     PLO 9               ; R9 = stored score
     ; Save to SCORE_HI/LO so it survives RESTORE
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 9
     STR 10
     INC 10
@@ -181,10 +293,7 @@ NEGAMAX_NOT_FIFTY:
     STR 10              ; SCORE_HI/LO = TT score
     CALL RESTORE_PLY_STATE
     ; Reload R9 from SCORE_HI/LO AFTER restore
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10
     PHI 9
     LDN 10
@@ -196,10 +305,7 @@ NEGAMAX_TT_MISS:
     ; Check if we're at a leaf node (depth == 0)
     ; -----------------------------------------------
     ; Load depth from memory (SEARCH_DEPTH)
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH
     LDA 13              ; D = depth high byte
     LBNZ NEGAMAX_CONTINUE
     LDN 13              ; D = depth low byte
@@ -215,31 +321,22 @@ NEGAMAX_CONTINUE:
     ; Conditions: depth >= 3, not in check, NULL_MOVE_OK, ply > 0
 
     ; Condition 1: depth >= 3?
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 10
+    RLDI 10, SEARCH_DEPTH + 1
     LDN 10              ; D = depth low byte
     SMI 3               ; D = depth - 3
     LBNF NMP_SKIP       ; depth < 3, skip null move
 
     ; Condition 2: ply > 0? (don't do at root)
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     LBZ NMP_SKIP        ; ply == 0, skip null move
 
     ; Condition 3: NULL_MOVE_OK?
-    LDI HIGH(NULL_MOVE_OK)
-    PHI 10
-    LDI LOW(NULL_MOVE_OK)
-    PLO 10
+    RLDI 10, NULL_MOVE_OK
     LDN 10
     LBZ NMP_SKIP        ; null move not allowed (already did one)
 
-    ; Condition 4: NOT in check?
+    ; Condition 4: NOT in check? (already verified above for non-CE path)
     CALL IS_IN_CHECK
     ; D = 1 if in check, 0 if safe
     LBNZ NMP_SKIP       ; in check, can't pass
@@ -247,36 +344,24 @@ NEGAMAX_CONTINUE:
     ; --- All conditions met, try null move ---
 
     ; Disable null move for child (prevent consecutive)
-    LDI HIGH(NULL_MOVE_OK)
-    PHI 10
-    LDI LOW(NULL_MOVE_OK)
-    PLO 10
+    RLDI 10, NULL_MOVE_OK
     LDI 0
     STR 10              ; NULL_MOVE_OK = 0
 
     ; Save depth to stack
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH
     LDA 13              ; depth_hi
     STXD
     LDN 13              ; depth_lo
     STXD
 
     ; Save alpha/beta to stack
-    LDI HIGH(ALPHA_HI)
-    PHI 13
-    LDI LOW(ALPHA_HI)
-    PLO 13
+    RLDI 13, ALPHA_HI
     LDA 13              ; alpha_hi
     STXD
     LDN 13              ; alpha_lo
     STXD
-    LDI HIGH(BETA_HI)
-    PHI 13
-    LDI LOW(BETA_HI)
-    PLO 13
+    RLDI 13, BETA_HI
     LDA 13              ; beta_hi
     STXD
     LDN 13              ; beta_lo
@@ -304,10 +389,7 @@ NEGAMAX_CONTINUE:
     PHI 7               ; R7 = depth - 3
 
     ; Store child depth to memory
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH)
-    PLO 10
+    RLDI 10, SEARCH_DEPTH
     GHI 7
     STR 10
     INC 10
@@ -337,10 +419,7 @@ NEGAMAX_CONTINUE:
     PHI 8               ; R8 = -beta = child alpha
 
     ; Store as new alpha
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     GHI 8
     STR 10
     INC 10
@@ -355,10 +434,7 @@ NEGAMAX_CONTINUE:
     ADCI 0
     PHI 8               ; R8 = -beta + 1
 
-    LDI HIGH(BETA_HI)
-    PHI 10
-    LDI LOW(BETA_HI)
-    PLO 10
+    RLDI 10, BETA_HI
     GHI 8
     STR 10
     INC 10
@@ -371,10 +447,7 @@ NEGAMAX_CONTINUE:
     PLO 12
 
     ; Increment ply
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10
     ADI 1
     STR 10              ; CURRENT_PLY++
@@ -384,10 +457,7 @@ NEGAMAX_CONTINUE:
     ; R9 = score
 
     ; Decrement ply
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10
     SMI 1
     STR 10              ; CURRENT_PLY--
@@ -409,10 +479,7 @@ NEGAMAX_CONTINUE:
     CALL NULL_UNMAKE_MOVE
 
     ; Re-enable null move for this level
-    LDI HIGH(NULL_MOVE_OK)
-    PHI 10
-    LDI LOW(NULL_MOVE_OK)
-    PLO 10
+    RLDI 10, NULL_MOVE_OK
     LDI 1
     STR 10              ; NULL_MOVE_OK = 1
 
@@ -437,10 +504,7 @@ NEGAMAX_CONTINUE:
     LDX                 ; depth_hi
     PHI 13              ; R13 = original depth
 
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH)
-    PLO 10
+    RLDI 10, SEARCH_DEPTH
     GHI 13
     STR 10
     INC 10
@@ -451,10 +515,7 @@ NEGAMAX_CONTINUE:
     ; Compare: score (R9) >= beta (R7)? If so, prune!
     ; Signed 16-bit comparison
 
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
 
     ; Check if signs differ
@@ -492,10 +553,7 @@ NMP_CHECK_SIGN:
 NMP_CUTOFF:
     ; Null move cutoff! Return beta
     ; Save beta to SCORE memory (same pattern as NEGAMAX_RETURN)
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 7               ; beta_hi
     STR 10
     INC 10
@@ -505,10 +563,7 @@ NMP_CUTOFF:
     CALL RESTORE_PLY_STATE
 
     ; Load return value from SCORE memory into R9 (after restore)
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10              ; SCORE_HI
     PHI 9
     LDN 10              ; SCORE_LO
@@ -519,20 +574,14 @@ NMP_CUTOFF:
 NMP_NO_CUTOFF:
     ; Null move didn't cause cutoff - restore alpha/beta to memory
     ; R8 = original alpha, R7 = original beta
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     GHI 8
     STR 10
     INC 10
     GLO 8
     STR 10              ; ALPHA = original alpha
 
-    LDI HIGH(BETA_HI)
-    PHI 10
-    LDI LOW(BETA_HI)
-    PLO 10
+    RLDI 10, BETA_HI
     GHI 7
     STR 10
     INC 10
@@ -542,27 +591,23 @@ NMP_NO_CUTOFF:
 
 NMP_SKIP:
     ; -----------------------------------------------
-    ; REVERSE FUTILITY PRUNING (RFP)
+    ; REVERSE FUTILITY PRUNING (RFP) - DISABLED
     ; -----------------------------------------------
-    ; At depth 1-2, if static_eval - margin >= beta, prune entire node.
-    ; The position is so good that the opponent can't recover.
+    ; RFP margins (150/300cp) are too aggressive for material+PST eval.
+    ; The coarse eval causes search collapse when any PV child finds
+    ; tactical improvement: beta drops and RFP prunes all siblings.
+    ; R7 beta-reload fix (below) is preserved for future re-enable.
     ;
     ; Conditions: depth <= 2, ply > 0, not in check
 
     ; Condition 1: depth <= 2?
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 10
+    RLDI 10, SEARCH_DEPTH + 1
     LDN 10              ; D = depth low byte
     SMI 3               ; D = depth - 3
     LBDF RFP_SKIP       ; depth >= 3, skip RFP
 
     ; Condition 2: ply > 0? (don't prune at root)
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     LBZ RFP_SKIP        ; ply == 0, skip
 
@@ -590,10 +635,7 @@ RFP_NO_NEG:
     ; R9 = eval from side-to-move perspective (negamax convention)
 
     ; Save eval in SCORE_HI/LO (for return value if we prune)
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 9
     STR 10
     INC 10
@@ -602,10 +644,7 @@ RFP_NO_NEG:
 
     ; Select margin based on depth
     ; Load depth again
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 10
+    RLDI 10, SEARCH_DEPTH + 1
     LDN 10              ; D = depth (1 or 2)
     SMI 2
     LBNF RFP_DEPTH1     ; depth < 2, so depth == 1
@@ -633,10 +672,15 @@ RFP_COMPARE:
     ; Compare: (eval - margin) >= beta (R7)?
     ; Signed 16-bit comparison using same pattern as NMP
 
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    ; Load beta from memory into R7
+    ; (R7 was clobbered by time tracking code at NEGAMAX entry!)
+    RLDI 10, BETA_HI
+    LDA 10              ; D = beta_hi
+    PHI 7
+    LDN 10              ; D = beta_lo
+    PLO 7               ; R7 = beta
+
+    RLDI 10, COMPARE_TEMP
     SEX 10
 
     ; Check if signs differ
@@ -674,10 +718,7 @@ RFP_PRUNE:
     ; Return eval (saved in SCORE_HI/LO)
     CALL RESTORE_PLY_STATE
     ; Reload R9 from SCORE_HI/LO after restore
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10
     PHI 9
     LDN 10
@@ -693,10 +734,7 @@ RFP_SKIP:
     ; ply × 128 overflows 8 bits for ply >= 2, so use 16-bit math:
     ;   offset_hi = ply >> 1, offset_lo = (ply & 1) << 7
 
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply (0-3)
 
     ; Calculate high byte: HIGH(MOVE_LIST) + (ply >> 1)
@@ -723,10 +761,7 @@ NEGAMAX_PLY_DONE:
     STXD
 
     ; Reset R9 to START of ply-indexed move list (128 bytes per ply)
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
 
     ; Calculate high byte: HIGH(MOVE_LIST) + (ply >> 1)
@@ -749,10 +784,7 @@ NEGAMAX_RESET_DONE:
     ; Apply killer move ordering (search killers first)
     ; Only at ply 0-2 to avoid overhead deep in tree
     ; -----------------------------------------------
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     SMI 3               ; Check if ply >= 3
     LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 3
@@ -767,10 +799,7 @@ NEGAMAX_SKIP_KILLER:
     ; Order captures first (MVV-LVA preparation)
     ; Only at ply 0-2 to avoid overhead deep in tree
     ; -----------------------------------------------
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     SMI 3               ; Check if ply >= 3
     LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 3
@@ -786,10 +815,7 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     ; Initialize best score to -INFINITY in memory
     ; -----------------------------------------------
     ; Using memory avoids register clobbering bugs!
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     LDI $80
     STR 10              ; BEST_SCORE_HI = $80
     INC 10
@@ -799,52 +825,72 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     ; -----------------------------------------------
     ; Futility Pruning Setup (depth 1 only)
     ; -----------------------------------------------
-    ; Clear futility flag first
-    LDI HIGH(FUTILITY_OK)
-    PHI 10
-    LDI LOW(FUTILITY_OK)
+    ; Clear futility flag for THIS ply (per-ply table prevents recursion corruption)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL
+    SHL                 ; D = ply * 4
+    ADI LOW(FUTILITY_TABLE)
     PLO 10
+    LDI HIGH(FUTILITY_TABLE)
+    ADCI 0
+    PHI 10              ; R10 = &FUTILITY_TABLE[ply*4] (flag byte)
     LDI 0
-    STR 10              ; FUTILITY_OK = 0 (disabled by default)
+    STR 10              ; flag = 0 (disabled by default)
 
     ; Check if depth == 1 (frontier node)
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH
     LDA 13              ; D = depth high byte
     LBNZ NEGAMAX_SKIP_FUTILITY  ; depth > 255, skip
     LDN 13              ; D = depth low byte
     XRI 1               ; Check if depth == 1
     LBNZ NEGAMAX_SKIP_FUTILITY  ; Not depth 1, skip
 
-    ; Depth == 1: Cache static eval for futility pruning
-    CALL EVALUATE       ; Returns score in R9
-    ; Store in STATIC_EVAL (big-endian)
-    LDI HIGH(STATIC_EVAL_HI)
-    PHI 10
-    LDI LOW(STATIC_EVAL_HI)
-    PLO 10
+    ; Don't enable futility at root — must always search all root moves
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = current ply
+    LBZ NEGAMAX_SKIP_FUTILITY  ; ply == 0, skip
+
+    ; Check guard: don't enable futility if side is in check
+    ; (escape moves must not be pruned — mirrors RFP guard at line 563)
+    CALL IS_IN_CHECK    ; R12 = our color; D = 1 if in check
+    LBNZ NEGAMAX_SKIP_FUTILITY  ; in check, skip futility
+
+    ; Depth == 1: Cache static eval for futility pruning (per-ply table)
+    CALL EVALUATE       ; Returns score in R9 (white perspective)
+    ; Negate if black to move (convert to side-to-move perspective)
+    GLO 12
+    ANI $08
+    LBZ FUTILITY_NO_NEG
+    GLO 9
+    SDI 0
+    PLO 9
     GHI 9
-    STR 10              ; STATIC_EVAL_HI
+    SDBI 0
+    PHI 9
+FUTILITY_NO_NEG:
+    ; Store flag + eval in FUTILITY_TABLE[ply*4]: [flag][eval_hi][eval_lo]
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL
+    SHL                 ; D = ply * 4
+    ADI LOW(FUTILITY_TABLE)
+    PLO 10
+    LDI HIGH(FUTILITY_TABLE)
+    ADCI 0
+    PHI 10              ; R10 = &FUTILITY_TABLE[ply*4]
+    LDI 1
+    STR 10              ; flag = 1 (futility enabled)
+    INC 10
+    GHI 9
+    STR 10              ; eval_hi
     INC 10
     GLO 9
-    STR 10              ; STATIC_EVAL_LO
-
-    ; Enable futility pruning for this node
-    LDI HIGH(FUTILITY_OK)
-    PHI 10
-    LDI LOW(FUTILITY_OK)
-    PLO 10
-    LDI 1
-    STR 10              ; FUTILITY_OK = 1
+    STR 10              ; eval_lo
 
     ; FIX: EVALUATE clobbered R9 (move list pointer) with eval score.
     ; Re-initialize R9 to move list start for this ply.
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     SHR                 ; D = ply >> 1
     ADI HIGH(MOVE_LIST)
@@ -862,10 +908,7 @@ NEGAMAX_FUTILITY_R9_DONE:
 NEGAMAX_SKIP_FUTILITY:
 
     ; Initialize LMR move counter to 0
-    LDI HIGH(LMR_MOVE_INDEX)
-    PHI 10
-    LDI LOW(LMR_MOVE_INDEX)
-    PLO 10
+    RLDI 10, LMR_MOVE_INDEX
     LDI 0
     STR 10              ; LMR_MOVE_INDEX = 0
 
@@ -896,10 +939,7 @@ NEGAMAX_MOVE_LOOP:
 
     ; Save R9 (move pointer) to ply-indexed memory (not stack!)
     ; This avoids stack alignment bugs across the large move loop
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = ply
     SHL                 ; D = ply * 2
     ADI LOW(LOOP_MOVE_PTR)
@@ -917,10 +957,7 @@ NEGAMAX_MOVE_LOOP:
     ; R13.1 = from square, R13.0 = to square
 
     ; Store to MOVE_FROM/MOVE_TO for MAKE_MOVE
-    LDI HIGH(MOVE_FROM)
-    PHI 10
-    LDI LOW(MOVE_FROM)
-    PLO 10
+    RLDI 10, MOVE_FROM
     GHI 13              ; from
     STR 10
     INC 10
@@ -937,10 +974,7 @@ NEGAMAX_MOVE_LOOP:
     PLO 10              ; R10 = BOARD + to_square
     LDN 10              ; D = piece at target (0 if empty)
     PLO 7               ; Save piece in R7.0 (temp)
-    LDI HIGH(LMR_IS_CAPTURE)
-    PHI 10
-    LDI LOW(LMR_IS_CAPTURE)
-    PLO 10
+    RLDI 10, LMR_IS_CAPTURE
     GLO 7               ; Restore piece
     LBZ LMR_NOT_CAPTURE
     LDI 1               ; Non-empty = capture
@@ -951,44 +985,81 @@ LMR_CAPTURE_DONE:
     STR 10              ; Store flag
 
     ; -----------------------------------------------
-    ; Futility Pruning Check (depth 1 quiet moves)
+    ; Castling Legality (moved from movegen for performance)
+    ; Only runs when the search actually tries a castling move,
+    ; not at every node during move generation.
     ; -----------------------------------------------
-    ; Only apply at frontier nodes (remaining depth == 1).
-    ; SEARCH_DEPTH is the remaining depth at this node (decremented
-    ; by parent before recursion), so check SEARCH_DEPTH == 1 directly.
-    ; This matches the futility setup code which also checks depth == 1.
+    RLDI 10, DECODED_FLAGS
+    LDN 10
+    XRI MOVE_CASTLE         ; Zero if castling
+    LBNZ NM_NOT_CASTLE
 
-    ; Check: is remaining depth == 1? (SEARCH_DEPTH low byte)
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH + 1)
+    ; Castling — check king not in check (can't castle out of check)
+    RLDI 10, MOVE_FROM
+    LDN 10                  ; D = from (king square)
+    PLO 11                  ; R11.0 = king square
+    CALL IS_SQUARE_ATTACKED ; D = 1 if in check
+    LBNZ NM_CASTLE_ILLEGAL
+
+    ; Check transit square not attacked (can't castle through check)
+    ; Transit = (from + to) / 2
+    RLDI 10, MOVE_FROM
+    LDA 10                  ; D = from, R10 -> MOVE_TO
+    STR 2                   ; M[R2] = from
+    LDN 10                  ; D = to
+    ADD                     ; D = from + to
+    SHR                     ; D = transit square
+    PLO 11                  ; R11.0 = transit
+    CALL IS_SQUARE_ATTACKED
+    LBZ NM_NOT_CASTLE       ; Transit safe, proceed
+
+NM_CASTLE_ILLEGAL:
+    ; Restore R9 from ply-indexed memory
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    SHL
+    ADI LOW(LOOP_MOVE_PTR)
     PLO 10
-    LDN 10              ; D = SEARCH_DEPTH low byte (remaining depth)
-    XRI 1               ; Check if depth == 1
-    LBNZ NEGAMAX_NOT_FUTILE  ; Not frontier node, skip futility
+    LDI HIGH(LOOP_MOVE_PTR)
+    PHI 10
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9
+    LBR NEGAMAX_NEXT_MOVE
+
+NM_NOT_CASTLE:
+
+    ; -----------------------------------------------
+    ; Futility Pruning Check (per-ply, depth 1 quiet moves)
+    ; -----------------------------------------------
+
+    ; Check: is futility pruning enabled for this ply? (per-ply table)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL
+    SHL                 ; D = ply * 4
+    ADI LOW(FUTILITY_TABLE)
+    PLO 10
+    LDI HIGH(FUTILITY_TABLE)
+    ADCI 0
+    PHI 10              ; R10 = &FUTILITY_TABLE[ply*4]
+    LDA 10              ; D = flag, R10 → eval_hi
+    LBZ NEGAMAX_NOT_FUTILE  ; Flag=0, skip futility
+    ; Pre-load static eval while R10 is positioned
+    LDA 10              ; D = eval_hi, R10 → eval_lo
+    PHI 11
+    LDN 10              ; D = eval_lo
+    PLO 11              ; R11 = static eval (from per-ply table)
 
     ; Check if move is a capture (target square non-empty)
-    LDI HIGH(MOVE_TO)
-    PHI 10
-    LDI LOW(MOVE_TO)
-    PLO 10
+    RLDI 10, MOVE_TO
     LDN 10              ; D = to square
     PLO 10              ; R10.0 = to square
     LDI HIGH(BOARD)
     PHI 10              ; R10 = BOARD + to_square
     LDN 10              ; D = piece at target
     LBNZ NEGAMAX_NOT_FUTILE  ; Non-empty = capture, don't prune
-
-    ; Not a capture - check if static_eval + margin < alpha
-    ; Load STATIC_EVAL into R11
-    LDI HIGH(STATIC_EVAL_HI)
-    PHI 10
-    LDI LOW(STATIC_EVAL_HI)
-    PLO 10
-    LDA 10              ; STATIC_EVAL_HI
-    PHI 11
-    LDN 10              ; STATIC_EVAL_LO
-    PLO 11              ; R11 = static eval
 
     ; Add FUTILITY_MARGIN (150 = $0096)
     GLO 11
@@ -998,21 +1069,22 @@ LMR_CAPTURE_DONE:
     ADCI FUTILITY_MARGIN_D1_HI ; Add high byte with carry
     PHI 11              ; R11 = static_eval + margin
 
-    ; Futility: prune if static_eval is very negative (losing badly)
-    ; Simple check: if static_eval < -MARGIN, prune quiet moves
-    ; This avoids the alpha comparison complexity in negamax
-    ; Check if R11 (static_eval + margin) high byte has sign bit set
-    ; If static_eval + margin < 0, we're down by more than margin, prune
+    ; Safety: don't prune if no move has been searched yet (BEST_SCORE
+    ; is still sentinel $8001). Otherwise all quiet moves get pruned,
+    ; BEST_SCORE stays at sentinel, and the engine detects false checkmate.
+    RLDI 10, BEST_SCORE_HI
+    LDN 10              ; D = BEST_SCORE_HI
+    XRI $80             ; Zero if still sentinel high byte
+    LBZ NEGAMAX_NOT_FUTILE  ; Sentinel → must search this move
+
+    ; Futility: prune if static_eval + margin < 0 (losing by more than margin)
     GHI 11              ; (eval+margin) high byte
     ANI $80             ; Check sign bit
     LBZ NEGAMAX_NOT_FUTILE  ; Sign bit clear = positive, don't prune
 
     ; Futile! Skip this move
     ; Restore R9 from ply-indexed memory
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = ply
     SHL                 ; D = ply * 2
     ADI LOW(LOOP_MOVE_PTR)
@@ -1028,6 +1100,20 @@ LMR_CAPTURE_DONE:
     LBR NEGAMAX_NEXT_MOVE
 
 NEGAMAX_NOT_FUTILE:
+
+    ; Set UNDO_PROMOTION based on move flags
+    ; Must be done before MAKE_MOVE so promotions work correctly
+    RLDI 10, UNDO_PROMOTION
+    RLDI 13, DECODED_FLAGS
+    LDN 13              ; D = flags
+    XRI MOVE_PROMOTION  ; == $03?
+    LBNZ NM_NOT_PROMO
+    LDI QUEEN_TYPE      ; Promote to queen ($05)
+    LBR NM_SET_PROMO
+NM_NOT_PROMO:
+    LDI 0               ; Not a promotion
+NM_SET_PROMO:
+    STR 10              ; UNDO_PROMOTION = QUEEN_TYPE or 0
 
     ; Make the move on the board
     CALL MAKE_MOVE
@@ -1050,10 +1136,7 @@ NEGAMAX_NOT_FUTILE:
     ; R12 stays as our color (UNMAKE_MOVE doesn't toggle R12)
 
     ; Restore R9 from ply-indexed memory and skip to next move
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = ply
     SHL                 ; D = ply * 2
     ADI LOW(LOOP_MOVE_PTR)
@@ -1068,48 +1151,45 @@ NEGAMAX_NOT_FUTILE:
     LBR NEGAMAX_NEXT_MOVE   ; Skip this illegal move
 
 NEGAMAX_MOVE_LEGAL:
+    ; --- Check extension: does this move give check? ---
+    GLO 12
+    XRI 8
+    PLO 12              ; R12 = opponent's color
+    CALL IS_IN_CHECK    ; Check opponent's king
+    ; D = 1 if giving check (RLDI does NOT clobber D)
+    RLDI 10, CHECK_EXT_FLAG
+    STR 10              ; Save result (0 or 1)
+    GLO 12
+    XRI 8
+    PLO 12              ; R12 = our color restored
+
     ; -----------------------------------------------
     ; LMR Check: Should we reduce this move's search?
     ; -----------------------------------------------
     ; Clear LMR_REDUCED flag first
-    LDI HIGH(LMR_REDUCED)
-    PHI 10
-    LDI LOW(LMR_REDUCED)
-    PLO 10
+    RLDI 10, LMR_REDUCED
     LDI 0
     STR 10              ; LMR_REDUCED = 0 (default)
 
     ; Condition 1: LMR_MOVE_INDEX >= 4?
-    LDI HIGH(LMR_MOVE_INDEX)
-    PHI 10
-    LDI LOW(LMR_MOVE_INDEX)
-    PLO 10
+    RLDI 10, LMR_MOVE_INDEX
     LDN 10              ; D = moves searched so far
     SMI 4               ; D = index - 4
     LBNF LMR_SKIP       ; < 4, skip LMR
 
     ; Condition 2: SEARCH_DEPTH >= 3?
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 10
+    RLDI 10, SEARCH_DEPTH + 1
     LDN 10              ; D = depth low byte
     SMI 3               ; D = depth - 3
     LBNF LMR_SKIP       ; < 3, skip LMR
 
     ; Condition 3: Not a capture?
-    LDI HIGH(LMR_IS_CAPTURE)
-    PHI 10
-    LDI LOW(LMR_IS_CAPTURE)
-    PLO 10
+    RLDI 10, LMR_IS_CAPTURE
     LDN 10              ; D = capture flag
     LBNZ LMR_SKIP       ; Is capture, skip LMR
 
     ; All conditions met - set LMR_REDUCED = 1
-    LDI HIGH(LMR_REDUCED)
-    PHI 10
-    LDI LOW(LMR_REDUCED)
-    PLO 10
+    RLDI 10, LMR_REDUCED
     LDI 1
     STR 10              ; LMR_REDUCED = 1
 
@@ -1120,20 +1200,14 @@ LMR_SKIP:
     ; (PUSH ORDER: R9/R8, depth, alpha/beta, UNDO_* - pop in reverse!)
     ; -----------------------------------------------
     ; First, save current depth to stack for later restore
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH
     LDA 13              ; D = depth high
     STXD
     LDN 13              ; D = depth low
     STXD                ; Stack now has: ... [depth_hi] [depth_lo]
 
     ; Now decrement depth in memory
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 13              ; Point to low byte
+    RLDI 13, SEARCH_DEPTH + 1
     LDN 13              ; D = depth low
     SMI 1
     STR 13              ; Store decremented low byte
@@ -1145,18 +1219,12 @@ LMR_SKIP:
     ; -----------------------------------------------
     ; LMR: Extra depth decrement if flag is set
     ; -----------------------------------------------
-    LDI HIGH(LMR_REDUCED)
-    PHI 10
-    LDI LOW(LMR_REDUCED)
-    PLO 10
+    RLDI 10, LMR_REDUCED
     LDN 10              ; D = LMR_REDUCED flag
     LBZ LMR_NO_EXTRA_DEC ; Not reduced, skip extra decrement
 
     ; LMR applies - decrement depth by 1 MORE (depth now = original - 2)
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 13              ; Point to low byte
+    RLDI 13, SEARCH_DEPTH + 1
     LDN 13              ; D = depth low
     SMI 1
     STR 13              ; depth_lo--
@@ -1166,7 +1234,36 @@ LMR_SKIP:
     STR 13              ; depth_hi-- (with borrow)
 
 LMR_NO_EXTRA_DEC:
+    ; -----------------------------------------------
+    ; Check extension: if move gives check AND depth is
+    ; at the horizon (depth <= 0 after decrement), undo
+    ; the decrement so checking move stays in main search
+    ; where checkmate can be detected (QS can't detect it)
+    ; -----------------------------------------------
+    RLDI 10, CHECK_EXT_FLAG
+    LDN 10              ; D = check flag
+    LBZ CE_DONE         ; Not giving check, skip
 
+    ; Ply guard: don't extend if ply >= 3 (child would be ply 4,
+    ; overflowing MOVE_LIST into engine variables at $6400+)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = current ply
+    SMI 3
+    LBDF CE_DONE        ; ply >= 3, skip extension
+
+    ; Only extend at horizon: depth <= 0 after decrement
+    RLDI 13, SEARCH_DEPTH
+    LDA 13              ; D = depth_hi
+    LBNZ CE_DONE        ; depth_hi != 0, not at horizon
+    LDN 13              ; D = depth_lo
+    LBNZ CE_DONE        ; depth_lo != 0, not at horizon
+
+    ; Depth is 0 — about to drop to QS. Undo decrement (+1)
+    LDI 1
+    STR 13              ; depth_lo = 1
+    ; depth_hi stays 0 (already confirmed)
+
+CE_DONE:
     ; -----------------------------------------------
     ; Negate and swap alpha/beta (memory-based - R6 is SCRT linkage!)
     ; -----------------------------------------------
@@ -1174,19 +1271,13 @@ LMR_NO_EXTRA_DEC:
 
     ; Save current alpha and beta from memory to stack
     ; Load alpha from memory (big-endian: HI at lower address)
-    LDI HIGH(ALPHA_HI)
-    PHI 13
-    LDI LOW(ALPHA_HI)
-    PLO 13
+    RLDI 13, ALPHA_HI
     LDA 13              ; D = alpha_hi
     STXD
     LDN 13              ; D = alpha_lo
     STXD
     ; Load beta from memory (big-endian: HI at lower address)
-    LDI HIGH(BETA_HI)
-    PHI 13
-    LDI LOW(BETA_HI)
-    PLO 13
+    RLDI 13, BETA_HI
     LDA 13              ; D = beta_hi
     STXD
     LDN 13              ; D = beta_lo
@@ -1194,14 +1285,11 @@ LMR_NO_EXTRA_DEC:
     ; Stack now has: [beta_lo][beta_hi][alpha_lo][alpha_hi][depth]...
 
     ; -----------------------------------------------
-    ; Save UNDO_* to stack (6 bytes) for recursive safety
+    ; Save UNDO_* to stack (7 bytes) for recursive safety
     ; Child calls will overwrite UNDO_*, so we must save it
     ; Push LAST so it gets popped FIRST (LIFO order!)
     ; -----------------------------------------------
-    LDI HIGH(UNDO_CAPTURED)
-    PHI 10
-    LDI LOW(UNDO_CAPTURED)
-    PLO 10
+    RLDI 10, UNDO_CAPTURED
     LDA 10              ; UNDO_CAPTURED
     STXD
     LDA 10              ; UNDO_FROM
@@ -1214,15 +1302,16 @@ LMR_NO_EXTRA_DEC:
     STXD
     LDN 10              ; UNDO_HALFMOVE
     STXD
+    ; UNDO_PROMOTION is at $6404 (not contiguous)
+    RLDI 10, UNDO_PROMOTION
+    LDN 10              ; UNDO_PROMOTION
+    STXD
 
     ; -----------------------------------------------
     ; Save BEST_SCORE to stack (2 bytes) for recursive safety
     ; Child calls will reinitialize BEST_SCORE to -infinity!
     ; -----------------------------------------------
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     LDA 10              ; BEST_SCORE_HI
     STXD
     LDN 10              ; BEST_SCORE_LO
@@ -1232,10 +1321,7 @@ LMR_NO_EXTRA_DEC:
     ; Compute new_alpha = -beta, new_beta = -alpha
     ; Load beta from memory, negate, store as new alpha
     ; Big-endian: HI at lower address, must negate low byte first for borrow
-    LDI HIGH(BETA_LO)
-    PHI 13
-    LDI LOW(BETA_LO)
-    PLO 13
+    RLDI 13, BETA_LO
     LDN 13              ; D = beta_lo (at higher address)
     SDI 0               ; D = -beta_lo
     PLO 7               ; R7.0 = -beta_lo
@@ -1245,10 +1331,7 @@ LMR_NO_EXTRA_DEC:
     PHI 7               ; R7.1 = -beta_hi, R7 = -beta
 
     ; Load alpha from memory, negate
-    LDI HIGH(ALPHA_LO)
-    PHI 13
-    LDI LOW(ALPHA_LO)
-    PLO 13
+    RLDI 13, ALPHA_LO
     LDN 13              ; D = alpha_lo (at higher address)
     SDI 0               ; D = -alpha_lo
     PLO 8               ; R8.0 = -alpha_lo
@@ -1259,20 +1342,14 @@ LMR_NO_EXTRA_DEC:
 
     ; Now swap: new_alpha = -beta (in R7), new_beta = -alpha (in R8)
     ; Store to memory (big-endian: high byte at lower address)
-    LDI HIGH(ALPHA_HI)
-    PHI 13
-    LDI LOW(ALPHA_HI)
-    PLO 13
+    RLDI 13, ALPHA_HI
     GHI 7
     STR 13              ; ALPHA_HI = -beta high
     INC 13
     GLO 7
     STR 13              ; ALPHA_LO = -beta low
 
-    LDI HIGH(BETA_HI)
-    PHI 13
-    LDI LOW(BETA_HI)
-    PLO 13
+    RLDI 13, BETA_HI
     GHI 8
     STR 13              ; BETA_HI = -alpha high
     INC 13
@@ -1285,10 +1362,7 @@ LMR_NO_EXTRA_DEC:
     PLO 12
 
     ; Increment ply counter before recursion
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10
     ADI 1
     STR 10              ; CURRENT_PLY++
@@ -1297,17 +1371,11 @@ LMR_NO_EXTRA_DEC:
     ; Push LMR state to stack (overwritten by recursive call)
     ; -----------------------------------------------
     ; Push LMR_MOVE_INDEX first (popped last)
-    LDI HIGH(LMR_MOVE_INDEX)
-    PHI 10
-    LDI LOW(LMR_MOVE_INDEX)
-    PLO 10
+    RLDI 10, LMR_MOVE_INDEX
     LDN 10              ; D = LMR_MOVE_INDEX
     STXD                ; Push to stack
     ; Push LMR_REDUCED second (popped first)
-    LDI HIGH(LMR_REDUCED)
-    PHI 10
-    LDI LOW(LMR_REDUCED)
-    PLO 10
+    RLDI 10, LMR_REDUCED
     LDN 10              ; D = LMR_REDUCED flag
     STXD                ; Push to stack
 
@@ -1324,28 +1392,19 @@ LMR_NO_EXTRA_DEC:
     IRX
     LDX                 ; D = saved LMR_REDUCED (R2 stays at this slot)
     PLO 7               ; Save in R7.0 (temp)
-    LDI HIGH(LMR_OUTER)
-    PHI 10
-    LDI LOW(LMR_OUTER)
-    PLO 10
+    RLDI 10, LMR_OUTER
     GLO 7               ; Restore LMR_REDUCED value
     STR 10              ; LMR_OUTER = saved LMR_REDUCED
     ; Pop LMR_MOVE_INDEX and restore to memory
     IRX
     LDX                 ; D = saved LMR_MOVE_INDEX
     PLO 7               ; Temp in R7.0
-    LDI HIGH(LMR_MOVE_INDEX)
-    PHI 10
-    LDI LOW(LMR_MOVE_INDEX)
-    PLO 10
+    RLDI 10, LMR_MOVE_INDEX
     GLO 7
     STR 10              ; LMR_MOVE_INDEX restored
 
     ; Decrement ply counter after recursion
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10
     SMI 1
     STR 10              ; CURRENT_PLY--
@@ -1362,10 +1421,7 @@ LMR_NO_EXTRA_DEC:
 
     ; Save negated score to memory (R9 will be overwritten by stack pops)
     ; Big-endian: high byte at lower address (SCORE_HI)
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 9               ; High byte first
     STR 10
     INC 10
@@ -1376,16 +1432,13 @@ LMR_NO_EXTRA_DEC:
     ; LMR Re-search Check: Did reduced search beat alpha?
     ; -----------------------------------------------
     ; Read LMR_OUTER from memory (LMR_REDUCED was cleared by recursive call)
-    LDI HIGH(LMR_OUTER)
-    PHI 10
-    LDI LOW(LMR_OUTER)
-    PLO 10
+    RLDI 10, LMR_OUTER
     LDN 10              ; D = LMR_OUTER flag
     LBZ LMR_NO_RESEARCH ; Not reduced, skip re-search check
 
-    ; Peek alpha from stack (alpha_hi at R2+12, alpha_lo at R2+11)
+    ; Peek alpha from stack (alpha_hi at R2+13, alpha_lo at R2+12)
     GLO 2
-    ADI 12              ; Calculate offset to alpha_hi
+    ADI 13              ; Calculate offset to alpha_hi
     PLO 10
     GHI 2
     ADCI 0
@@ -1397,10 +1450,7 @@ LMR_NO_EXTRA_DEC:
     PLO 7               ; R7 = parent's alpha (big-endian)
 
     ; Load score from SCORE_HI/LO
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10              ; D = score_hi
     PHI 13
     LDN 10              ; D = score_lo
@@ -1408,10 +1458,7 @@ LMR_NO_EXTRA_DEC:
 
     ; Signed comparison: score (R13) > alpha (R7)?
     ; Use COMPARE_TEMP for scratch
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10              ; X = R10 for comparisons
 
     ; Check if signs differ
@@ -1451,19 +1498,13 @@ LMR_DO_RESEARCH:
     ; Re-search needed! Score beat alpha on reduced search.
 
     ; Clear LMR_REDUCED so we don't re-search again
-    LDI HIGH(LMR_REDUCED)
-    PHI 10
-    LDI LOW(LMR_REDUCED)
-    PLO 10
+    RLDI 10, LMR_REDUCED
     LDI 0
     STR 10
 
     ; Increment SEARCH_DEPTH by 1 (undo the extra LMR reduction)
     ; Current depth = original - 2, we want original - 1
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH + 1
     LDN 13              ; D = depth_lo
     ADI 1
     STR 13              ; depth_lo++
@@ -1473,9 +1514,9 @@ LMR_DO_RESEARCH:
     STR 13              ; depth_hi++ (with carry)
 
     ; Re-setup alpha/beta for child (same swap as original)
-    ; Peek parent's beta from stack (beta_hi at R2+10, beta_lo at R2+9)
+    ; Peek parent's beta from stack (beta_hi at R2+11, beta_lo at R2+10)
     GLO 2
-    ADI 10
+    ADI 11
     PLO 10
     GHI 2
     ADCI 0
@@ -1494,9 +1535,9 @@ LMR_DO_RESEARCH:
     SDBI 0
     PHI 7               ; R7 = -beta = new_alpha
 
-    ; Peek parent's alpha again (R2+12, R2+11)
+    ; Peek parent's alpha again (R2+13, R2+12)
     GLO 2
-    ADI 12
+    ADI 13
     PLO 10
     GHI 2
     ADCI 0
@@ -1516,20 +1557,14 @@ LMR_DO_RESEARCH:
     PHI 8               ; R8 = -alpha = new_beta
 
     ; Store new alpha/beta to memory
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     GHI 7               ; new_alpha_hi
     STR 10
     INC 10
     GLO 7               ; new_alpha_lo
     STR 10              ; ALPHA = -beta
 
-    LDI HIGH(BETA_HI)
-    PHI 10
-    LDI LOW(BETA_HI)
-    PLO 10
+    RLDI 10, BETA_HI
     GHI 8               ; new_beta_hi
     STR 10
     INC 10
@@ -1537,10 +1572,7 @@ LMR_DO_RESEARCH:
     STR 10              ; BETA = -alpha
 
     ; Increment ply for recursive call
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10
     ADI 1
     STR 10              ; CURRENT_PLY++
@@ -1549,10 +1581,7 @@ LMR_DO_RESEARCH:
     CALL NEGAMAX
 
     ; Decrement ply
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10
     SMI 1
     STR 10              ; CURRENT_PLY--
@@ -1566,10 +1595,7 @@ LMR_DO_RESEARCH:
     PHI 9               ; R9 = -score
 
     ; Save to SCORE_HI/LO
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 9               ; High byte
     STR 10
     INC 10
@@ -1582,10 +1608,7 @@ LMR_NO_RESEARCH:
     ; Restore BEST_SCORE from stack FIRST (it was pushed last - LIFO!)
     ; This was corrupted by child's NEGAMAX initialization!
     ; -----------------------------------------------
-    LDI HIGH(BEST_SCORE_LO)
-    PHI 10
-    LDI LOW(BEST_SCORE_LO)
-    PLO 10
+    RLDI 10, BEST_SCORE_LO
     IRX
     LDXA                ; BEST_SCORE_LO
     STR 10
@@ -1594,12 +1617,15 @@ LMR_NO_RESEARCH:
     STR 10
 
     ; -----------------------------------------------
-    ; Restore UNDO_* from stack (6 bytes) before UNMAKE_MOVE
+    ; Restore UNDO_* from stack (7 bytes) before UNMAKE_MOVE
     ; -----------------------------------------------
-    LDI HIGH(UNDO_HALFMOVE)
-    PHI 10
-    LDI LOW(UNDO_HALFMOVE)
-    PLO 10
+    ; UNDO_PROMOTION first (it was pushed last - LIFO)
+    RLDI 10, UNDO_PROMOTION
+    IRX
+    LDX                 ; UNDO_PROMOTION
+    STR 10
+    ; Now restore the contiguous block ($6408-$640D)
+    RLDI 10, UNDO_HALFMOVE
     IRX
     LDXA                ; UNDO_HALFMOVE
     STR 10
@@ -1636,10 +1662,7 @@ LMR_NO_RESEARCH:
     PLO 7               ; R7.0 = beta_lo
     LDXA                ; D = beta_hi
     PHI 7               ; R7.1 = beta_hi, R7 = beta
-    LDI HIGH(BETA_HI)
-    PHI 13
-    LDI LOW(BETA_HI)
-    PLO 13
+    RLDI 13, BETA_HI
     GHI 7
     STR 13              ; BETA_HI (high byte at lower addr)
     INC 13
@@ -1651,10 +1674,7 @@ LMR_NO_RESEARCH:
     PLO 7               ; R7.0 = alpha_lo
     LDXA                ; D = alpha_hi
     PHI 7               ; R7.1 = alpha_hi, R7 = alpha
-    LDI HIGH(ALPHA_HI)
-    PHI 13
-    LDI LOW(ALPHA_HI)
-    PLO 13
+    RLDI 13, ALPHA_HI
     GHI 7
     STR 13              ; ALPHA_HI (high byte at lower addr)
     INC 13
@@ -1668,10 +1688,7 @@ LMR_NO_RESEARCH:
     PLO 7               ; Temp
     LDX                 ; D = depth_hi, R2 stays (one below move_count)
     PHI 7               ; R7 = depth (temp: hi.lo)
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH
     GHI 7
     STR 13              ; SEARCH_DEPTH high
     INC 13
@@ -1684,10 +1701,7 @@ LMR_NO_RESEARCH:
     PLO 12              ; C = color restored
 
     ; Restore R9 (move list pointer) from ply-indexed memory
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = ply
     SHL                 ; D = ply * 2
     ADI LOW(LOOP_MOVE_PTR)
@@ -1701,10 +1715,7 @@ LMR_NO_RESEARCH:
 
     ; Load score from SCORE memory into R13 (R9 is move list pointer!)
     ; Big-endian: high byte at lower address (SCORE_HI)
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10              ; SCORE_HI -> high byte
     PHI 13
     LDN 10              ; SCORE_LO -> low byte
@@ -1718,10 +1729,7 @@ LMR_NO_RESEARCH:
 
     ; Load beta from memory into R7 (use R10 as pointer, preserve R13=score)
     ; Big-endian: high byte at lower address (BETA_HI)
-    LDI HIGH(BETA_HI)
-    PHI 10
-    LDI LOW(BETA_HI)
-    PLO 10
+    RLDI 10, BETA_HI
     LDA 10              ; D = beta_hi
     PHI 7
     LDN 10              ; D = beta_lo
@@ -1729,10 +1737,7 @@ LMR_NO_RESEARCH:
 
     ; SIGNED comparison: score (R13) vs beta (R7)
     ; Use COMPARE_TEMP for scratch (NEVER use STR 2 for scratch!)
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10              ; X = R10 for comparisons
 
     ; First check if signs differ
@@ -1775,10 +1780,7 @@ NEGAMAX_DO_BETA_CUTOFF:
     ; Store beta to BEST_SCORE memory for return
 
     ; Store beta (R7) to BEST_SCORE memory
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     GHI 7               ; Beta high byte
     STR 10
     INC 10
@@ -1789,27 +1791,18 @@ NEGAMAX_DO_BETA_CUTOFF:
     ; Beta cutoff means this move is "too good" - but at root there's
     ; no parent to reject it, so it IS the best move. Without this,
     ; BEST_MOVE stays at $FF/$FF sentinel → h@h@ output.
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
     LBNZ NEGAMAX_BETA_NOT_ROOT
 
     ; At root: save UNDO_FROM/UNDO_TO to BEST_MOVE
-    LDI HIGH(UNDO_FROM)
-    PHI 10
-    LDI LOW(UNDO_FROM)
-    PLO 10
+    RLDI 10, UNDO_FROM
     LDA 10              ; UNDO_FROM
     PHI 8               ; Temp in R8.1
     LDN 10              ; UNDO_TO
     PLO 8               ; R8 = from/to
 
-    LDI HIGH(BEST_MOVE)
-    PHI 10
-    LDI LOW(BEST_MOVE)
-    PLO 10
+    RLDI 10, BEST_MOVE
     GHI 8
     STR 10              ; BEST_MOVE[0] = from
     INC 10
@@ -1827,6 +1820,16 @@ NEGAMAX_BETA_NOT_ROOT:
     ; Store killer move (for move ordering optimization)
     CALL STORE_KILLER_MOVE
 
+    ; -- TT node flag: BETA (lower bound) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_BETA
+    STR 10
+
     LBR NEGAMAX_RETURN
 
 NEGAMAX_NO_BETA_CUTOFF:
@@ -1834,10 +1837,7 @@ NEGAMAX_NO_BETA_CUTOFF:
     ; R9 = move list pointer (preserved)
 
     ; Load best score from memory into R8 for comparison
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     LDA 10              ; BEST_SCORE_HI
     PHI 8
     LDN 10              ; BEST_SCORE_LO
@@ -1848,10 +1848,7 @@ NEGAMAX_NO_BETA_CUTOFF:
     ; -----------------------------------------------
     ; SIGNED comparison of score (R13) vs best (R8)
     ; Use COMPARE_TEMP for scratch (NEVER use STR 2 for scratch!)
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10              ; X = R10 for comparisons
 
     ; First check if signs differ
@@ -1895,10 +1892,7 @@ NEGAMAX_DIFF_SIGN:
 
 NEGAMAX_SCORE_BETTER:
     ; Score is better, update best score in memory (R13 -> BEST_SCORE)
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     GHI 13              ; Score high byte
     STR 10
     INC 10
@@ -1908,27 +1902,18 @@ NEGAMAX_SCORE_BETTER:
     ; -----------------------------------------------
     ; If at root (PLY == 0), save this move to BEST_MOVE
     ; -----------------------------------------------
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; Get current ply
     LBNZ NEGAMAX_UPDATE_ALPHA  ; Not at root, skip BEST_MOVE but still update alpha
 
     ; At root - save move to BEST_MOVE from UNDO_FROM/UNDO_TO
-    LDI HIGH(UNDO_FROM)
-    PHI 10
-    LDI LOW(UNDO_FROM)
-    PLO 10
+    RLDI 10, UNDO_FROM
     LDA 10              ; UNDO_FROM
     PHI 7               ; Temp
     LDN 10              ; UNDO_TO
     PLO 7               ; R7 = from/to
 
-    LDI HIGH(BEST_MOVE)
-    PHI 10
-    LDI LOW(BEST_MOVE)
-    PLO 10
+    RLDI 10, BEST_MOVE
     GHI 7
     STR 10              ; BEST_MOVE[0] = from
     INC 10
@@ -1943,20 +1928,14 @@ NEGAMAX_UPDATE_ALPHA:
     ; -----------------------------------------------
     ; R13 = score (preserved from NEGAMAX_SCORE_BETTER entry)
     ; Load alpha from memory into R8
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     LDA 10
     PHI 8               ; R8.1 = alpha_hi
     LDN 10
     PLO 8               ; R8 = alpha
 
     ; Signed compare: score (R13) > alpha (R8)?
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
 
     ; Check if signs differ
@@ -2000,24 +1979,28 @@ NEGAMAX_ALPHA_DIFF_SIGN:
 
 NEGAMAX_ALPHA_DO_UPDATE:
     ; alpha = score
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     GHI 13
     STR 10
     INC 10
     GLO 13
     STR 10              ; ALPHA = score
 
+    ; -- TT node flag: EXACT (PV node) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_EXACT
+    STR 10
+
 NEGAMAX_NEXT_MOVE:
     ; -----------------------------------------------
     ; Increment LMR move counter (move was processed)
     ; -----------------------------------------------
-    LDI HIGH(LMR_MOVE_INDEX)
-    PHI 10
-    LDI LOW(LMR_MOVE_INDEX)
-    PLO 10
+    RLDI 10, LMR_MOVE_INDEX
     LDN 10
     ADI 1
     STR 10              ; LMR_MOVE_INDEX++
@@ -2041,10 +2024,7 @@ NEGAMAX_LOOP_DONE:
     ; was found - all pseudo-legal moves left king in check.
     ; This is checkmate or stalemate; handle via NEGAMAX_NO_MOVES.
     ; (Stack state matches: R2 below move_count, same as line 734 path)
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     LDA 10              ; D = BEST_SCORE_HI
     XRI $80
     LBNZ NEGAMAX_RETURN ; BEST_SCORE_HI != $80 → a legal move was scored
@@ -2067,19 +2047,13 @@ NEGAMAX_RETURN:
 
     ; Copy BEST_SCORE to SCORE memory BEFORE restore (RESTORE clobbers R9!)
     ; Best score is in BEST_SCORE_HI/LO, copy to SCORE_HI/LO for return
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     LDA 10              ; BEST_SCORE_HI
     PHI 8               ; Temp in R8.1
     LDN 10              ; BEST_SCORE_LO
     PLO 8               ; Temp in R8.0
 
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 8               ; Best score high byte
     STR 10
     INC 10
@@ -2093,13 +2067,17 @@ NEGAMAX_RETURN:
     ; so TT works correctly at all nodes.
 
     ; TT_STORE expects: D = depth, R8.0 = flag, SCORE_HI/LO and BEST_MOVE set
-    LDI TT_FLAG_EXACT
-    PLO 8               ; R8.0 = flag
-    LDI HIGH(SEARCH_DEPTH)
-    PHI 10
-    LDI LOW(SEARCH_DEPTH)
+    ; -- Load TT node flag for current ply --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
     PLO 10
-    LDN 10              ; D = depth low byte
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDN 10              ; D = flag
+    PLO 8               ; R8.0 = flag
+    RLDI 10, SEARCH_DEPTH + 1
+    LDN 10              ; D = depth (low byte = actual depth)
     CALL TT_STORE
 
     ; Restore caller's context (clobbers R7, R8, R9, R11, R12)
@@ -2107,10 +2085,7 @@ NEGAMAX_RETURN:
 
     ; Load return value back into R9 AFTER restore
     ; Big-endian: load high byte from lower address first
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10              ; SCORE_HI -> high byte
     PHI 9
     LDN 10              ; SCORE_LO -> low byte
@@ -2127,10 +2102,7 @@ NEGAMAX_LEAF:
 
     ; Save return value to SCORE memory BEFORE restore (RESTORE clobbers R9!)
     ; Big-endian: store high byte at lower address (SCORE_HI), low at SCORE_LO
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     GHI 9               ; Score high byte first
     STR 10
     INC 10
@@ -2142,10 +2114,7 @@ NEGAMAX_LEAF:
 
     ; Load return value back into R9 AFTER restore
     ; Big-endian: load high byte from lower address first
-    LDI HIGH(SCORE_HI)
-    PHI 10
-    LDI LOW(SCORE_HI)
-    PLO 10
+    RLDI 10, SCORE_HI
     LDA 10              ; SCORE_HI -> high byte
     PHI 9
     LDN 10              ; SCORE_LO -> low byte
@@ -2175,16 +2144,10 @@ NEGAMAX_NO_MOVES:
 
     ; Add depth to make closer mates better
     ; Load depth low byte from memory
-    LDI HIGH(SEARCH_DEPTH + 1)
-    PHI 13
-    LDI LOW(SEARCH_DEPTH + 1)
-    PLO 13
+    RLDI 13, SEARCH_DEPTH + 1
     LDN 13              ; D = depth low byte
     ; Use COMPARE_TEMP for ADD scratch (NEVER use STR 2!)
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     STR 10
     GLO 9
@@ -2194,28 +2157,44 @@ NEGAMAX_NO_MOVES:
     ; High byte stays same (adding small depth won't overflow)
 
     ; Store checkmate score to BEST_SCORE memory for return
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     GHI 9               ; Score high byte
     STR 10
     INC 10
     GLO 9               ; Score low byte
     STR 10
+
+    ; -- TT node flag: EXACT (checkmate) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_EXACT
+    STR 10
+
     LBR NEGAMAX_RETURN
 
 NEGAMAX_STALEMATE:
     ; Stalemate - return 0 (draw)
     ; Store 0 to BEST_SCORE memory for return
-    LDI HIGH(BEST_SCORE_HI)
-    PHI 10
-    LDI LOW(BEST_SCORE_HI)
-    PLO 10
+    RLDI 10, BEST_SCORE_HI
     LDI 0
     STR 10              ; BEST_SCORE_HI = 0
     INC 10
     STR 10              ; BEST_SCORE_LO = 0
+
+    ; -- TT node flag: EXACT (stalemate) --
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(NODE_TT_FLAGS)
+    PLO 10
+    LDI HIGH(NODE_TT_FLAGS)
+    PHI 10
+    LDI TT_FLAG_EXACT
+    STR 10
+
     LBR NEGAMAX_RETURN
 
 ; ==============================================================================
@@ -2250,10 +2229,7 @@ QUIESCENCE_SEARCH:
 QS_SAVE_STANDPAT:
     ; Save stand-pat score to memory as best (avoid R14!)
     ; Big-endian: high byte at lower address (QS_BEST_HI)
-    LDI HIGH(QS_BEST_HI)
-    PHI 10
-    LDI LOW(QS_BEST_HI)
-    PLO 10
+    RLDI 10, QS_BEST_HI
     GHI 9               ; High byte first
     STR 10
     INC 10
@@ -2265,10 +2241,7 @@ QS_SAVE_STANDPAT:
     ; (Position is already good enough, no need to search captures)
     ; -----------------------------------------------
     ; Load beta from memory (big-endian: HI at lower address)
-    LDI HIGH(BETA_HI)
-    PHI 10
-    LDI LOW(BETA_HI)
-    PLO 10
+    RLDI 10, BETA_HI
     LDA 10              ; beta high
     PHI 7
     LDN 10              ; beta low
@@ -2276,10 +2249,7 @@ QS_SAVE_STANDPAT:
 
     ; Compare: stand-pat (R9) >= beta (R7)?
     ; Signed comparison using COMPARE_TEMP
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     GHI 9               ; stand-pat high
     STR 10
@@ -2317,20 +2287,14 @@ QS_NO_BETA_CUTOFF:
     ; (Tightens window, makes beta cutoffs more likely)
     ; -----------------------------------------------
     ; Load alpha (R9 still has stand-pat)
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     LDA 10              ; alpha high
     PHI 7
     LDN 10              ; alpha low
     PLO 7               ; R7 = alpha
 
     ; Compare: stand-pat (R9) > alpha (R7)?
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     GHI 9
     STR 10
@@ -2367,10 +2331,7 @@ QS_ALPHA_DIFF_SIGN:
 
 QS_UPDATE_ALPHA:
     ; alpha = stand-pat
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     GHI 9
     STR 10
     INC 10
@@ -2383,10 +2344,7 @@ QS_NO_ALPHA_UPDATE:
     ; (Even capturing a queen can't raise alpha - futile to search)
     ; -----------------------------------------------
     ; Load alpha from memory (big-endian: HI at lower address)
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     LDA 10              ; alpha high
     PHI 7
     LDN 10              ; alpha low
@@ -2403,10 +2361,7 @@ QS_NO_ALPHA_UPDATE:
 
     ; Compare: (stand-pat + 900) < alpha?
     ; If R8 < R7, then delta prune
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     GHI 8               ; (stand-pat + 900) high
     STR 10
@@ -2447,10 +2402,7 @@ QS_DELTA_PRUNE:
 
 QS_NO_DELTA_PRUNE:
     ; Generate all moves (use QS_MOVE_LIST to avoid clobbering parent's move list!)
-    LDI HIGH(QS_MOVE_LIST)
-    PHI 9
-    LDI LOW(QS_MOVE_LIST)
-    PLO 9
+    RLDI 9, QS_MOVE_LIST
     CALL GENERATE_MOVES
     ; D = move count
 
@@ -2460,10 +2412,7 @@ QS_NO_DELTA_PRUNE:
     PHI 15              ; R15.1 = 0 (prevents underflow when DEC 15)
 
     ; Save move list start pointer (big-endian: high byte first)
-    LDI HIGH(QS_MOVE_PTR_HI)
-    PHI 10
-    LDI LOW(QS_MOVE_PTR_HI)
-    PLO 10
+    RLDI 10, QS_MOVE_PTR_HI
     LDI HIGH(QS_MOVE_LIST)
     STR 10
     INC 10
@@ -2480,10 +2429,7 @@ QS_LOOP:
     LBZ QS_RETURN
 
     ; Load move list pointer (big-endian: high byte first)
-    LDI HIGH(QS_MOVE_PTR_HI)
-    PHI 10
-    LDI LOW(QS_MOVE_PTR_HI)
-    PLO 10
+    RLDI 10, QS_MOVE_PTR_HI
     LDA 10              ; High byte
     PHI 9
     LDN 10              ; Low byte
@@ -2496,10 +2442,7 @@ QS_LOOP:
     PLO 8               ; R8 = encoded move
 
     ; Save updated pointer (big-endian: high byte first)
-    LDI HIGH(QS_MOVE_PTR_HI)
-    PHI 10
-    LDI LOW(QS_MOVE_PTR_HI)
-    PLO 10
+    RLDI 10, QS_MOVE_PTR_HI
     GHI 9
     STR 10
     INC 10
@@ -2524,10 +2467,7 @@ QS_LOOP:
     ; Has piece - check if enemy color
     ANI COLOR_MASK      ; D = target piece color (0 or 8)
     ; Use COMPARE_TEMP for XOR scratch (NEVER use STR 2!)
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     STR 10              ; Store target color to COMPARE_TEMP
     GLO 12              ; D = our color (0 or 8, per COLOR_MASK)
@@ -2563,10 +2503,7 @@ QS_LOOP:
     PLO 8               ; R8 = victim_value
 
     ; Load stand_pat from QS_BEST
-    LDI HIGH(QS_BEST_HI)
-    PHI 10
-    LDI LOW(QS_BEST_HI)
-    PLO 10
+    RLDI 10, QS_BEST_HI
     LDA 10
     PHI 7
     LDN 10
@@ -2585,10 +2522,7 @@ QS_LOOP:
     PHI 7               ; R7 = stand_pat + victim_value
 
     ; Load alpha
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    RLDI 10, ALPHA_HI
     LDA 10
     PHI 8
     LDN 10
@@ -2596,10 +2530,7 @@ QS_LOOP:
 
     ; Compare: (stand_pat + victim) < alpha?
     ; If R7 < R8, skip this capture
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     GHI 7               ; (stand_pat + victim) high
     STR 10
@@ -2643,15 +2574,25 @@ QS_DELTA_NO_PRUNE:
     STXD
 
     ; Store from/to for MAKE_MOVE
-    LDI HIGH(MOVE_FROM)
-    PHI 10
-    LDI LOW(MOVE_FROM)
-    PLO 10
+    RLDI 10, MOVE_FROM
     GHI 13              ; from
     STR 10
     INC 10
     GLO 13              ; to
     STR 10
+
+    ; Set UNDO_PROMOTION based on move flags (capture-promotions)
+    RLDI 10, UNDO_PROMOTION
+    RLDI 13, DECODED_FLAGS
+    LDN 13              ; D = flags
+    XRI MOVE_PROMOTION  ; == $03?
+    LBNZ QS_NOT_PROMO
+    LDI QUEEN_TYPE      ; Promote to queen ($05)
+    LBR QS_SET_PROMO
+QS_NOT_PROMO:
+    LDI 0               ; Not a promotion
+QS_SET_PROMO:
+    STR 10              ; UNDO_PROMOTION = QUEEN_TYPE or 0
 
     ; Make move
     CALL MAKE_MOVE
@@ -2727,10 +2668,7 @@ QS_NO_NEG:
 
     ; Compare: if score (R9) > best (QS_BEST), update best
     ; Load QS_BEST into R7 for comparison (big-endian: HI first)
-    LDI HIGH(QS_BEST_HI)
-    PHI 10
-    LDI LOW(QS_BEST_HI)
-    PLO 10
+    RLDI 10, QS_BEST_HI
     LDA 10              ; High byte
     PHI 7
     LDN 10              ; Low byte
@@ -2738,10 +2676,7 @@ QS_NO_NEG:
 
     ; Signed comparison: R9 > R7?
     ; Use COMPARE_TEMP for scratch (NEVER use STR 2!)
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     GHI 9
     STR 10
@@ -2783,10 +2718,7 @@ QS_DIFF_SIGN:
 
 QS_UPDATE:
     ; Update best = score (big-endian: HI first)
-    LDI HIGH(QS_BEST_HI)
-    PHI 10
-    LDI LOW(QS_BEST_HI)
-    PLO 10
+    RLDI 10, QS_BEST_HI
     GHI 9               ; High byte first
     STR 10
     INC 10
@@ -2797,20 +2729,14 @@ QS_UPDATE:
     ; Beta cutoff check: if best >= beta, return beta
     ; -----------------------------------------------
     ; Load beta (big-endian: HI first)
-    LDI HIGH(BETA_HI)
-    PHI 10
-    LDI LOW(BETA_HI)
-    PLO 10
+    RLDI 10, BETA_HI
     LDA 10              ; beta high
     PHI 7
     LDN 10              ; beta low
     PLO 7               ; R7 = beta
 
     ; Compare: best (R9) >= beta (R7)?
-    LDI HIGH(COMPARE_TEMP)
-    PHI 10
-    LDI LOW(COMPARE_TEMP)
-    PLO 10
+    RLDI 10, COMPARE_TEMP
     SEX 10
     GHI 9               ; best high
     STR 10
@@ -2862,10 +2788,7 @@ QS_CAPTURE_LIMIT_HIT:
 
 QS_RETURN:
     ; Return best score in R9 (big-endian: HI first)
-    LDI HIGH(QS_BEST_HI)
-    PHI 10
-    LDI LOW(QS_BEST_HI)
-    PLO 10
+    RLDI 10, QS_BEST_HI
     LDA 10              ; High byte
     PHI 9
     LDN 10              ; Low byte
@@ -2894,10 +2817,7 @@ QS_RETURN:
 STORE_KILLER_MOVE:
     ; Calculate killer table offset from CURRENT_PLY
     ; (Use ply, not depth, so killers work across different search depths)
-    LDI HIGH(CURRENT_PLY)
-    PHI 13
-    LDI LOW(CURRENT_PLY)
-    PLO 13
+    RLDI 13, CURRENT_PLY
     LDN 13              ; D = current ply
     ANI $0F             ; Limit to 16 plies
     SHL
@@ -2954,10 +2874,7 @@ ORDER_KILLER_MOVES:
     LBZ OKM_DONE        ; No moves, nothing to order
 
     ; Calculate killer table offset from CURRENT_PLY
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    RLDI 10, CURRENT_PLY
     LDN 10              ; D = ply
     ANI $0F             ; Limit to 16 plies
     SHL
@@ -3315,10 +3232,7 @@ OCF_DONE:
 ; Uses:   A, D
 ; ------------------------------------------------------------------------------
 INC_NODE_COUNT:
-    LDI HIGH(NODES_SEARCHED)
-    PHI 10
-    LDI LOW(NODES_SEARCHED)
-    PLO 10
+    RLDI 10, NODES_SEARCHED
 
     ; Increment byte 0 (LSB)
     LDN 10
@@ -3350,99 +3264,293 @@ INC_NODE_DONE:
     RETN
 
 ; ==============================================================================
-; SEARCH_POSITION - Entry point for search from UCI/main
+; SEARCH_POSITION - Iterative Deepening Entry Point
 ; ==============================================================================
-; Input:  SEARCH_DEPTH = search depth (stored in memory by caller)
+; Input:  SEARCH_DEPTH = target depth (stored in memory by UCI handler)
 ; Output: R9 = best score (R6 is SCRT linkage - off limits!)
 ;         BEST_MOVE = best move found
-; NOTE:   R5 is SRET in BIOS mode - cannot be used for depth!
-; WARNING: R6 is SCRT linkage register - do NOT use for return values!
+; Searches depth 1, 2, ..., TARGET_DEPTH. If depth N exceeds node budget,
+; aborts and returns depth N-1's bestmove.
 ; ==============================================================================
 SEARCH_POSITION:
-    ; Ensure X=2 for stack operations
     SEX 2
 
-    ; Alpha = -INFINITY (to memory - R6 is SCRT linkage, off limits!)
-    ; NOTE: Use $8001 (-32767) not $8000 (-32768) to avoid overflow when negating!
-    ; -(-32768) overflows to -32768, causing invalid alpha-beta window in child
-    ; Big-endian: high byte at lower address (ALPHA_HI)
-    LDI HIGH(ALPHA_HI)
-    PHI 10
-    LDI LOW(ALPHA_HI)
-    PLO 10
+    ; --- Save TARGET_DEPTH from SEARCH_DEPTH (set by UCI handler) ---
+    RLDI 10, SEARCH_DEPTH + 1
+    LDN 10                      ; D = target depth (low byte)
+    STXD                        ; Save depth on stack (LDI clobbers D!)
+    RLDI 10, TARGET_DEPTH
+    IRX
+    LDX                         ; D = target depth (restored from stack)
+    STR 10                      ; TARGET_DEPTH = original depth
+
+    ; --- Clear SEARCH_ABORTED flag ---
+    RLDI 10, SEARCH_ABORTED
+    LDI 0
+    STR 10
+
+    ; --- Clear ITER_BEST (no bestmove yet) ---
+    RLDI 10, ITER_BEST_FROM
+    LDI $FF
+    STR 10
+    INC 10
+    STR 10                      ; ITER_BEST_TO = $FF
+
+    ; --- Set starting depth = 1 ---
+    RLDI 10, CURRENT_MAX_DEPTH
+    LDI 1
+    STR 10
+
+    ; --- Initialize RTC elapsed timer ---
+    ; Read current seconds from DS12887 RTC (binary mode)
+    ; Protocol: OUT port 2 = register select, INP port 3 = read data
+    LDI $80                     ; $80 = seconds register
+    STR 2                       ; Store at M(R2) for OUT
+    OUT 2                       ; Send to port 2 (selects seconds), R2++
+    DEC 2                       ; Restore stack pointer
+    INP 3                       ; D = seconds (binary 0-59), also M(R2)
+    STXD                        ; Save seconds on stack (LDI clobbers D!)
+    RLDI 10, SEARCH_PREV_SECS
+    IRX
+    LDX                         ; D = seconds (restored)
+    STR 10                      ; SEARCH_PREV_SECS = current seconds
+
+    ; Clear elapsed counter
+    RLDI 10, SEARCH_ELAPSED
+    LDI 0
+    STR 10                      ; SEARCH_ELAPSED = 0
+
+    ; --- Clear node counter (once for entire search) ---
+    RLDI 11, NODES_SEARCHED
+    LDI 0
+    STR 11
+    INC 11
+    STR 11
+    INC 11
+    STR 11
+    INC 11
+    STR 11
+
+    ; --- Initialize Zobrist hash (once — TT benefits from earlier depths) ---
+    CALL HASH_INIT
+
+; ======================================================================
+; ITERATIVE DEEPENING LOOP
+; ======================================================================
+ITER_LOOP:
+    ; --- Set SEARCH_DEPTH = CURRENT_MAX_DEPTH for this iteration ---
+    RLDI 10, SEARCH_DEPTH
+    LDI 0
+    STR 10                      ; SEARCH_DEPTH high = 0
+    INC 10
+    ; Load CURRENT_MAX_DEPTH
+    RLDI 13, CURRENT_MAX_DEPTH
+    LDN 13                      ; D = current depth
+    STR 10                      ; SEARCH_DEPTH low = current depth
+
+    ; --- Reset SEARCH_ABORTED for this iteration ---
+    RLDI 10, SEARCH_ABORTED
+    LDI 0
+    STR 10
+
+    ; --- Standard search init ---
+    ; Alpha = -32767
+    RLDI 10, ALPHA_HI
     LDI $80
-    STR 10              ; ALPHA_HI = $80 (high byte first)
+    STR 10                      ; ALPHA_HI = $80
     INC 10
     LDI $01
-    STR 10              ; ALPHA_LO = $01 (alpha = $8001 = -32767)
+    STR 10                      ; ALPHA_LO = $01
 
-    ; Beta = +INFINITY (to memory for consistency)
-    ; Big-endian: high byte at lower address (BETA_HI)
-    LDI HIGH(BETA_HI)
-    PHI 10
-    LDI LOW(BETA_HI)
-    PLO 10
+    ; Beta = +32767
+    RLDI 10, BETA_HI
     LDI $7F
-    STR 10              ; BETA_HI = $7F (high byte first)
+    STR 10                      ; BETA_HI = $7F
     INC 10
     LDI $FF
-    STR 10              ; BETA_LO = $FF (beta = $7FFF = +32767)
+    STR 10                      ; BETA_LO = $FF
 
-    ; Initialize ply counter to 0 (we're at root)
-    LDI HIGH(CURRENT_PLY)
-    PHI 10
-    LDI LOW(CURRENT_PLY)
-    PLO 10
+    ; CURRENT_PLY = 0
+    RLDI 10, CURRENT_PLY
     LDI 0
-    STR 10              ; CURRENT_PLY = 0
+    STR 10
 
-    ; Initialize null move pruning flag (allow null move at start)
-    LDI HIGH(NULL_MOVE_OK)
-    PHI 10
-    LDI LOW(NULL_MOVE_OK)
-    PLO 10
+    ; NULL_MOVE_OK = 1
+    RLDI 10, NULL_MOVE_OK
     LDI 1
-    STR 10              ; NULL_MOVE_OK = 1
+    STR 10
 
     ; Get side to move
     CALL GET_SIDE_TO_MOVE
-    PLO 12              ; C.0 = color
+    PLO 12                      ; C.0 = color
 
     ; Board pointer
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
-    ; Clear best move
-    LDI HIGH(BEST_MOVE)
-    PHI 11
-    LDI LOW(BEST_MOVE)
-    PLO 11
+    ; Clear best move for this iteration
+    RLDI 11, BEST_MOVE
     LDI $FF
     STR 11
     INC 11
     STR 11
 
-    ; Clear node counter
-    LDI HIGH(NODES_SEARCHED)
-    PHI 11
-    LDI LOW(NODES_SEARCHED)
-    PLO 11
-    LDI 0
-    STR 11
-    INC 11
-    STR 11
-    INC 11
-    STR 11
-    INC 11
-    STR 11
-
-    ; Initialize Zobrist hash for current position
-    CALL HASH_INIT
-
-    ; Call negamax
+    ; --- Run search for this depth ---
     CALL NEGAMAX
+
+    ; --- Check if search was aborted ---
+    RLDI 10, SEARCH_ABORTED
+    LDN 10
+    LBNZ ITER_ABORTED           ; Aborted: use previous depth's bestmove
+
+    ; --- Depth completed: save bestmove ---
+    ; Set up BOTH pointers first, then copy (LDI clobbers D!)
+    RLDI 10, BEST_MOVE
+    RLDI 11, ITER_BEST_FROM
+    ; Now copy: R10→BEST_MOVE, R11→ITER_BEST
+    LDA 10                      ; D = from square
+    STR 11                      ; ITER_BEST_FROM = from
+    INC 11
+    LDN 10                      ; D = to square (BEST_MOVE+1)
+    STR 11                      ; ITER_BEST_TO = to
+
+    ; --- Save score from this depth ---
+    RLDI 10, ITER_SCORE_HI
+    GHI 9
+    STR 10                      ; ITER_SCORE_HI = R9.hi
+    INC 10
+    GLO 9
+    STR 10                      ; ITER_SCORE_LO = R9.lo
+
+    ; --- Send UCI "info" for this depth ---
+    CALL SEND_UCI_INFO
+
+    ; --- Check if we've reached TARGET_DEPTH ---
+    RLDI 10, CURRENT_MAX_DEPTH
+    LDN 10                      ; D = current depth
+    STR 2                       ; Push to stack for comparison
+    RLDI 10, TARGET_DEPTH
+    LDN 10                      ; D = target depth
+    SM                          ; D = target - current (M(R2) = current)
+    LBZ ITER_DONE               ; current == target, finished
+
+    ; --- Increment depth and loop ---
+    RLDI 10, CURRENT_MAX_DEPTH
+    LDN 10
+    ADI 1
+    STR 10                      ; CURRENT_MAX_DEPTH++
+    LBR ITER_LOOP
+
+ITER_ABORTED:
+    ; Search at this depth was aborted — fall back to ITER_BEST
+    ; Set up BOTH pointers first, then copy (LDI clobbers D!)
+    RLDI 10, ITER_BEST_FROM
+    RLDI 11, BEST_MOVE
+    ; Now copy: R10→ITER_BEST, R11→BEST_MOVE
+    LDA 10                      ; D = ITER_BEST_FROM
+    STR 11                      ; BEST_MOVE[0] = from
+    INC 11
+    LDN 10                      ; D = ITER_BEST_TO
+    STR 11                      ; BEST_MOVE[1] = to
+
+ITER_DONE:
+    RETN
+
+; ==============================================================================
+; SEND_UCI_INFO - Send "info depth N score cp S nodes NNNNN" after each iteration
+; ==============================================================================
+; Sends: "info depth N score cp S nodes NNNNN\r\n"
+;   N = CURRENT_MAX_DEPTH (ASCII digit)
+;   S = ITER_SCORE as signed decimal (centipawns)
+;   NNNNN = NODES_SEARCHED as decimal via F_UINTOUT (lower 16 bits)
+; ==============================================================================
+SEND_UCI_INFO:
+    ; Send "info depth "
+    RLDI 15, STR_INFO_DEPTH
+    SEP 4
+    DW F_MSG
+
+    ; Send depth digit (1-9)
+    RLDI 10, CURRENT_MAX_DEPTH
+    LDN 10                      ; D = depth (1-9)
+    ADI '0'                     ; Convert to ASCII
+    CALL SERIAL_WRITE_CHAR
+
+    ; Send " score cp "
+    RLDI 15, STR_SCORE_CP
+    SEP 4
+    DW F_MSG
+
+    ; Load score into R13 (big-endian: HI at $64C8, LO at $64C9)
+    RLDI 10, ITER_SCORE_HI
+    LDA 10                      ; D = score high byte, R10 -> LO
+    PHI 13
+    LDN 10                      ; D = score low byte
+    PLO 13                      ; R13 = signed 16-bit score
+
+    ; Check if negative
+    GHI 13
+    ANI $80
+    LBZ SUCI_POSITIVE
+
+    ; Negative: print '-' and negate R13
+    LDI '-'
+    CALL SERIAL_WRITE_CHAR
+    GLO 13
+    SDI 0                       ; D = 0 - low byte
+    PLO 13
+    GHI 13
+    SDBI 0                      ; D = 0 - high byte - borrow
+    PHI 13
+
+SUCI_POSITIVE:
+    ; Convert R13 (now unsigned magnitude) to ASCII decimal
+    RLDI 15, UINT_BUFFER
+    SEP 4
+    DW F_UINTOUT
+
+    ; Null-terminate (R15 points past last digit)
+    LDI 0
+    STR 15
+
+    ; Print the score string
+    RLDI 15, UINT_BUFFER
+    SEP 4
+    DW F_MSG
+
+    ; Send " nodes "
+    RLDI 15, STR_NODES
+    SEP 4
+    DW F_MSG
+
+    ; Load NODES_SEARCHED (16-bit) into R13: high byte first, then low
+    RLDI 10, NODES_SEARCHED + 1
+    LDN 10                      ; D = high byte of node count
+    PHI 13                      ; R13.1 = high byte
+    RLDI 10, NODES_SEARCHED
+    LDN 10                      ; D = low byte of node count
+    PLO 13                      ; R13.0 = low byte
+
+    ; Point R15 at ASCII scratch buffer
+    RLDI 15, UINT_BUFFER
+
+    ; Convert R13 to ASCII decimal at R15
+    SEP 4
+    DW F_UINTOUT
+
+    ; Null-terminate (R15 points past last digit)
+    LDI 0
+    STR 15
+
+    ; Print the decimal string
+    RLDI 15, UINT_BUFFER
+    SEP 4
+    DW F_MSG
+
+    ; Send CR+LF
+    LDI 13
+    CALL SERIAL_WRITE_CHAR
+    LDI 10
+    CALL SERIAL_WRITE_CHAR
 
     RETN
 

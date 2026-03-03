@@ -24,10 +24,7 @@
 ; ------------------------------------------------------------------------------
 PUSH_HISTORY_ENTRY:
     ; Get current history pointer
-    LDI HIGH(HISTORY_PTR)
-    PHI 10
-    LDI LOW(HISTORY_PTR)
-    PLO 10
+    RLDI 10, HISTORY_PTR
 
     LDA 10              ; Load high byte
     PHI 13
@@ -54,19 +51,13 @@ PUSH_HISTORY_ENTRY:
 
     ; Save current EP square
     ; NOTE: Using R15 instead of R14 (R14 is BIOS serial baud rate - off limits!)
-    LDI HIGH(GAME_STATE)
-    PHI 15
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 15
+    RLDI 15, GAME_STATE + STATE_EP_SQUARE
     LDN 15
     STR 13
     INC 13
 
     ; Save halfmove clock
-    LDI HIGH(GAME_STATE)
-    PHI 15
-    LDI LOW(GAME_STATE + STATE_HALFMOVE)
-    PLO 15
+    RLDI 15, GAME_STATE + STATE_HALFMOVE
     LDN 15
     STR 13
     INC 13
@@ -82,10 +73,7 @@ PUSH_HISTORY_ENTRY:
     INC 13
 
     ; Update history pointer
-    LDI HIGH(HISTORY_PTR)
-    PHI 10
-    LDI LOW(HISTORY_PTR)
-    PLO 10
+    RLDI 10, HISTORY_PTR
 
     GHI 13
     STR 10
@@ -108,10 +96,7 @@ PUSH_HISTORY_ENTRY:
 ; ------------------------------------------------------------------------------
 POP_HISTORY_ENTRY:
     ; Get current history pointer
-    LDI HIGH(HISTORY_PTR)
-    PHI 10
-    LDI LOW(HISTORY_PTR)
-    PLO 10
+    RLDI 10, HISTORY_PTR
 
     LDA 10
     PHI 13
@@ -160,10 +145,7 @@ POP_HISTORY_ENTRY:
     ; R8.1 = halfmove clock
 
     ; Update history pointer (go back 8 bytes)
-    LDI HIGH(HISTORY_PTR)
-    PHI 10
-    LDI LOW(HISTORY_PTR)
-    PLO 10
+    RLDI 10, HISTORY_PTR
 
     ; D already points to start of popped entry
     GHI 13
@@ -182,10 +164,7 @@ POP_HISTORY_ENTRY:
 ; ------------------------------------------------------------------------------
 SAVE_CAPTURED_TO_HISTORY:
     ; Get current history pointer
-    LDI HIGH(HISTORY_PTR)
-    PHI 10
-    LDI LOW(HISTORY_PTR)
-    PLO 10
+    RLDI 10, HISTORY_PTR
 
     LDA 10
     PHI 13
@@ -356,10 +335,7 @@ UPDATE_EP_SET:
     ; D has EP square
     PLO 13
 
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_EP_SQUARE
 
     GLO 13
     STR 10
@@ -367,10 +343,7 @@ UPDATE_EP_SET:
 
 UPDATE_EP_CLEAR:
     ; No EP square
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_EP_SQUARE
 
     LDI INVALID_SQ
     STR 10
@@ -396,10 +369,7 @@ UPDATE_HALFMOVE_CLOCK:
 
 UPDATE_HALFMOVE_RESET:
     ; Reset to 0
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_HALFMOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_HALFMOVE
 
     LDI 0
     STR 10
@@ -407,10 +377,7 @@ UPDATE_HALFMOVE_RESET:
 
 UPDATE_HALFMOVE_INCREMENT:
     ; Increment clock
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_HALFMOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_HALFMOVE
 
     LDN 10
     ADI 1
@@ -427,28 +394,19 @@ UPDATE_HALFMOVE_INCREMENT:
 ; ------------------------------------------------------------------------------
 RESTORE_GAME_STATE:
     ; Restore castling rights
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_CASTLING)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_CASTLING
 
     GHI 13              ; Castling rights
     STR 10
 
     ; Restore EP square (from R8.0, NOT R14!)
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_EP_SQUARE
 
     GLO 8               ; EP square
     STR 10
 
     ; Restore halfmove clock (from R8.1, NOT R14!)
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_HALFMOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_HALFMOVE
 
     GHI 8               ; Halfmove clock
     STR 10

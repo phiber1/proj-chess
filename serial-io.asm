@@ -43,7 +43,8 @@
 ; ==============================================================================
 F_TYPE  EQU $FF03       ; Output character in D
 F_READ  EQU $FF06       ; Read character into D (with echo)
-F_MSG   EQU $FF09       ; Output string pointed to by R15
+F_MSG      EQU $FF09       ; Output string pointed to by R15
+F_UINTOUT  EQU $FF60       ; Convert R13 (16-bit unsigned) to ASCII at R15, R15 left at end
 #endif
 
 ; ==============================================================================

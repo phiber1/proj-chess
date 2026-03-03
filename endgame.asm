@@ -92,71 +92,47 @@ EVAL_ENDGAME:
     ; === IN ENDGAME ===
 
     ; Get our king position and add centralization bonus
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_SIDE_TO_MOVE)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_SIDE_TO_MOVE
     LDN 10               ; D = side to move
 
     LBZ EVAL_EG_WHITE_KING
 
 EVAL_EG_BLACK_KING:
     ; Black to move - get black king position
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_B_KING_SQ
     LDN 10               ; D = black king square
     ; Store our king square in memory (R14 is off-limits!)
     STXD                 ; Save on stack temporarily
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     IRX
     LDX
     STR 8               ; EVAL_TEMP1 = our king square
 
     ; Get enemy (white) king for edge penalty
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_W_KING_SQ
     LDN 10
     PLO 15               ; F.0 = enemy king square
     LBR EVAL_EG_CALC
 
 EVAL_EG_WHITE_KING:
     ; White to move - get white king position
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_W_KING_SQ)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_W_KING_SQ
     LDN 10
     ; Store our king square in memory (R14 is off-limits!)
     STXD                 ; Save on stack temporarily
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     IRX
     LDX
     STR 8               ; EVAL_TEMP1 = our king square
 
     ; Get enemy (black) king for edge penalty
-    LDI HIGH(GAME_STATE)
-    PHI 10
-    LDI LOW(GAME_STATE + STATE_B_KING_SQ)
-    PLO 10
+    RLDI 10, GAME_STATE + STATE_B_KING_SQ
     LDN 10
     PLO 15               ; F.0 = enemy king square
 
 EVAL_EG_CALC:
     ; Convert our king square to 0-63 index (load from EVAL_TEMP1)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDN 8               ; D = our king square
     STXD                ; Save for reuse
     ANI $07             ; File
@@ -171,10 +147,7 @@ EVAL_EG_CALC:
     PLO 13               ; D.0 = index
 
     ; Look up centralization bonus
-    LDI HIGH(KING_CENTER_TABLE)
-    PHI 11
-    LDI LOW(KING_CENTER_TABLE)
-    PLO 11
+    RLDI 11, KING_CENTER_TABLE
     GLO 13
     STR 2
     GLO 11
@@ -188,10 +161,7 @@ EVAL_EG_CALC:
     ; Add to score (6) - sign extend and add using memory temps
     ; (R14 is off-limits - BIOS uses it!)
     STXD                ; Save value on stack
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     IRX
     LDX                 ; D = value
     STR 8               ; EVAL_TEMP1 = low byte
@@ -207,10 +177,7 @@ EVAL_EG_CENTER_STORE_HI:
 
 EVAL_EG_CENTER_ADD:
     ; Add 16-bit value from memory to R9 (score accumulator, NOT R6!)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDN 8               ; D = low byte
     STR 2
     GLO 9
@@ -250,10 +217,7 @@ EVAL_EG_ENEMY_KING:
     PLO 13               ; D.0 = index
 
     ; Look up edge bonus (penalty for enemy king in center)
-    LDI HIGH(KING_EDGE_TABLE)
-    PHI 11
-    LDI LOW(KING_EDGE_TABLE)
-    PLO 11
+    RLDI 11, KING_EDGE_TABLE
     GLO 13
     STR 2
     GLO 11
@@ -288,25 +252,16 @@ CALC_TOTAL_MATERIAL:
     PHI 7
     PLO 7               ; 7 = 0
 
-    LDI HIGH(BOARD)
-    PHI 10
-    LDI LOW(BOARD)
-    PLO 10
+    RLDI 10, BOARD
 
     ; Square counter in memory (R14 is off-limits!)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDI 0
     STR 8               ; EVAL_TEMP1 = 0
 
 CALC_MAT_LOOP:
     ; Check valid square (load from memory)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDN 8               ; D = square counter
     ANI $88
     LBNZ CALC_MAT_NEXT
@@ -368,10 +323,7 @@ CALC_MAT_LOOP:
 CALC_MAT_NEXT:
     INC 10
     ; Increment square counter in memory (R14 is off-limits!)
-    LDI HIGH(EVAL_TEMP1)
-    PHI 8
-    LDI LOW(EVAL_TEMP1)
-    PLO 8
+    RLDI 8, EVAL_TEMP1
     LDN 8               ; D = counter
     ADI 1               ; Increment
     STR 8               ; Store back

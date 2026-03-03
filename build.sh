@@ -62,6 +62,7 @@ cat > "$OUTPUT" << 'EOF'
 ; ==============================================================================
 
     ORG $0000
+    CPU 1805        ; Enable CDP1806 extended opcodes (RLDI, DBNZ, etc.)
 
 ; Entry point - jump to main program
     LBR START

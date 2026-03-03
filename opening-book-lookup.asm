@@ -24,16 +24,10 @@
 ; ==============================================================================
 BOOK_LOOKUP:
     ; R8 = pointer to current book entry
-    LDI HIGH(OPENING_BOOK)
-    PHI 8
-    LDI LOW(OPENING_BOOK)
-    PLO 8
+    RLDI 8, OPENING_BOOK
 
     ; Load GAME_PLY into R7.1 for quick comparison
-    LDI HIGH(GAME_PLY)
-    PHI 10
-    LDI LOW(GAME_PLY)
-    PLO 10
+    RLDI 10, GAME_PLY
     LDN 10
     PHI 7               ; R7.1 = GAME_PLY
 
@@ -75,10 +69,7 @@ BL_CHECK_MOVES:
     ; entry_ply == GAME_PLY, compare all moves
     ; R8 points to ply byte, moves start at R8+1
     ; R9 = pointer to MOVE_HIST
-    LDI HIGH(MOVE_HIST)
-    PHI 9
-    LDI LOW(MOVE_HIST)
-    PLO 9
+    RLDI 9, MOVE_HIST
 
     ; R10.0 = move counter (number of move pairs to compare)
     GLO 7               ; entry_ply = number of moves to compare
@@ -106,7 +97,7 @@ BL_COMPARE_LOOP:
     STR 2
     LDN 9               ; History to
     XOR                 ; Compare
-    LBNZ BL_SKIP_ENTRY  ; Mismatch
+    LBNZ BL_SKIP_TO     ; TO mismatch - different skip path
 
     ; Move to next pair
     INC 8
@@ -118,10 +109,7 @@ BL_COMPARE_LOOP:
 BL_MATCH_FOUND:
     ; All moves matched! R8 now points to response
     ; Store response in BOOK_MOVE_FROM/TO
-    LDI HIGH(BOOK_MOVE_FROM)
-    PHI 9
-    LDI LOW(BOOK_MOVE_FROM)
-    PLO 9
+    RLDI 9, BOOK_MOVE_FROM
 
     LDA 8               ; Response from
     STR 9
@@ -133,11 +121,16 @@ BL_MATCH_FOUND:
     LDI 1
     RETN
 
+BL_SKIP_TO:
+    ; TO byte mismatch: R8 points to TO byte (already past FROM via INC 8)
+    ; Advance past TO and count this pair as consumed, then fall through
+    INC 8               ; Past TO byte -> R8 at start of next pair
+    DEC 10              ; This pair consumed
+    ; Fall through to BL_SKIP_ENTRY
+
 BL_SKIP_ENTRY:
-    ; Mismatch during comparison, skip to next entry
-    ; We need to find where we are and skip to end of entry
-    ; Entry format: [ply] [moves...] [response]
-    ; R10.0 has remaining moves to compare
+    ; FROM byte mismatch: R8 points to FROM byte of mismatched pair
+    ; R10.0 = remaining move pairs to skip (not yet compared)
     ; Skip: remaining_moves*2 + 2 (response bytes)
     GLO 10              ; Remaining moves
     SHL                 ; * 2

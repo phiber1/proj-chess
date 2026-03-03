@@ -59,8 +59,8 @@ CHECK_TARGET_INVALID:
     LDI 0               ; D = 0, DF unchanged
     RETN
 
-; MOVE_FLAGS_TEMP defined in board-0x88.asm ($6806)
-; All engine variables consolidated at $6800+ region
+; MOVE_FLAGS_TEMP defined in board-0x88.asm ($6406)
+; All engine variables consolidated at $6400+ region
 
 ; ------------------------------------------------------------------------------
 ; ENCODE_MOVE_16BIT - Properly encode move as 16-bit value
@@ -98,10 +98,7 @@ ENCODE_LOW_DONE:
     PHI 8               ; 8.1 = to.bits[1-6]
 
     ; Get flags from memory - use conditional ORI (no stack!)
-    LDI HIGH(MOVE_FLAGS_TEMP)
-    PHI 7
-    LDI LOW(MOVE_FLAGS_TEMP)
-    PLO 7
+    RLDI 7, MOVE_FLAGS_TEMP
     LDN 7               ; D = flags
     ANI $03             ; Ensure 2 bits
     LBZ ENCODE_HI_DONE  ; flags = 0 (MOVE_NORMAL), no change needed
@@ -126,8 +123,8 @@ ENCODE_FLAG_1:
 ENCODE_HI_DONE:
     RETN
 
-; DECODED_FLAGS defined in board-0x88.asm ($6805)
-; All engine variables consolidated at $6800+ region
+; DECODED_FLAGS defined in board-0x88.asm ($6405)
+; All engine variables consolidated at $6400+ region
 
 ; ------------------------------------------------------------------------------
 ; DECODE_MOVE_16BIT - Decode 16-bit move
@@ -156,7 +153,7 @@ DECODE_MOVE_16BIT:
     ; Now check if bit 7 of low byte (to.bit0) is set
     GLO 8               ; Low byte
     ANI $80             ; Check bit 7
-    BZ DECODE_TO_DONE   ; If 0, R13.0 is complete
+    LBZ DECODE_TO_DONE  ; If 0, R13.0 is complete
     ; to.bit0 = 1, add it
     GLO 13
     ORI $01
@@ -165,10 +162,7 @@ DECODE_TO_DONE:
 
     ; Extract flags (bits 6-7 of high byte) - store to memory
     ; Set up pointer first (before extracting, since LDI clobbers D)
-    LDI HIGH(DECODED_FLAGS)
-    PHI 7
-    LDI LOW(DECODED_FLAGS)
-    PLO 7
+    RLDI 7, DECODED_FLAGS
     ; Now extract and store flags
     GHI 8
     SHR
@@ -204,10 +198,7 @@ ADD_MOVE_ENCODED:
 
     ; Store flags from D to MOVE_FLAGS_TEMP (R14 is off-limits)
     STXD                ; Push flags to stack
-    LDI HIGH(MOVE_FLAGS_TEMP)
-    PHI 7
-    LDI LOW(MOVE_FLAGS_TEMP)
-    PLO 7
+    RLDI 7, MOVE_FLAGS_TEMP
     IRX
     LDX                 ; Pop flags back to D
     STR 7               ; Store to memory
@@ -292,10 +283,7 @@ CHECK_EN_PASSANT:
     SEX 2
 
     ; Get en passant square from game state
-    LDI HIGH(GAME_STATE)
-    PHI 13
-    LDI LOW(GAME_STATE + STATE_EP_SQUARE)
-    PLO 13
+    RLDI 13, GAME_STATE + STATE_EP_SQUARE
 
     LDN 13              ; Load EP square
     STR 2
@@ -359,7 +347,7 @@ GEN_CASTLE_BLACK:
     LDN 7
     LBNZ GEN_CASTLE_BQ  ; g8 occupied, can't castle
 
-    ; Squares empty - generate castling move
+    ; Squares empty - generate castling move (attack checks in search loop)
     LDI $74
     PHI 13              ; From (e8)
     LDI $76
@@ -402,7 +390,7 @@ GEN_CASTLE_WHITE:
     LDN 7
     LBNZ GEN_CASTLE_WQ  ; g1 occupied, can't castle
 
-    ; Squares empty - generate castling move
+    ; Squares empty - generate castling move (attack checks in search loop)
     LDI $04
     PHI 13              ; From (e1)
     LDI $06
