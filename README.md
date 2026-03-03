@@ -1,6 +1,6 @@
 # RCA 1802/1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate multiple times.
+A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate.
 
 ## Quick Stats
 
@@ -12,7 +12,7 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 | **Search** | Iterative deepening, depth 2-3 |
 | **Opening Book** | 455 entries, 8 openings, 12 ply deep |
 | **Time Control** | 120 seconds per move (DS12887 RTC) |
-| **Wins vs Stockfish** | 3 (Stockfish limited to 5s/move, depth 3) |
+| **Wins vs Stockfish** | 2 (Stockfish limited to 5s/move, depth 3) |
 
 ## Wins vs Stockfish
 
@@ -20,7 +20,6 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 |---|------|---------|--------|-------|
 | 1 | Feb 13, 2026 | Alekhine's Defense | Qg7# | 38 |
 | 2 | Mar 2, 2026 | Alekhine's Mokele Mbembe | Qg8# | 35 |
-| 3 | Mar 2, 2026 | — | Qg8# | 35 |
 
 ## Features
 
@@ -83,7 +82,7 @@ Edit `config.asm` to select between:
 
 ## Playing
 
-1. Flash `chess-engine.hex` to the target system
+1. Load `chess-engine.bin` into RAM at $0000 via xmodem, or load `chess-engine.hex` via the ROM monitor
 2. Connect serial at 19200 baud
 3. Run the CuteChess bridge:
    ```bash
@@ -169,7 +168,7 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 | **RAM** | 2KB | 32KB |
 | **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility + check ext |
 | **Opening Book** | Small | 455 entries, 8 openings |
-| **Wins** | N/A | 3 vs Stockfish |
+| **Wins** | N/A | 2 vs Stockfish |
 
 ## Credits
 
