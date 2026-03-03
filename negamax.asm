@@ -857,7 +857,18 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     LBNZ NEGAMAX_SKIP_FUTILITY  ; in check, skip futility
 
     ; Depth == 1: Cache static eval for futility pruning (per-ply table)
-    CALL EVALUATE       ; Returns score in R9
+    CALL EVALUATE       ; Returns score in R9 (white perspective)
+    ; Negate if black to move (convert to side-to-move perspective)
+    GLO 12
+    ANI $08
+    LBZ FUTILITY_NO_NEG
+    GLO 9
+    SDI 0
+    PLO 9
+    GHI 9
+    SDBI 0
+    PHI 9
+FUTILITY_NO_NEG:
     ; Store flag + eval in FUTILITY_TABLE[ply*4]: [flag][eval_hi][eval_lo]
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = ply
@@ -974,6 +985,52 @@ LMR_CAPTURE_DONE:
     STR 10              ; Store flag
 
     ; -----------------------------------------------
+    ; Castling Legality (moved from movegen for performance)
+    ; Only runs when the search actually tries a castling move,
+    ; not at every node during move generation.
+    ; -----------------------------------------------
+    RLDI 10, DECODED_FLAGS
+    LDN 10
+    XRI MOVE_CASTLE         ; Zero if castling
+    LBNZ NM_NOT_CASTLE
+
+    ; Castling — check king not in check (can't castle out of check)
+    RLDI 10, MOVE_FROM
+    LDN 10                  ; D = from (king square)
+    PLO 11                  ; R11.0 = king square
+    CALL IS_SQUARE_ATTACKED ; D = 1 if in check
+    LBNZ NM_CASTLE_ILLEGAL
+
+    ; Check transit square not attacked (can't castle through check)
+    ; Transit = (from + to) / 2
+    RLDI 10, MOVE_FROM
+    LDA 10                  ; D = from, R10 -> MOVE_TO
+    STR 2                   ; M[R2] = from
+    LDN 10                  ; D = to
+    ADD                     ; D = from + to
+    SHR                     ; D = transit square
+    PLO 11                  ; R11.0 = transit
+    CALL IS_SQUARE_ATTACKED
+    LBZ NM_NOT_CASTLE       ; Transit safe, proceed
+
+NM_CASTLE_ILLEGAL:
+    ; Restore R9 from ply-indexed memory
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    SHL
+    ADI LOW(LOOP_MOVE_PTR)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_PTR)
+    PHI 10
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9
+    LBR NEGAMAX_NEXT_MOVE
+
+NM_NOT_CASTLE:
+
+    ; -----------------------------------------------
     ; Futility Pruning Check (per-ply, depth 1 quiet moves)
     ; -----------------------------------------------
 
@@ -1012,11 +1069,15 @@ LMR_CAPTURE_DONE:
     ADCI FUTILITY_MARGIN_D1_HI ; Add high byte with carry
     PHI 11              ; R11 = static_eval + margin
 
-    ; Futility: prune if static_eval is very negative (losing badly)
-    ; Simple check: if static_eval < -MARGIN, prune quiet moves
-    ; This avoids the alpha comparison complexity in negamax
-    ; Check if R11 (static_eval + margin) high byte has sign bit set
-    ; If static_eval + margin < 0, we're down by more than margin, prune
+    ; Safety: don't prune if no move has been searched yet (BEST_SCORE
+    ; is still sentinel $8001). Otherwise all quiet moves get pruned,
+    ; BEST_SCORE stays at sentinel, and the engine detects false checkmate.
+    RLDI 10, BEST_SCORE_HI
+    LDN 10              ; D = BEST_SCORE_HI
+    XRI $80             ; Zero if still sentinel high byte
+    LBZ NEGAMAX_NOT_FUTILE  ; Sentinel → must search this move
+
+    ; Futility: prune if static_eval + margin < 0 (losing by more than margin)
     GHI 11              ; (eval+margin) high byte
     ANI $80             ; Check sign bit
     LBZ NEGAMAX_NOT_FUTILE  ; Sign bit clear = positive, don't prune

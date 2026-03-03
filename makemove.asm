@@ -521,12 +521,12 @@ UM_NOT_PROMOTION:
     ; Check color of king (R10.0 has full piece)
     GLO 10
     ANI COLOR_MASK      ; Get color (0=white, 8=black)
-    BNZ UM_BLACK_KING
+    LBNZ UM_BLACK_KING
 
 UM_WHITE_KING:
     ; Update STATE_W_KING_SQ with UNDO_FROM
     RLDI 9, GAME_STATE + STATE_W_KING_SQ
-    BR UM_STORE_KING
+    LBR UM_STORE_KING
 
 UM_BLACK_KING:
     ; Update STATE_B_KING_SQ with UNDO_FROM

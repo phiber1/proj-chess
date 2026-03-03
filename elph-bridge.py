@@ -80,6 +80,7 @@ def main():
 
     pending_echo_lines = []
     recv_buffer = bytearray()
+    stdin_partial = ''  # Buffer for incomplete lines from stdin
 
     log_write(log, "Entering main loop\n")
 
@@ -89,13 +90,27 @@ def main():
             readable, _, _ = select.select([stdin_fd], [], [], 0.005)
 
             if stdin_fd in readable:
-                data = os.read(stdin_fd, 1024)
+                data = os.read(stdin_fd, 8192)
                 if not data:
                     log_write(log, "EOF on stdin\n")
                     break
 
-                text = data.decode('latin-1')
-                input_lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+                text = stdin_partial + data.decode('latin-1')
+                stdin_partial = ''
+                text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+                # If text doesn't end with newline, last chunk is incomplete
+                if not text.endswith('\n'):
+                    last_nl = text.rfind('\n')
+                    if last_nl == -1:
+                        # No newline at all — buffer entire read
+                        stdin_partial = text
+                        text = ''
+                    else:
+                        stdin_partial = text[last_nl + 1:]
+                        text = text[:last_nl + 1]
+
+                input_lines = text.split('\n')
 
                 for line in input_lines:
                     if not line:

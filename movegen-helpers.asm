@@ -347,7 +347,7 @@ GEN_CASTLE_BLACK:
     LDN 7
     LBNZ GEN_CASTLE_BQ  ; g8 occupied, can't castle
 
-    ; Squares empty - generate castling move
+    ; Squares empty - generate castling move (attack checks in search loop)
     LDI $74
     PHI 13              ; From (e8)
     LDI $76
@@ -390,7 +390,7 @@ GEN_CASTLE_WHITE:
     LDN 7
     LBNZ GEN_CASTLE_WQ  ; g1 occupied, can't castle
 
-    ; Squares empty - generate castling move
+    ; Squares empty - generate castling move (attack checks in search loop)
     LDI $04
     PHI 13              ; From (e1)
     LDI $06
