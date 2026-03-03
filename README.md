@@ -1,6 +1,6 @@
 # RCA 1802/1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has won its first match by checkmate.
+A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate multiple times.
 
 ## Quick Stats
 
@@ -8,11 +8,19 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 |------|-------|
 | **CPU** | RCA CDP1806 @ 12 MHz |
 | **RAM** | 32KB |
-| **Code Size** | 20,845 bytes |
-| **Search** | Iterative deepening, depth 2-3 (depth 4 in simplified positions) |
+| **Code Size** | ~21.3KB (21,343 bytes) |
+| **Search** | Iterative deepening, depth 2-3 |
 | **Opening Book** | 455 entries, 8 openings, 12 ply deep |
 | **Time Control** | 120 seconds per move (DS12887 RTC) |
-| **First Win** | Qg7# checkmate in 38 moves (Alekhine's Defense, Feb 13 2026) |
+| **Wins vs Stockfish** | 3 (Stockfish limited to 5s/move, depth 3) |
+
+## Wins vs Stockfish
+
+| # | Date | Opening | Result | Moves |
+|---|------|---------|--------|-------|
+| 1 | Feb 13, 2026 | Alekhine's Defense | Qg7# | 38 |
+| 2 | Mar 2, 2026 | Alekhine's Mokele Mbembe | Qg8# | 35 |
+| 3 | Mar 2, 2026 | — | Qg8# | 35 |
 
 ## Features
 
@@ -22,21 +30,27 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 - Transposition table (256 entries, Zobrist hashing)
 - Null move pruning (NMP)
 - Late move reductions (LMR)
-- Reverse futility pruning (RFP) with check guard
-- Futility pruning at frontier nodes with check guard
+- Reverse futility pruning (RFP) with depth/ply/check guards
+- Futility pruning at frontier nodes with sentinel guard
+- Check extension at search horizon (with ply guard)
 - Killer move ordering
 - Quiescence search with alpha-beta and capture ordering
 - Checkmate and stalemate detection
+- Repetition detection (16-bit position hash history, 255 entries)
 - Fifty-move rule
 
 ### Evaluation
 - Material counting
 - Piece-square tables (all 6 piece types)
-- Endgame heuristics
+- Castling rights bonus (+20cp per side with rights remaining)
+- Graduated advanced pawn bonus (+32/+64/+96cp by rank, endgame only)
+- Endgame king centralization (piece-count weighted)
+- Endgame detection via non-king piece count
 
 ### Board Representation
 - 0x88 board format (fast off-board detection)
 - Complete move generation for all piece types
+- Castling legality verified in search loop (IS_SQUARE_ATTACKED on king + transit square)
 - Make/unmake with full state restoration (Zobrist-incremental)
 - Castling (kingside/queenside, rights revocation)
 - En passant
@@ -51,6 +65,7 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 - UCI protocol over serial (19200 baud via BIOS)
 - CuteChess integration via Python serial bridge (`elph-bridge.py`)
 - RTC-based time management (DS12887 real-time clock)
+- UCI `info` output with depth, score (centipawns), and node count
 
 ## Building
 
@@ -87,15 +102,17 @@ go depth 3       -> bestmove e2e4
 ## Memory Map
 
 ```
-$0000-$51FF  Code (~20.8KB)
+$0000-$535E  Code (~21.3KB)
 $6000-$607F  Board array (128 bytes, 0x88 format)
-$6080-$60FF  Game state (castling, en passant, king positions, etc.)
-$6100-$61FF  Move history (undo stack)
-$6200-$64FF  Search workspace (killers, scores, depths, move pointers)
-$6500-$677F  UCI input buffer (640 bytes)
+$6080-$608F  Game state (castling, en passant, king positions, etc.)
+$6090-$618F  Move history (undo stack, 256 bytes)
+$6200-$63FF  Move list (512 bytes, 4 plies)
+$6400-$64FF  Search workspace (killers, scores, depths, futility table, etc.)
+$6500-$66FD  Position hash history (255 entries, repetition detection)
 $6780-$67FF  Quiescence search workspace
 $6800-$6FFF  Transposition table (2KB, 256 entries x 8 bytes)
-$7000-$7FFF  Stack (4KB)
+$7000-$77FF  UCI input buffer (2KB)
+$7F00-$7FFF  Stack
 ```
 
 ## File Structure
@@ -104,9 +121,9 @@ $7000-$7FFF  Stack (4KB)
 | File | Purpose |
 |------|---------|
 | `negamax.asm` | Alpha-beta search, iterative deepening, all pruning |
-| `evaluate.asm` | Material + PST evaluation |
+| `evaluate.asm` | Material + PST + castling rights + pawn bonus evaluation |
 | `pst.asm` | Piece-square tables (6 piece types) |
-| `endgame.asm` | Endgame heuristics |
+| `endgame.asm` | Endgame king centralization heuristics |
 | `transposition.asm` | TT probe/store, Zobrist hash update |
 | `zobrist-keys.asm` | Zobrist hash key tables |
 
@@ -150,9 +167,9 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 |--|-------------------|-------------|
 | **CPU** | RCA 1802 @ 6.1 MHz | RCA 1806 @ 12 MHz |
 | **RAM** | 2KB | 32KB |
-| **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility |
+| **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility + check ext |
 | **Opening Book** | Small | 455 entries, 8 openings |
-| **First Win** | N/A | Qg7# in 38 moves |
+| **Wins** | N/A | 3 vs Stockfish |
 
 ## Credits
 

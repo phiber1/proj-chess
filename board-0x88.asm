@@ -236,9 +236,9 @@ NODE_TT_FLAGS     EQU $64D2   ; 8 bytes - TT bound type per ply ($64D2-$64D9)
 CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extension)
 
 ; ------------------------------------------------------------------------------
-; Repetition Detection: $6190-$61FF, $64EB
+; Repetition Detection: $6500-$66FD, $64EB
 ; ------------------------------------------------------------------------------
-HASH_HIST       EQU $6190   ; 112 bytes - position hash history ($6190-$61FF)
+HASH_HIST       EQU $6500   ; 510 bytes - position hash history ($6500-$66FD, 255 entries)
 HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
 EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detection
 FUTILITY_TABLE  EQU $64ED   ; 16 bytes - per-ply futility data ($64ED-$64FC)

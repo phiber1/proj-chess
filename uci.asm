@@ -415,15 +415,14 @@ UCI_HIST_DONE:
     ; ---- Record hash for repetition detection ----
     RLDI 13, HASH_HIST_COUNT
     LDN 13              ; D = count
-    SMI 56              ; DF=1 if count >= 56 (full)
-    LBDF UCI_POS_MOVE_LOOP  ; Full, skip recording
-    LDN 13              ; D = count (reload — SMI clobbered D)
-    SHL                 ; D = count * 2 (DF was 0 from SMI borrow)
-    ADI LOW(HASH_HIST)
-    PLO 8
-    LDI HIGH(HASH_HIST)
-    ADCI 0              ; carry from ADI
-    PHI 8               ; R8 = &HASH_HIST[count]
+    XRI 255             ; Zero if count == 255 (table full)
+    LBZ UCI_POS_MOVE_LOOP   ; Full, skip recording
+    LDN 13              ; D = count (reload)
+    SHL                 ; D = (count*2) & $FF, DF = carry for counts >= 128
+    PLO 8               ; R8.0 = offset low byte
+    LDI HIGH(HASH_HIST) ; DF preserved (LDI doesn't affect DF)
+    ADCI 0              ; D = HIGH(HASH_HIST) + carry from SHL
+    PHI 8               ; R8 = &HASH_HIST[count] (correct for all counts)
     RLDI 9, HASH_HI
     LDA 9               ; D = HASH_HI
     STR 8
