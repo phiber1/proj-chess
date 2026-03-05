@@ -60,15 +60,15 @@ NEGAMAX:
 
     ; Ply limit reached - return static evaluation
     CALL EVALUATE
-    ; R9 has score, negate if black
+    ; Negate R9 if black to move (white-perspective → side-to-move)
     GLO 12
     ANI $08
     LBZ NEGAMAX_PLY_RET
-    GLO 9
-    SDI 0
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
     PHI 9
 NEGAMAX_PLY_RET:
     RETN
@@ -410,13 +410,13 @@ NEGAMAX_CONTINUE:
     LDN 10              ; beta_lo
     PLO 7               ; R7 = beta
 
-    ; Negate beta for child alpha
-    GLO 7
-    SDI 0               ; -beta_lo
+    ; Negate R7 (beta) → R8 = -beta (child alpha)
+    GLO 7               ; low byte
+    SDI 0               ; negate low
     PLO 8
-    GHI 7
-    SDBI 0              ; -beta_hi
-    PHI 8               ; R8 = -beta = child alpha
+    GHI 7               ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 8               ; R8 = -beta
 
     ; Store as new alpha
     RLDI 10, ALPHA_HI
@@ -467,13 +467,13 @@ NEGAMAX_CONTINUE:
     XRI $08
     PLO 12
 
-    ; Negate score: score = -score
-    GLO 9
-    SDI 0
+    ; Negate R9 (score = -score)
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
-    PHI 9               ; R9 = -score
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 9
 
     ; Unmake null move (toggle side back, restore EP, update hash)
     CALL NULL_UNMAKE_MOVE
@@ -621,18 +621,17 @@ NMP_SKIP:
     CALL EVALUATE
     ; R9 = score from white's perspective
 
-    ; Negate if black to move (R12: 0=white, 8=black)
+    ; Negate R9 if black to move (white-perspective → side-to-move)
     GLO 12
     ANI $08
     LBZ RFP_NO_NEG
-    GLO 9
-    SDI 0
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
     PHI 9
 RFP_NO_NEG:
-    ; R9 = eval from side-to-move perspective (negamax convention)
 
     ; Save eval in SCORE_HI/LO (for return value if we prune)
     RLDI 10, SCORE_HI
@@ -858,15 +857,15 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
 
     ; Depth == 1: Cache static eval for futility pruning (per-ply table)
     CALL EVALUATE       ; Returns score in R9 (white perspective)
-    ; Negate if black to move (convert to side-to-move perspective)
+    ; Negate R9 if black to move (white-perspective → side-to-move)
     GLO 12
     ANI $08
     LBZ FUTILITY_NO_NEG
-    GLO 9
-    SDI 0
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
     PHI 9
 FUTILITY_NO_NEG:
     ; Store flag + eval in FUTILITY_TABLE[ply*4]: [flag][eval_hi][eval_lo]
@@ -879,7 +878,7 @@ FUTILITY_NO_NEG:
     LDI HIGH(FUTILITY_TABLE)
     ADCI 0
     PHI 10              ; R10 = &FUTILITY_TABLE[ply*4]
-    LDI 1
+    LDI 1               ; DEBUG: flag=1 (futility active, negate LBR'd = unsigned eval like bd6e4b5)
     STR 10              ; flag = 1 (futility enabled)
     INC 10
     GHI 9
@@ -978,57 +977,11 @@ NEGAMAX_MOVE_LOOP:
     GLO 7               ; Restore piece
     LBZ LMR_NOT_CAPTURE
     LDI 1               ; Non-empty = capture
-    BR LMR_CAPTURE_DONE
+    LBR LMR_CAPTURE_DONE
 LMR_NOT_CAPTURE:
     LDI 0               ; Empty = not capture
 LMR_CAPTURE_DONE:
     STR 10              ; Store flag
-
-    ; -----------------------------------------------
-    ; Castling Legality (moved from movegen for performance)
-    ; Only runs when the search actually tries a castling move,
-    ; not at every node during move generation.
-    ; -----------------------------------------------
-    RLDI 10, DECODED_FLAGS
-    LDN 10
-    XRI MOVE_CASTLE         ; Zero if castling
-    LBNZ NM_NOT_CASTLE
-
-    ; Castling — check king not in check (can't castle out of check)
-    RLDI 10, MOVE_FROM
-    LDN 10                  ; D = from (king square)
-    PLO 11                  ; R11.0 = king square
-    CALL IS_SQUARE_ATTACKED ; D = 1 if in check
-    LBNZ NM_CASTLE_ILLEGAL
-
-    ; Check transit square not attacked (can't castle through check)
-    ; Transit = (from + to) / 2
-    RLDI 10, MOVE_FROM
-    LDA 10                  ; D = from, R10 -> MOVE_TO
-    STR 2                   ; M[R2] = from
-    LDN 10                  ; D = to
-    ADD                     ; D = from + to
-    SHR                     ; D = transit square
-    PLO 11                  ; R11.0 = transit
-    CALL IS_SQUARE_ATTACKED
-    LBZ NM_NOT_CASTLE       ; Transit safe, proceed
-
-NM_CASTLE_ILLEGAL:
-    ; Restore R9 from ply-indexed memory
-    RLDI 10, CURRENT_PLY
-    LDN 10
-    SHL
-    ADI LOW(LOOP_MOVE_PTR)
-    PLO 10
-    LDI HIGH(LOOP_MOVE_PTR)
-    PHI 10
-    LDA 10
-    PHI 9
-    LDN 10
-    PLO 9
-    LBR NEGAMAX_NEXT_MOVE
-
-NM_NOT_CASTLE:
 
     ; -----------------------------------------------
     ; Futility Pruning Check (per-ply, depth 1 quiet moves)
@@ -1130,7 +1083,6 @@ NM_SET_PROMO:
     LBZ NEGAMAX_MOVE_LEGAL  ; D=0 means not in check, move is legal
 
     ; ILLEGAL MOVE: Our king is in check after this move
-    ; Unmake the move and continue to next move
     CALL UNMAKE_MOVE
 
     ; R12 stays as our color (UNMAKE_MOVE doesn't toggle R12)
@@ -1318,27 +1270,26 @@ CE_DONE:
     STXD
     ; Stack now has: [BEST_SCORE][UNDO_*][beta][alpha][depth][R9]...
 
-    ; Compute new_alpha = -beta, new_beta = -alpha
-    ; Load beta from memory, negate, store as new alpha
-    ; Big-endian: HI at lower address, must negate low byte first for borrow
+    ; Negate beta from memory → R7 = -beta (new alpha)
+    ; Read low byte first for borrow propagation, then high byte
     RLDI 13, BETA_LO
-    LDN 13              ; D = beta_lo (at higher address)
-    SDI 0               ; D = -beta_lo
-    PLO 7               ; R7.0 = -beta_lo
-    DEC 13              ; Point back to BETA_HI
-    LDN 13              ; D = beta_hi
-    SDBI 0              ; D = -beta_hi (with borrow)
-    PHI 7               ; R7.1 = -beta_hi, R7 = -beta
+    LDN 13              ; low byte (BETA_LO at higher address)
+    SDI 0               ; negate low
+    PLO 7
+    DEC 13              ; → BETA_HI (lower address)
+    LDN 13              ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 7               ; R7 = -beta
 
-    ; Load alpha from memory, negate
+    ; Negate alpha from memory → R8 = -alpha (new beta)
     RLDI 13, ALPHA_LO
-    LDN 13              ; D = alpha_lo (at higher address)
-    SDI 0               ; D = -alpha_lo
-    PLO 8               ; R8.0 = -alpha_lo
-    DEC 13              ; Point back to ALPHA_HI
-    LDN 13              ; D = alpha_hi
-    SDBI 0              ; D = -alpha_hi (with borrow)
-    PHI 8               ; R8.1 = -alpha_hi, R8 = -alpha
+    LDN 13              ; low byte (ALPHA_LO at higher address)
+    SDI 0               ; negate low
+    PLO 8
+    DEC 13              ; → ALPHA_HI (lower address)
+    LDN 13              ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 8               ; R8 = -alpha
 
     ; Now swap: new_alpha = -beta (in R7), new_beta = -alpha (in R8)
     ; Store to memory (big-endian: high byte at lower address)
@@ -1409,24 +1360,21 @@ CE_DONE:
     SMI 1
     STR 10              ; CURRENT_PLY--
 
-    ; -----------------------------------------------
-    ; Negate the returned score (R6 is SCRT linkage - off limits!)
-    ; -----------------------------------------------
-    GLO 9
-    SDI 0
+    ; Negate R9 (score = -score)
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
-    PHI 9               ; R9 = -score
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 9
 
-    ; Save negated score to memory (R9 will be overwritten by stack pops)
-    ; Big-endian: high byte at lower address (SCORE_HI)
+    ; Save negated score to SCORE_HI/LO (R9 clobbered by stack pops)
     RLDI 10, SCORE_HI
-    GHI 9               ; High byte first
+    GHI 9               ; high byte → SCORE_HI (lower address)
     STR 10
     INC 10
-    GLO 9               ; Low byte second
-    STR 10              ; SCORE_HI/LO = negated score
+    GLO 9               ; low byte → SCORE_LO (higher address)
+    STR 10
 
     ; -----------------------------------------------
     ; LMR Re-search Check: Did reduced search beat alpha?
@@ -1527,13 +1475,13 @@ LMR_DO_RESEARCH:
     LDN 10              ; D = beta_lo
     PLO 8               ; R8 = parent's beta
 
-    ; new_alpha = -beta (negate R8)
-    GLO 8
-    SDI 0
-    PLO 7               ; R7.0 = -beta_lo
-    GHI 8
-    SDBI 0
-    PHI 7               ; R7 = -beta = new_alpha
+    ; Negate R8 (beta) → R7 = -beta (new alpha)
+    GLO 8               ; low byte
+    SDI 0               ; negate low
+    PLO 7
+    GHI 8               ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 7               ; R7 = -beta
 
     ; Peek parent's alpha again (R2+13, R2+12)
     GLO 2
@@ -1548,13 +1496,13 @@ LMR_DO_RESEARCH:
     LDN 10              ; D = alpha_lo
     PLO 8               ; R8 = parent's alpha
 
-    ; new_beta = -alpha (negate R8)
-    GLO 8
-    SDI 0
-    PLO 8               ; R8.0 = -alpha_lo
-    GHI 8
-    SDBI 0
-    PHI 8               ; R8 = -alpha = new_beta
+    ; Negate R8 (alpha) in place → R8 = -alpha (new beta)
+    GLO 8               ; low byte
+    SDI 0               ; negate low
+    PLO 8
+    GHI 8               ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 8               ; R8 = -alpha
 
     ; Store new alpha/beta to memory
     RLDI 10, ALPHA_HI
@@ -1586,21 +1534,21 @@ LMR_DO_RESEARCH:
     SMI 1
     STR 10              ; CURRENT_PLY--
 
-    ; Negate returned score
-    GLO 9
-    SDI 0
+    ; Negate R9 (score = -score)
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
-    PHI 9               ; R9 = -score
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
+    PHI 9
 
     ; Save to SCORE_HI/LO
     RLDI 10, SCORE_HI
-    GHI 9               ; High byte
+    GHI 9               ; high byte → SCORE_HI (lower address)
     STR 10
     INC 10
-    GLO 9               ; Low byte
-    STR 10              ; SCORE_HI/LO = re-search score
+    GLO 9               ; low byte → SCORE_LO (higher address)
+    STR 10
 
 LMR_NO_RESEARCH:
 
@@ -2214,27 +2162,25 @@ QUIESCENCE_SEARCH:
     CALL EVALUATE
     ; Returns score in R9 (from white's perspective)
 
-    ; Negate if black to move (R12: 0=white, 8=black)
+    ; Negate R9 if black to move (white-perspective → side-to-move)
     GLO 12
-    ANI $08             ; Check if black (COLOR_MASK)
+    ANI $08
     LBZ QS_SAVE_STANDPAT
-    ; Negate score in R9 (R6 is SCRT linkage - off limits!)
-    GLO 9
-    SDI 0
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
     PHI 9
 
 QS_SAVE_STANDPAT:
-    ; Save stand-pat score to memory as best (avoid R14!)
-    ; Big-endian: high byte at lower address (QS_BEST_HI)
+    ; Save stand-pat score to QS_BEST_HI/LO
     RLDI 10, QS_BEST_HI
-    GHI 9               ; High byte first
+    GHI 9               ; high byte → QS_BEST_HI (lower address)
     STR 10
     INC 10
-    GLO 9               ; Low byte second
-    STR 10              ; QS_BEST = stand-pat
+    GLO 9               ; low byte → QS_BEST_LO (higher address)
+    STR 10
 
     ; -----------------------------------------------
     ; Stand-pat beta cutoff: if stand-pat >= beta, return
@@ -2631,16 +2577,15 @@ QS_CAPTURE_LEGAL:
     CALL EVALUATE
     ; Score in R9 (from white's perspective)
 
-    ; Negate if black to move (R12: 0=white, 8=black)
+    ; Negate R9 if black to move (white-perspective → side-to-move)
     GLO 12
-    ANI $08             ; Check if black (COLOR_MASK)
-    LBZ QS_NO_NEG       ; Long branch - crosses page boundary
-    ; Negate R9 (R6 is SCRT linkage - off limits!)
-    GLO 9
-    SDI 0
+    ANI $08
+    LBZ QS_NO_NEG
+    GLO 9               ; low byte
+    SDI 0               ; negate low
     PLO 9
-    GHI 9
-    SDBI 0
+    GHI 9               ; high byte
+    SDBI 0              ; negate high with borrow
     PHI 9
 QS_NO_NEG:
     ; Save score (R9) before UNMAKE_MOVE clobbers it
@@ -2964,8 +2909,7 @@ OKM_K1_SWAP:
     LDN 9
     STXD
 
-    ; Copy killer from R8 to R9-2 (reset R9 first)
-    DEC 9
+    ; Copy killer from R8 to R9 (LDA advanced R9 by 1, undo it)
     DEC 9
     LDA 8               ; killer low
     STR 9
@@ -3492,14 +3436,14 @@ SEND_UCI_INFO:
     ANI $80
     LBZ SUCI_POSITIVE
 
-    ; Negative: print '-' and negate R13
+    ; Negative: print '-' and negate R13 to get absolute value
     LDI '-'
     CALL SERIAL_WRITE_CHAR
-    GLO 13
-    SDI 0                       ; D = 0 - low byte
+    GLO 13                      ; low byte
+    SDI 0                       ; negate low
     PLO 13
-    GHI 13
-    SDBI 0                      ; D = 0 - high byte - borrow
+    GHI 13                      ; high byte
+    SDBI 0                      ; negate high with borrow
     PHI 13
 
 SUCI_POSITIVE:

@@ -190,6 +190,16 @@ ADD_MOVE_ENCODED:
     ; Ensure X=2 for stack operations
     SEX 2
 
+    ; Bounds guard: cap at 64 moves per ply (128 bytes)
+    ; R15 = ply start, R9 = current write pointer
+    ; When (R9.0 XOR R15.0) has bit 7 set, we've crossed the 128-byte boundary
+    GLO 9
+    STR 2
+    GLO 15
+    XOR                 ; D = R9.0 XOR R15.0
+    ANI $80             ; Check bit 7
+    LBNZ AME_FULL       ; Move list full, skip this move
+
     ; Save R7 (used by slider loops for current position!)
     GLO 7
     STXD
@@ -222,6 +232,10 @@ ADD_MOVE_ENCODED:
     LDX
     PLO 7
 
+    RETN
+
+AME_FULL:
+    ; Move list full (64 moves) - silently discard
     RETN
 
 ; ------------------------------------------------------------------------------
@@ -347,7 +361,7 @@ GEN_CASTLE_BLACK:
     LDN 7
     LBNZ GEN_CASTLE_BQ  ; g8 occupied, can't castle
 
-    ; Squares empty - generate castling move (attack checks in search loop)
+    ; Squares empty - generate castling move
     LDI $74
     PHI 13              ; From (e8)
     LDI $76
@@ -390,7 +404,7 @@ GEN_CASTLE_WHITE:
     LDN 7
     LBNZ GEN_CASTLE_WQ  ; g1 occupied, can't castle
 
-    ; Squares empty - generate castling move (attack checks in search loop)
+    ; Squares empty - generate castling move
     LDI $04
     PHI 13              ; From (e1)
     LDI $06
