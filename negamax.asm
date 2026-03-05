@@ -1765,7 +1765,24 @@ NEGAMAX_BETA_NOT_ROOT:
     STR 2
     DEC 2
 
-    ; Store killer move (for move ordering optimization)
+    ; Encode cutoff move into R11 for killer table
+    ; (R11 has stale data from ORDER_CAPTURES_FIRST, not the actual move)
+    RLDI 10, UNDO_FROM
+    LDN 10              ; D = from square
+    PHI 13              ; R13.1 = from
+    INC 10
+    LDN 10              ; D = to square
+    PLO 13              ; R13.0 = to
+    ; Flags = 0 (MOVE_NORMAL); promotions rare in cutoffs
+    RLDI 10, MOVE_FLAGS_TEMP
+    LDI 0
+    STR 10
+    CALL ENCODE_MOVE_16BIT
+    ; R8 = encoded move
+    GHI 8
+    PHI 11
+    GLO 8
+    PLO 11              ; R11 = properly encoded cutoff move
     CALL STORE_KILLER_MOVE
 
     ; -- TT node flag: BETA (lower bound) --
