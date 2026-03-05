@@ -132,8 +132,8 @@ WORKSPACE_CLEAR:
     LDI $00
     PLO 9               ; R9 = $0300
 
-    LDI 0               ; Value to write
 WORKSPACE_CLEAR_LOOP:
+    LDI 0               ; Value to write (must reload — GHI/GLO clobber D)
     STR 10
     INC 10
     DEC 9
