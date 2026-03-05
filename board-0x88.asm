@@ -245,6 +245,13 @@ FUTILITY_TABLE  EQU $64ED   ; 16 bytes - per-ply futility data ($64ED-$64FC)
                             ; 4 bytes/ply: [flag][eval_hi][eval_lo][pad] × 4 plies
 ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
 ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
+UNDO_CAP_SQ     EQU $64FF   ; 1 byte - square where captured piece was (EP: computed, normal: to)
+
+; ------------------------------------------------------------------------------
+; Per-Ply Node Best Move: $6700-$670F (16 bytes)
+; ------------------------------------------------------------------------------
+NODE_BEST_MOVE  EQU $6700   ; 16 bytes: per-ply best move ($6700-$670F)
+                            ; Ply N: $6700 + N*2 = from, $6700 + N*2 + 1 = to
 
 ; ------------------------------------------------------------------------------
 ; UCI input buffer: $7000-$77FF (2048 bytes)

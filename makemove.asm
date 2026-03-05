@@ -70,9 +70,77 @@ MAKE_MOVE:
     GHI 10
     STR 9
 
+    ; Save capture square (default = to, changed by EP)
+    RLDI 9, UNDO_CAP_SQ
+    RLDI 13, UNDO_TO
+    LDN 13
+    STR 9               ; UNDO_CAP_SQ = MOVE_TO (default)
+
     ; Place moving piece at destination
     GLO 10              ; Get moving piece
     STR 8               ; Store at to square (R8 still points there)
+
+    ; =========================================
+    ; EN PASSANT CAPTURE
+    ; =========================================
+    ; Detect: pawn moves to saved EP square, BOARD[to] was empty
+    ; R10.1 = captured piece at BOARD[to], R10.0 = moving piece
+    GHI 10              ; captured piece
+    LBNZ MM_NOT_EP_CAP  ; Normal capture (piece at to) -> skip
+
+    GLO 10              ; moving piece
+    ANI PIECE_MASK
+    XRI PAWN_TYPE
+    LBNZ MM_NOT_EP_CAP  ; Not a pawn -> skip
+
+    ; Pawn moved to empty square. Check if to == saved EP square.
+    RLDI 9, UNDO_EP     ; EP square from BEFORE this move
+    LDN 9               ; D = saved EP square
+    XRI NO_EP
+    LBZ MM_NOT_EP_CAP   ; No EP was active ($FF) -> skip
+    RLDI 9, UNDO_EP
+    LDN 9               ; D = EP square
+    STR 2
+    RLDI 9, UNDO_TO
+    LDN 9               ; D = to square
+    XOR
+    LBNZ MM_NOT_EP_CAP  ; to != EP -> not en passant
+
+    ; EP CAPTURE! Captured pawn at (from_rank | to_file)
+    RLDI 9, UNDO_FROM
+    LDN 9
+    ANI $70             ; from rank
+    PLO 13
+    RLDI 9, UNDO_TO
+    LDN 9
+    ANI $07             ; to file
+    STR 2
+    GLO 13
+    OR                  ; D = captured square
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[cap_sq]
+
+    ; Read and save the captured pawn
+    LDN 8               ; D = enemy pawn
+    PHI 10              ; R10.1 = captured pawn (update from EMPTY)
+    RLDI 9, UNDO_CAPTURED
+    GHI 10
+    STR 9               ; UNDO_CAPTURED = enemy pawn
+
+    ; Save EP capture square
+    GLO 8               ; D = cap_sq (low byte of R8)
+    STXD                ; push to stack
+    RLDI 9, UNDO_CAP_SQ
+    IRX
+    LDX                 ; D = cap_sq
+    STR 9               ; UNDO_CAP_SQ = captured square
+
+    ; Remove captured pawn from board
+    LDI EMPTY
+    STR 8               ; BOARD[cap_sq] = EMPTY
+
+MM_NOT_EP_CAP:
 
     ; =========================================
     ; PAWN PROMOTION
@@ -289,12 +357,61 @@ MM_NOT_KING:
     XRI BLACK           ; Toggle between 0 and 8
     STR 8
 
-    ; Clear en passant square (simplified - proper handling later)
+    ; =========================================
+    ; EN PASSANT SQUARE UPDATE
+    ; =========================================
+    ; Set EP target if pawn double-push, else clear
     ; R8 is at SIDE ($6080), increment to reach EP_SQUARE ($6082)
     INC 8               ; $6081 = STATE_CASTLING
     INC 8               ; $6082 = STATE_EP_SQUARE
+
+    ; Check if moving piece is a pawn
+    GLO 10              ; D = moving piece
+    ANI PIECE_MASK      ; piece type
+    XRI PAWN_TYPE
+    LBNZ MM_EP_CLEAR    ; Not a pawn -> clear EP
+
+    ; Pawn moved. Check rank difference = $20 (double push)
+    RLDI 9, UNDO_FROM
+    LDN 9               ; D = from
+    ANI $70             ; from rank
+    PLO 13              ; R13.0 = from rank
+    RLDI 9, UNDO_TO
+    LDN 9               ; D = to
+    ANI $70             ; to rank
+    STR 2
+    GLO 13              ; D = from rank
+    SM                  ; D = from_rank - to_rank
+
+    ; White double push: from_rank - to_rank = $E0 (-$20)
+    ; Black double push: from_rank - to_rank = $20
+    XRI $E0
+    LBZ MM_EP_WHITE     ; White pawn double push
+    XRI $C0             ; XOR chain: $20 XOR $E0 = $C0, XOR $C0 = 0
+    LBZ MM_EP_BLACK     ; Black pawn double push
+    LBR MM_EP_CLEAR     ; Not a double push
+
+MM_EP_WHITE:
+    ; EP square = to + DIR_N ($F0) = one rank above destination
+    RLDI 9, UNDO_TO
+    LDN 9
+    ADI DIR_N           ; to - $10 (square pawn passed through)
+    STR 8               ; STATE_EP_SQUARE = EP target
+    LBR MM_EP_DONE
+
+MM_EP_BLACK:
+    ; EP square = to + DIR_S ($10) = one rank below destination
+    RLDI 9, UNDO_TO
+    LDN 9
+    ADI DIR_S           ; to + $10 (square pawn passed through)
+    STR 8               ; STATE_EP_SQUARE = EP target
+    LBR MM_EP_DONE
+
+MM_EP_CLEAR:
     LDI NO_EP
     STR 8
+
+MM_EP_DONE:
 
     ; ===========================================
     ; FIFTY-MOVE RULE: Update halfmove clock
@@ -392,15 +509,15 @@ MM_HASH_GOT_PIECE:
     PHI 8               ; R8.1 = from_square
     CALL HASH_XOR_PIECE_SQ
 
-    ; --- Step 2: XOR out [captured, to] ---
-    ; Get captured piece from UNDO_CAPTURED
+    ; --- Step 2: XOR out [captured, captured_square] ---
+    ; For normal captures: captured_square = to
+    ; For EP captures: captured_square = (from_rank | to_file)
     RLDI 10, UNDO_CAPTURED
     LDN 10              ; D = captured piece
     PLO 8               ; R8.0 = captured piece
-    ; Get to square
-    RLDI 10, UNDO_TO
-    LDN 10              ; D = to_square
-    PHI 8               ; R8.1 = to_square
+    RLDI 10, UNDO_CAP_SQ
+    LDN 10              ; D = capture square
+    PHI 8               ; R8.1 = capture square
     CALL HASH_XOR_PIECE_SQ  ; skips if captured == EMPTY
 
     ; --- Step 3: XOR in [moving piece, to] ---
@@ -477,10 +594,36 @@ UNMAKE_MOVE:
     LDN 8               ; D = piece at to square
     PLO 10              ; Save in R10.0
 
-    ; Restore captured piece at to square
+    ; Restore captured piece at actual capture square
+    ; (handles EP: cap_sq != to for en passant captures)
+    RLDI 9, UNDO_CAP_SQ
+    LDN 9               ; D = cap_sq
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8               ; R8 = &BOARD[cap_sq]
     RLDI 9, UNDO_CAPTURED
-    LDN 9               ; Get captured piece
-    STR 8               ; Put back at to square
+    LDN 9
+    STR 8               ; BOARD[cap_sq] = captured piece
+
+    ; For EP: clear BOARD[to] (cap_sq != to)
+    RLDI 9, UNDO_CAP_SQ
+    LDN 9               ; D = cap_sq
+    STR 2
+    RLDI 9, UNDO_TO
+    LDN 9               ; D = to
+    XOR
+    LBZ UM_CAP_DONE     ; cap_sq == to -> nothing more to do
+
+    ; EP case: clear BOARD[to]
+    RLDI 9, UNDO_TO
+    LDN 9
+    PLO 8
+    LDI HIGH(BOARD)
+    PHI 8
+    LDI EMPTY
+    STR 8               ; BOARD[to] = EMPTY
+
+UM_CAP_DONE:
 
     ; =========================================
     ; PAWN PROMOTION UNDO
@@ -725,15 +868,15 @@ UM_HASH_GOT_PIECE:
     PHI 8               ; R8.1 = to_square
     CALL HASH_XOR_PIECE_SQ
 
-    ; --- Step 2: XOR in [captured, to] ---
-    ; Captured piece is in UNDO_CAPTURED
+    ; --- Step 2: XOR in [captured, captured_square] ---
+    ; For normal captures: captured_square = to
+    ; For EP captures: captured_square = (from_rank | to_file)
     RLDI 10, UNDO_CAPTURED
     LDN 10              ; D = captured piece
     PLO 8               ; R8.0 = captured piece
-    ; Get to square
-    RLDI 10, UNDO_TO
-    LDN 10              ; D = to_square
-    PHI 8               ; R8.1 = to_square
+    RLDI 10, UNDO_CAP_SQ
+    LDN 10              ; D = capture square
+    PHI 8               ; R8.1 = capture square
     CALL HASH_XOR_PIECE_SQ  ; skips if captured == EMPTY
 
     ; --- Step 3: XOR in [moving piece, from] ---

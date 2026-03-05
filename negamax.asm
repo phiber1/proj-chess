@@ -809,6 +809,20 @@ NEGAMAX_SKIP_KILLER:
     CALL ORDER_CAPTURES_FIRST
 
 NEGAMAX_SKIP_CAPTURE_ORDER:
+    ; -----------------------------------------------
+    ; Order TT move first (highest priority)
+    ; Ply 1+ only (root skips TT_PROBE)
+    ; -----------------------------------------------
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = current ply
+    LBZ NEGAMAX_SKIP_TT_ORDER  ; Root: no valid TT move
+
+    INC 2               ; Peek move count from stack
+    LDN 2
+    DEC 2
+    CALL ORDER_TT_MOVE
+
+NEGAMAX_SKIP_TT_ORDER:
 
     ; -----------------------------------------------
     ; Initialize best score to -INFINITY in memory
@@ -820,6 +834,20 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     INC 10
     LDI $01
     STR 10              ; BEST_SCORE_LO = $01 (best = $8001 = -32767, safe to negate)
+
+    ; -----------------------------------------------
+    ; Initialize node best move to 0/0 (no move yet)
+    ; -----------------------------------------------
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL                 ; D = ply * 2
+    PLO 10
+    LDI HIGH(NODE_BEST_MOVE)
+    PHI 10              ; R10 = &NODE_BEST_MOVE[ply]
+    LDI 0
+    STR 10              ; from = 0
+    INC 10
+    STR 10              ; to = 0
 
     ; -----------------------------------------------
     ; Futility Pruning Setup (depth 1 only)
@@ -1258,6 +1286,10 @@ CE_DONE:
     RLDI 10, UNDO_PROMOTION
     LDN 10              ; UNDO_PROMOTION
     STXD
+    ; UNDO_CAP_SQ is at $64FF (not contiguous)
+    RLDI 10, UNDO_CAP_SQ
+    LDN 10              ; UNDO_CAP_SQ
+    STXD
 
     ; -----------------------------------------------
     ; Save BEST_SCORE to stack (2 bytes) for recursive safety
@@ -1268,7 +1300,7 @@ CE_DONE:
     STXD
     LDN 10              ; BEST_SCORE_LO
     STXD
-    ; Stack now has: [BEST_SCORE][UNDO_*][beta][alpha][depth][R9]...
+    ; Stack now has: [BEST_SCORE][UNDO_CAP_SQ][UNDO_*][beta][alpha][depth][R9]...
 
     ; Negate beta from memory → R7 = -beta (new alpha)
     ; Read low byte first for borrow propagation, then high byte
@@ -1384,9 +1416,9 @@ CE_DONE:
     LDN 10              ; D = LMR_OUTER flag
     LBZ LMR_NO_RESEARCH ; Not reduced, skip re-search check
 
-    ; Peek alpha from stack (alpha_hi at R2+13, alpha_lo at R2+12)
+    ; Peek alpha from stack (alpha_hi at R2+14, alpha_lo at R2+13)
     GLO 2
-    ADI 13              ; Calculate offset to alpha_hi
+    ADI 14              ; Calculate offset to alpha_hi
     PLO 10
     GHI 2
     ADCI 0
@@ -1462,9 +1494,9 @@ LMR_DO_RESEARCH:
     STR 13              ; depth_hi++ (with carry)
 
     ; Re-setup alpha/beta for child (same swap as original)
-    ; Peek parent's beta from stack (beta_hi at R2+11, beta_lo at R2+10)
+    ; Peek parent's beta from stack (beta_hi at R2+12, beta_lo at R2+11)
     GLO 2
-    ADI 11
+    ADI 12
     PLO 10
     GHI 2
     ADCI 0
@@ -1483,9 +1515,9 @@ LMR_DO_RESEARCH:
     SDBI 0              ; negate high with borrow
     PHI 7               ; R7 = -beta
 
-    ; Peek parent's alpha again (R2+13, R2+12)
+    ; Peek parent's alpha again (R2+14, R2+13)
     GLO 2
-    ADI 13
+    ADI 14
     PLO 10
     GHI 2
     ADCI 0
@@ -1567,7 +1599,12 @@ LMR_NO_RESEARCH:
     ; -----------------------------------------------
     ; Restore UNDO_* from stack (7 bytes) before UNMAKE_MOVE
     ; -----------------------------------------------
-    ; UNDO_PROMOTION first (it was pushed last - LIFO)
+    ; UNDO_CAP_SQ first (it was pushed last - LIFO)
+    RLDI 10, UNDO_CAP_SQ
+    IRX
+    LDX                 ; UNDO_CAP_SQ
+    STR 10
+    ; UNDO_PROMOTION next
     RLDI 10, UNDO_PROMOTION
     IRX
     LDX                 ; UNDO_PROMOTION
@@ -1735,6 +1772,20 @@ NEGAMAX_DO_BETA_CUTOFF:
     GLO 7               ; Beta low byte
     STR 10
 
+    ; Save cutoff move to NODE_BEST_MOVE (all plies)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL                 ; D = ply * 2
+    PLO 10
+    LDI HIGH(NODE_BEST_MOVE)
+    PHI 10              ; R10 = &NODE_BEST_MOVE[ply]
+    RLDI 7, UNDO_FROM
+    LDA 7               ; D = from
+    STR 10
+    INC 10
+    LDN 7               ; D = to
+    STR 10              ; R7 clobbered — safe (not used before NEGAMAX_RETURN)
+
     ; At root (ply 0), save the cutoff move as BEST_MOVE.
     ; Beta cutoff means this move is "too good" - but at root there's
     ; no parent to reject it, so it IS the best move. Without this,
@@ -1863,6 +1914,20 @@ NEGAMAX_SCORE_BETTER:
     INC 10
     GLO 13              ; Score low byte
     STR 10              ; BEST_SCORE = score
+
+    ; Save node best move for TT (all plies)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    SHL                 ; D = ply * 2
+    PLO 10
+    LDI HIGH(NODE_BEST_MOVE)
+    PHI 10              ; R10 = &NODE_BEST_MOVE[ply]
+    RLDI 7, UNDO_FROM   ; RLDI preserves D!
+    LDA 7               ; D = from, R7 → UNDO_TO
+    STR 10              ; NODE_BEST_MOVE[ply] = from
+    INC 10
+    LDN 7               ; D = to
+    STR 10              ; NODE_BEST_MOVE[ply+1] = to
 
     ; -----------------------------------------------
     ; If at root (PLY == 0), save this move to BEST_MOVE
@@ -2818,6 +2883,138 @@ STORE_KILLER_MOVE:
     GHI 11
     STR 10
 
+    RETN
+
+; ------------------------------------------------------------------------------
+; ORDER_TT_MOVE - Promote TT best move to front of move list
+; ------------------------------------------------------------------------------
+; Input:  R9 = start of move list
+;         D = move count
+; Output: Move list reordered with TT move at front (if found)
+; Uses:   R7, R8, R10, R11, R13
+; Note:   TT_MOVE_HI/LO must be populated by TT_PROBE before calling
+; ------------------------------------------------------------------------------
+ORDER_TT_MOVE:
+    PLO 7               ; R7.0 = move count
+    LBZ OTM_DONE        ; No moves, return
+
+    ; Load TT move (raw from/to squares)
+    RLDI 10, TT_MOVE_HI
+    LDA 10              ; D = from
+    PHI 13              ; R13.1 = from
+    LDN 10              ; D = to
+    PLO 13              ; R13.0 = to
+
+    ; Check validity: both zero = no TT move
+    GHI 13
+    LBNZ OTM_VALID
+    GLO 13
+    LBZ OTM_DONE
+OTM_VALID:
+
+    ; Save move count (ENCODE clobbers R7)
+    GLO 7
+    STXD
+
+    ; Set flags = 0 for encoding
+    RLDI 10, MOVE_FLAGS_TEMP
+    LDI 0
+    STR 10
+
+    ; Encode TT move to 16-bit format
+    CALL ENCODE_MOVE_16BIT
+    ; R8 = encoded TT move (flags=0 in top 2 bits)
+
+    ; Save to R11 for comparison
+    GHI 8
+    PHI 11
+    GLO 8
+    PLO 11              ; R11 = encoded TT move
+
+    ; Restore move count
+    IRX
+    LDX                 ; D = move count
+    PHI 7               ; R7.1 = loop counter
+
+    ; Set up scan pointer
+    GHI 9
+    PHI 8
+    GLO 9
+    PLO 8               ; R8 = list start
+
+OTM_SCAN:
+    GHI 7
+    LBZ OTM_DONE        ; Scanned all, no match
+
+    ; Compare low byte (from + to.bit0 — flags don't affect low byte)
+    LDA 8               ; list move low byte
+    STR 2
+    GLO 11              ; TT low byte
+    XOR
+    LBNZ OTM_NEXT       ; Low bytes differ
+
+    ; Low match — compare high byte masked (ignore flags in bits 6-7)
+    LDN 8               ; list move high byte
+    ANI $3F             ; mask off flags
+    STR 2
+    GHI 11              ; TT high (flags=0, already masked)
+    XOR
+    LBZ OTM_FOUND       ; Match!
+
+OTM_NEXT:
+    INC 8               ; skip high byte
+    GHI 7
+    SMI 1
+    PHI 7
+    LBR OTM_SCAN
+
+OTM_FOUND:
+    ; Match at R8-1 (LDA advanced). Swap with front (R9).
+    DEC 8               ; R8 → matched move low byte
+
+    ; Skip if already at front
+    GHI 8
+    STR 2
+    GHI 9
+    XOR
+    LBNZ OTM_SWAP
+    GLO 8
+    STR 2
+    GLO 9
+    XOR
+    LBZ OTM_DONE        ; Already first
+
+OTM_SWAP:
+    ; Save front (R9) to stack
+    LDA 9               ; front low, R9++
+    STXD
+    LDN 9               ; front high
+    STXD
+
+    ; Copy matched (R8) to front
+    DEC 9               ; R9 back to front low
+    LDA 8               ; src low, R8++
+    STR 9
+    INC 9
+    LDN 8               ; src high
+    STR 9
+    INC 9               ; R9 = front + 2
+
+    ; Copy saved front to matched position
+    DEC 8               ; R8 back to src low
+    IRX
+    LDXA                ; saved high
+    INC 8
+    STR 8               ; R8+1 = saved high
+    DEC 8
+    LDX                 ; saved low
+    STR 8               ; R8 = saved low
+
+    ; Reset R9 to front
+    DEC 9
+    DEC 9
+
+OTM_DONE:
     RETN
 
 ; ------------------------------------------------------------------------------

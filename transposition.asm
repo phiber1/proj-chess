@@ -316,6 +316,13 @@ TT_CLEAR_LOOP:
 TT_PROBE:
     PLO 8               ; R8.0 = required depth
 
+    ; Clear TT_MOVE (prevents stale data if hash misses)
+    RLDI 9, TT_MOVE_HI
+    LDI 0
+    STR 9
+    INC 9
+    STR 9               ; TT_MOVE_HI/LO = 0
+
     ; Load current hash
     RLDI 10, HASH_HI
     LDA 10
@@ -378,15 +385,38 @@ TT_PROBE:
     XOR
     LBNZ TT_PROBE_MISS
 
-    ; Hash matches! Check depth
-    ; R10 now points to score_hi (offset 2)
-    INC 10
-    INC 10              ; Skip score, point to depth (offset 4)
+    ; Hash matches! Save move for ordering (even if depth insufficient)
+    ; R10 at offset 2 (score_hi). Move is at offset 6-7.
+    INC 10              ; → 3
+    INC 10              ; → 4 (depth)
+    INC 10              ; → 5 (flag)
+    INC 10              ; → 6 (move_hi)
+    LDA 10              ; D = move_hi, R10 → 7
+    STXD                ; push move_hi
+    LDN 10              ; D = move_lo
+    STXD                ; push move_lo
+
+    ; Write to TT_MOVE_HI/LO
+    RLDI 9, TT_MOVE_HI
+    IRX
+    LDXA                ; D = move_lo
+    INC 9
+    STR 9               ; TT_MOVE_LO = move_lo
+    DEC 9
+    LDX                 ; D = move_hi
+    STR 9               ; TT_MOVE_HI = move_hi
+
+    ; Navigate back to depth (offset 4)
+    DEC 10              ; → 6
+    DEC 10              ; → 5
+    DEC 10              ; → 4 (depth)
+
+    ; Check depth
     LDN 10              ; Entry depth
     STR 2
     GLO 8               ; Required depth
     SD                  ; D = entry_depth - required_depth
-    LBNF TT_PROBE_MISS  ; Borrow means entry_depth < required
+    LBNF TT_PROBE_MISS  ; Borrow → depth insufficient (but TT_MOVE saved!)
 
     ; Usable hit! Copy entry data to TT_* variables
     ; Back up to start of entry
@@ -520,12 +550,17 @@ TT_STORE:
     STR 10
     INC 10
 
-    ; Best move from BEST_MOVE
-    RLDI 9, BEST_MOVE
-    LDA 9               ; move_hi
+    ; Best move from NODE_BEST_MOVE[ply]
+    RLDI 9, CURRENT_PLY
+    LDN 9               ; D = ply
+    SHL                 ; D = ply * 2
+    PLO 9               ; R9.0 = offset (NODE_BEST_MOVE base = $6700, low = $00)
+    LDI HIGH(NODE_BEST_MOVE)
+    PHI 9               ; R9 = $6700 + ply*2
+    LDA 9               ; from
     STR 10
     INC 10
-    LDN 9               ; move_lo
+    LDN 9               ; to
     STR 10
 
     RETN
