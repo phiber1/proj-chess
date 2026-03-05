@@ -313,7 +313,7 @@ MM_NOT_KING:
     GLO 10              ; Get moving piece
     ANI PIECE_MASK      ; Get piece type
     XRI PAWN_TYPE       ; Is it a pawn?
-    BZ MM_RESET_HALFMOVE
+    LBZ MM_RESET_HALFMOVE
 
     ; No capture, not pawn move - increment halfmove clock
     LDN 8               ; Get current halfmove
@@ -487,6 +487,10 @@ UNMAKE_MOVE:
     ; =========================================
     ; If UNDO_PROMOTION != 0, restore pawn instead of promoted piece
     ; R10.0 = piece from BOARD[to] (promoted piece if promotion)
+    ; Guard: if piece is EMPTY, skip promotion undo (prevents phantom pawn
+    ; from corrupted UNDO_PROMOTION)
+    GLO 10              ; D = piece from BOARD[to]
+    LBZ UM_NOT_PROMOTION ; EMPTY piece = nothing to un-promote
     RLDI 9, UNDO_PROMOTION
     LDN 9               ; D = promotion type (0 if none)
     LBZ UM_NOT_PROMOTION
