@@ -121,8 +121,8 @@ PST_QUEEN:
 ; KING PST (Middlegame) - Castle! Stay safe on the side
 ; ------------------------------------------------------------------------------
 PST_KING:
-    ; Rank 1 - castled king is safest (b1/g1 = strong castling bonus)
-    DB  20, 60, 10,-20,-20, 10, 60, 20
+    ; Rank 1 - castled king is safest (b1/g1 kingside, c1 queenside)
+    DB  20, 60, 40,-20,-20, 10, 60, 20
     ; Rank 2 - behind pawn shelter OK
     DB  20, 20,-10,-30,-30,-10, 20, 20
     ; Rank 3
