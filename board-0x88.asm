@@ -202,6 +202,22 @@ NULL_SAVED_EP     EQU $64A8   ; 1 byte - saved EP square before null move
 ENEMY_COLOR_TEMP  EQU $64A9   ; 1 byte - enemy color for IS_SQUARE_ATTACKED
 
 ; ------------------------------------------------------------------------------
+; Pawn Structure / Bishop Pair / Rook Eval: $64AF-$64B5, $6710-$671F
+; ------------------------------------------------------------------------------
+; Transient: reset each EVALUATE call, used during board scan
+; Per-file pawn counts (8 bytes each, indexed by file 0-7)
+W_PAWN_FILE_CT    EQU $6710   ; 8 bytes - white pawns per file ($6710-$6717)
+B_PAWN_FILE_CT    EQU $6718   ; 8 bytes - black pawns per file ($6718-$671F)
+; Bishop counts
+EVAL_W_BISHOPS    EQU $64AF   ; 1 byte - white bishop count
+EVAL_B_BISHOPS    EQU $64B0   ; 1 byte - black bishop count
+; Rook file tracking (up to 2 rooks per side, $FF = no rook)
+EVAL_W_ROOK_F1    EQU $64B1   ; 1 byte - first white rook's file
+EVAL_W_ROOK_F2    EQU $64B2   ; 1 byte - second white rook's file
+EVAL_B_ROOK_F1    EQU $64B3   ; 1 byte - first black rook's file
+EVAL_B_ROOK_F2    EQU $64B4   ; 1 byte - second black rook's file
+
+; ------------------------------------------------------------------------------
 ; UCI/Hash/TT variables: $64B8-$64C1
 ; ------------------------------------------------------------------------------
 ; Relocated from $6600+ to free up space for larger UCI_BUFFER

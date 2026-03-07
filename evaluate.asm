@@ -70,6 +70,35 @@ EVALUATE:
     INC 11
     STR 11              ; ADV_PAWN_B = 0
 
+    ; Initialize pawn file counts: 16 bytes at $6710-$671F (D is still 0)
+    RLDI 11, W_PAWN_FILE_CT
+    LDI 16              ; 16 bytes to clear
+    PLO 8               ; R8.0 = loop counter
+    LDI 0
+EVAL_CLR_PAWN_CT:
+    STR 11
+    INC 11
+    DEC 8
+    GLO 8
+    LBNZ EVAL_CLR_PAWN_CT
+
+    ; Initialize bishop counts + rook file trackers
+    LDI 0
+    RLDI 11, EVAL_W_BISHOPS
+    STR 11              ; EVAL_W_BISHOPS = 0
+    INC 11
+    STR 11              ; EVAL_B_BISHOPS = 0
+    ; Rook files = $FF (no rook)
+    LDI $FF
+    RLDI 11, EVAL_W_ROOK_F1
+    STR 11              ; EVAL_W_ROOK_F1 = $FF
+    INC 11
+    STR 11              ; EVAL_W_ROOK_F2 = $FF
+    INC 11
+    STR 11              ; EVAL_B_ROOK_F1 = $FF
+    INC 11
+    STR 11              ; EVAL_B_ROOK_F2 = $FF
+
 EVAL_SCAN:
     ; Check if square is valid (R13 points to EVAL_SQ_INDEX)
     LDN 13
@@ -163,6 +192,99 @@ EVAL_BP_ADD:
     STR 11              ; ADV_PAWN_B += bonus
 EVAL_NOT_ADV_PAWN:
 
+    ; ==================================================================
+    ; Track pawn files, bishop count, rook files for structure eval
+    ; R8.0 = piece type (1-6), R15.0 = color, R13 -> EVAL_SQ_INDEX
+    ; ==================================================================
+
+    ; --- PAWN: increment per-file count ---
+    GLO 8               ; piece type
+    XRI 1               ; pawn?
+    LBNZ EVAL_NOT_PAWN_TRACK
+    LDN 13              ; D = 0x88 square
+    ANI $07             ; D = file (0-7)
+    STR 2               ; save file on stack
+    GLO 15              ; color
+    LBNZ EVAL_BP_COUNT
+    ; White pawn: W_PAWN_FILE_CT[file]++
+    LDN 2               ; D = file
+    ADI LOW(W_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(W_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11              ; R11 = &W_PAWN_FILE_CT[file]
+    LDN 11
+    ADI 1
+    STR 11
+    LBR EVAL_NOT_PAWN_TRACK
+EVAL_BP_COUNT:
+    ; Black pawn: B_PAWN_FILE_CT[file]++
+    LDN 2               ; D = file
+    ADI LOW(B_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(B_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11              ; R11 = &B_PAWN_FILE_CT[file]
+    LDN 11
+    ADI 1
+    STR 11
+EVAL_NOT_PAWN_TRACK:
+
+    ; --- BISHOP: count per color ---
+    GLO 8               ; piece type
+    XRI 3               ; bishop?
+    LBNZ EVAL_NOT_BISHOP_TRACK
+    GLO 15              ; color
+    LBNZ EVAL_BB_TRACK
+    RLDI 11, EVAL_W_BISHOPS
+    LDN 11
+    ADI 1
+    STR 11
+    LBR EVAL_NOT_BISHOP_TRACK
+EVAL_BB_TRACK:
+    RLDI 11, EVAL_B_BISHOPS
+    LDN 11
+    ADI 1
+    STR 11
+EVAL_NOT_BISHOP_TRACK:
+
+    ; --- ROOK: save file number (up to 2 per side) ---
+    GLO 8               ; piece type
+    XRI 4               ; rook?
+    LBNZ EVAL_NOT_ROOK_TRACK
+    LDN 13              ; 0x88 square
+    ANI $07             ; D = file (0-7)
+    PHI 8               ; save file in R8.1
+    GLO 15              ; color
+    LBNZ EVAL_BROOK_TRACK
+    ; White rook: store in F1 or F2
+    RLDI 11, EVAL_W_ROOK_F1
+    LDN 11
+    XRI $FF             ; is F1 empty?
+    LBNZ EVAL_WR_F2
+    GHI 8               ; D = file
+    STR 11              ; F1 = file
+    LBR EVAL_NOT_ROOK_TRACK
+EVAL_WR_F2:
+    RLDI 11, EVAL_W_ROOK_F2
+    GHI 8
+    STR 11              ; F2 = file
+    LBR EVAL_NOT_ROOK_TRACK
+EVAL_BROOK_TRACK:
+    ; Black rook: store in F1 or F2
+    RLDI 11, EVAL_B_ROOK_F1
+    LDN 11
+    XRI $FF
+    LBNZ EVAL_BR_F2
+    GHI 8
+    STR 11
+    LBR EVAL_NOT_ROOK_TRACK
+EVAL_BR_F2:
+    RLDI 11, EVAL_B_ROOK_F2
+    GHI 8
+    STR 11
+EVAL_NOT_ROOK_TRACK:
+
     ; Get piece value from table
     ; R8.0 = piece type (1-6), need to look up in PIECE_VALUES table
     GLO 8               ; Piece type from R8.0
@@ -247,6 +369,283 @@ EVAL_NO_W_CASTLE:
     SMBI 0
     PHI 9               ; R9 -= 20 (black has castling rights)
 EVAL_NO_B_CASTLE:
+
+    ; ==================================================================
+    ; Doubled Pawn Penalty: -15cp per extra pawn on same file
+    ; Iterate 8 files; if count >= 2, penalty += (count - 1) * 15
+    ; ==================================================================
+
+    ; --- White doubled pawns ---
+    RLDI 11, W_PAWN_FILE_CT     ; $6710
+    LDI 8
+    PLO 13                      ; R13.0 = file counter (temp, will restore later)
+    LDI 0
+    PHI 7                       ; R7.1 = white doubled penalty accumulator
+EVAL_WDP_LOOP:
+    LDA 11                      ; D = pawn count for this file, R11++
+    SMI 2                       ; D = count - 2 (DF=1 if count >= 2)
+    LBNF EVAL_WDP_NEXT          ; count < 2, no doubled
+    ; count >= 2: penalty = (count - 1) * 15
+    ; D = count - 2, so D + 1 = count - 1
+    ADI 1                       ; D = count - 1
+    ; Multiply by 15: x*16 - x = (x<<4) - x
+    ; But with 8-bit arithmetic, max extra pawns = 7, 7*15 = 105 fits in byte
+    PLO 7                       ; save (count-1) in R7.0
+    SHL
+    SHL
+    SHL
+    SHL                         ; D = (count-1) * 16
+    STR 2                       ; M(R2) = (count-1) * 16
+    GLO 7                       ; D = (count-1)
+    SD                          ; D = M(R2) - D = (count-1)*16 - (count-1) = (count-1)*15
+    STR 2                       ; save penalty on stack
+    GHI 7                       ; accumulated penalty
+    ADD                         ; D = accumulated + this file's penalty
+    PHI 7                       ; update accumulator
+EVAL_WDP_NEXT:
+    DEC 13
+    GLO 13
+    LBNZ EVAL_WDP_LOOP
+    ; R7.1 = total white doubled penalty (always positive)
+    ; Subtract from score (penalty for white)
+    GHI 7
+    LBZ EVAL_WDP_DONE           ; skip if 0
+    STR 2
+    GLO 9
+    SM                          ; R9.0 - penalty
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9                       ; R9 -= white doubled penalty
+EVAL_WDP_DONE:
+
+    ; --- Black doubled pawns ---
+    RLDI 11, B_PAWN_FILE_CT     ; $6718
+    LDI 8
+    PLO 13
+    LDI 0
+    PHI 7
+EVAL_BDP_LOOP:
+    LDA 11
+    SMI 2
+    LBNF EVAL_BDP_NEXT
+    ADI 1                       ; D = count - 1
+    PLO 7
+    SHL
+    SHL
+    SHL
+    SHL                         ; (count-1) * 16
+    STR 2
+    GLO 7
+    SD                          ; (count-1) * 15
+    STR 2
+    GHI 7
+    ADD
+    PHI 7
+EVAL_BDP_NEXT:
+    DEC 13
+    GLO 13
+    LBNZ EVAL_BDP_LOOP
+    ; Add black penalty to score (good for white)
+    GHI 7
+    LBZ EVAL_BDP_DONE
+    STR 2
+    GLO 9
+    ADD
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9                       ; R9 += black doubled penalty
+EVAL_BDP_DONE:
+
+    ; ==================================================================
+    ; Bishop Pair Bonus: +30cp for having both bishops
+    ; ==================================================================
+    RLDI 11, EVAL_W_BISHOPS
+    LDN 11
+    SMI 2
+    LBNF EVAL_NO_WBP            ; < 2 bishops
+    GLO 9
+    ADI 30
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9                       ; R9 += 30 (white bishop pair)
+EVAL_NO_WBP:
+    RLDI 11, EVAL_B_BISHOPS
+    LDN 11
+    SMI 2
+    LBNF EVAL_NO_BBP
+    GLO 9
+    SMI 30
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9                       ; R9 -= 30 (black bishop pair)
+EVAL_NO_BBP:
+
+    ; ==================================================================
+    ; Rook on Open/Semi-Open File
+    ; +20cp open (no friendly pawns, no enemy pawns on file)
+    ; +10cp semi-open (no friendly pawns, enemy pawns present)
+    ; ==================================================================
+
+    ; --- White rook 1 ---
+    RLDI 11, EVAL_W_ROOK_F1
+    LDN 11
+    XRI $FF
+    LBZ EVAL_WR_DONE            ; no white rook 1
+    ; Check white pawn count on this file
+    LDN 11                      ; D = file (reload, XRI changed D)
+    ADI LOW(W_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(W_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11                      ; R11 = &W_PAWN_FILE_CT[file]
+    LDN 11
+    LBNZ EVAL_WR1_CLOSED        ; friendly pawns on file, no bonus
+    ; No friendly pawns. Check enemy pawns for open vs semi-open.
+    RLDI 11, EVAL_W_ROOK_F1
+    LDN 11                      ; D = file
+    ADI LOW(B_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(B_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11
+    LDN 11                      ; D = black pawn count on this file
+    LBNZ EVAL_WR1_SEMI
+    ; Fully open file: +20
+    GLO 9
+    ADI 20
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+    LBR EVAL_WR1_CLOSED
+EVAL_WR1_SEMI:
+    ; Semi-open: +10
+    GLO 9
+    ADI 10
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+EVAL_WR1_CLOSED:
+
+    ; --- White rook 2 ---
+    RLDI 11, EVAL_W_ROOK_F2
+    LDN 11
+    XRI $FF
+    LBZ EVAL_WR_DONE
+    LDN 11
+    ADI LOW(W_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(W_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11
+    LDN 11
+    LBNZ EVAL_WR_DONE           ; friendly pawns, no bonus
+    RLDI 11, EVAL_W_ROOK_F2
+    LDN 11
+    ADI LOW(B_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(B_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11
+    LDN 11
+    LBNZ EVAL_WR2_SEMI
+    GLO 9
+    ADI 20
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+    LBR EVAL_WR_DONE
+EVAL_WR2_SEMI:
+    GLO 9
+    ADI 10
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+EVAL_WR_DONE:
+
+    ; --- Black rook 1 ---
+    RLDI 11, EVAL_B_ROOK_F1
+    LDN 11
+    XRI $FF
+    LBZ EVAL_BR_DONE
+    LDN 11
+    ADI LOW(B_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(B_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11
+    LDN 11
+    LBNZ EVAL_BR1_CLOSED        ; friendly pawns, no bonus
+    RLDI 11, EVAL_B_ROOK_F1
+    LDN 11
+    ADI LOW(W_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(W_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11
+    LDN 11
+    LBNZ EVAL_BR1_SEMI
+    ; Fully open: -20 (good for black)
+    GLO 9
+    SMI 20
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+    LBR EVAL_BR1_CLOSED
+EVAL_BR1_SEMI:
+    GLO 9
+    SMI 10
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+EVAL_BR1_CLOSED:
+
+    ; --- Black rook 2 ---
+    RLDI 11, EVAL_B_ROOK_F2
+    LDN 11
+    XRI $FF
+    LBZ EVAL_BR_DONE
+    LDN 11
+    ADI LOW(B_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(B_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11
+    LDN 11
+    LBNZ EVAL_BR_DONE
+    RLDI 11, EVAL_B_ROOK_F2
+    LDN 11
+    ADI LOW(W_PAWN_FILE_CT)
+    PLO 11
+    LDI HIGH(W_PAWN_FILE_CT)
+    ADCI 0
+    PHI 11
+    LDN 11
+    LBNZ EVAL_BR2_SEMI
+    GLO 9
+    SMI 20
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+    LBR EVAL_BR_DONE
+EVAL_BR2_SEMI:
+    GLO 9
+    SMI 10
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+EVAL_BR_DONE:
 
     ; ==================================================================
     ; Endgame King Centralization
