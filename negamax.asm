@@ -1012,6 +1012,52 @@ LMR_CAPTURE_DONE:
     STR 10              ; Store flag
 
     ; -----------------------------------------------
+    ; Castling Legality (moved from movegen for performance)
+    ; Only runs when the search actually tries a castling move,
+    ; not at every node during move generation.
+    ; -----------------------------------------------
+    RLDI 10, DECODED_FLAGS
+    LDN 10
+    XRI MOVE_CASTLE         ; Zero if castling
+    LBNZ NM_NOT_CASTLE
+
+    ; Castling — check king not in check (can't castle out of check)
+    RLDI 10, MOVE_FROM
+    LDN 10                  ; D = from (king square)
+    PLO 11                  ; R11.0 = king square
+    CALL IS_SQUARE_ATTACKED ; D = 1 if in check
+    LBNZ NM_CASTLE_ILLEGAL
+
+    ; Check transit square not attacked (can't castle through check)
+    ; Transit = (from + to) / 2
+    RLDI 10, MOVE_FROM
+    LDA 10                  ; D = from, R10 -> MOVE_TO
+    STR 2                   ; M[R2] = from
+    LDN 10                  ; D = to
+    ADD                     ; D = from + to
+    SHR                     ; D = transit square
+    PLO 11                  ; R11.0 = transit
+    CALL IS_SQUARE_ATTACKED
+    LBZ NM_NOT_CASTLE       ; Transit safe, proceed
+
+NM_CASTLE_ILLEGAL:
+    ; Restore R9 from ply-indexed memory
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    SHL
+    ADI LOW(LOOP_MOVE_PTR)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_PTR)
+    PHI 10
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9
+    LBR NEGAMAX_NEXT_MOVE
+
+NM_NOT_CASTLE:
+
+    ; -----------------------------------------------
     ; Futility Pruning Check (per-ply, depth 1 quiet moves)
     ; -----------------------------------------------
 
