@@ -377,9 +377,32 @@ GEN_CASTLE_BQ:
     ANI CASTLE_BQ
     LBZ GEN_CASTLE_DONE
 
-    ; TODO: Similar check for queenside
-    ; For now, skip
+    ; King on e8 ($74), rook on a8 ($70)
+    ; Must verify b8 ($71), c8 ($72), d8 ($73) are empty
+    LDI HIGH(BOARD)
+    PHI 7
+    LDI $71             ; b8
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_DONE ; b8 occupied
 
+    LDI $72             ; c8
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_DONE ; c8 occupied
+
+    LDI $73             ; d8
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_DONE ; d8 occupied
+
+    ; Squares empty - generate castling move
+    LDI $74
+    PHI 13              ; From (e8)
+    LDI $72
+    PLO 13              ; To (c8)
+    LDI MOVE_CASTLE
+    CALL ADD_MOVE_ENCODED
     LBR GEN_CASTLE_DONE
 
 GEN_CASTLE_WHITE:
@@ -420,7 +443,32 @@ GEN_CASTLE_WQ:
     ANI CASTLE_WQ
     LBZ GEN_CASTLE_DONE
 
-    ; TODO: Implementation for queenside
+    ; King on e1 ($04), rook on a1 ($00)
+    ; Must verify b1 ($01), c1 ($02), d1 ($03) are empty
+    LDI HIGH(BOARD)
+    PHI 7
+    LDI $01             ; b1
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_DONE ; b1 occupied
+
+    LDI $02             ; c1
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_DONE ; c1 occupied
+
+    LDI $03             ; d1
+    PLO 7
+    LDN 7
+    LBNZ GEN_CASTLE_DONE ; d1 occupied
+
+    ; Squares empty - generate castling move
+    LDI $04
+    PHI 13              ; From (e1)
+    LDI $02
+    PLO 13              ; To (c1)
+    LDI MOVE_CASTLE
+    CALL ADD_MOVE_ENCODED
 
 GEN_CASTLE_DONE:
     ; Pop castling rights and king square from stack
