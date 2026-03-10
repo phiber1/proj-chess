@@ -229,6 +229,9 @@ EVAL_PST_LOOP:
     GLO 11
     ADD
     PLO 11
+    GHI 11
+    ADCI 0
+    PHI 11               ; Propagate carry across page boundary
     LDN 11               ; D = low byte of PST address
     PHI 13               ; Save in D.1 temporarily
 

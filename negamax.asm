@@ -209,6 +209,15 @@ NEGAMAX_NOT_FIFTY:
     LDN 10
     LBZ REP_NO_MATCH
 
+    ; Skip if halfmove clock < 4 — after pawn moves or captures,
+    ; repetition is impossible. Scanning the full hash history with
+    ; 16-bit hashes causes false collisions (~5% with 80+ entries),
+    ; which makes the engine return draw (0) for promotion lines.
+    RLDI 10, GAME_STATE + STATE_HALFMOVE
+    LDN 10              ; D = halfmove clock
+    SMI 4
+    LBNF REP_NO_MATCH   ; halfmove < 4, can't be repetition
+
     ; Load current hash into R8
     RLDI 10, HASH_HI
     LDA 10              ; D = HASH_HI
@@ -279,8 +288,16 @@ REP_NO_MATCH:
 
     ; Get the score and save to SCORE_HI/LO BEFORE restore
     ; (RESTORE_PLY_STATE clobbers R9!)
+    ; CRITICAL: Reject mate scores from TT to prevent hash collision
+    ; causing stalemate/checkmate misidentification (16-bit hash limit)
     RLDI 10, TT_SCORE_HI
-    LDA 10              ; score_hi
+    LDN 10              ; D = score_hi
+    XRI $7F
+    LBZ NEGAMAX_TT_MISS ; Positive mate score → re-search to verify
+    LDN 10              ; D = score_hi (reload)
+    XRI $80
+    LBZ NEGAMAX_TT_MISS ; Negative mate score → re-search to verify
+    LDA 10              ; D = score_hi, R10 → score_lo
     PHI 9
     LDN 10              ; score_lo
     PLO 9               ; R9 = stored score
@@ -1088,6 +1105,12 @@ NM_NOT_CASTLE:
     LDN 10              ; D = piece at target
     LBNZ NEGAMAX_NOT_FUTILE  ; Non-empty = capture, don't prune
 
+    ; Check if move is a promotion (never prune — changes material)
+    RLDI 10, DECODED_FLAGS
+    LDN 10              ; D = move flags
+    XRI MOVE_PROMOTION  ; Zero if promotion
+    LBZ NEGAMAX_NOT_FUTILE  ; Promotion, don't prune
+
     ; Add FUTILITY_MARGIN (150 = $0096)
     GLO 11
     ADI FUTILITY_MARGIN_D1_LO  ; Add low byte
@@ -1213,6 +1236,12 @@ NEGAMAX_MOVE_LEGAL:
     RLDI 10, LMR_IS_CAPTURE
     LDN 10              ; D = capture flag
     LBNZ LMR_SKIP       ; Is capture, skip LMR
+
+    ; Condition 4: Not a promotion? (promotions change material, never reduce)
+    RLDI 10, DECODED_FLAGS
+    LDN 10              ; D = move flags
+    XRI MOVE_PROMOTION  ; Zero if promotion
+    LBZ LMR_SKIP        ; Promotion, skip LMR
 
     ; All conditions met - set LMR_REDUCED = 1
     RLDI 10, LMR_REDUCED

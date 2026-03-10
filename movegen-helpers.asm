@@ -239,46 +239,19 @@ AME_FULL:
     RETN
 
 ; ------------------------------------------------------------------------------
-; GEN_PAWN_PROMOTION - Generate all 4 promotion moves
+; GEN_PAWN_PROMOTION - Generate queen promotion move
 ; ------------------------------------------------------------------------------
 ; Input:  R11.1 = from square (pawn on 7th rank)
 ;         R11.0 = to square (8th rank)
 ;         R9 = move list pointer
-; Output: 4 moves added (Q, R, B, N promotions)
+; Output: 1 queen promotion move added
 ; ------------------------------------------------------------------------------
 GEN_PAWN_PROMOTION:
-    ; For now, generate 4 moves with MOVE_PROMOTION flag
-    ; (All 4 use same flag; piece type could be encoded differently)
+    ; Generate queen promotion only (engine always promotes to queen)
     ; NOTE: ADD_MOVE_ENCODED now takes flags in D (not R14 - BIOS uses it)
-
-    ; Queen promotion
     GHI 11              ; From (from R11.1)
     PHI 13
     GLO 11              ; To
-    PLO 13
-    LDI MOVE_PROMOTION
-    CALL ADD_MOVE_ENCODED
-
-    ; Rook promotion
-    GHI 11
-    PHI 13
-    GLO 11
-    PLO 13
-    LDI MOVE_PROMOTION
-    CALL ADD_MOVE_ENCODED
-
-    ; Bishop promotion
-    GHI 11
-    PHI 13
-    GLO 11
-    PLO 13
-    LDI MOVE_PROMOTION
-    CALL ADD_MOVE_ENCODED
-
-    ; Knight promotion
-    GHI 11
-    PHI 13
-    GLO 11
     PLO 13
     LDI MOVE_PROMOTION
     CALL ADD_MOVE_ENCODED

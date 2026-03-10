@@ -795,6 +795,260 @@ EG_NO_W_ADV:
 EG_NO_B_ADV:
 
     ; ==================================================================
+    ; Passed Pawn Bonus (endgame only, ranks 5-7)
+    ; A pawn is "passed" if no enemy pawns on same or adjacent files.
+    ; Uses W_PAWN_FILE_CT / B_PAWN_FILE_CT arrays (already populated).
+    ; Only checks ranks 5-7 (white) / 4-2 (black) for bonus.
+    ; Bonus: rank 5 = +40, rank 6 = +60, rank 7 = +120
+    ; ==================================================================
+
+    ; --- White passed pawns ---
+    LDI 0
+    PLO 13              ; R13.0 = file counter (0-7)
+    RLDI 11, W_PAWN_FILE_CT
+
+PP_W_LOOP:
+    LDN 11              ; D = W_PAWN_FILE_CT[file]
+    LBZ PP_W_NEXT       ; no white pawn on this file
+
+    ; White pawn exists — check if passed (no black pawns on file-1, file, file+1)
+    ; Check B_PAWN_FILE_CT[file]
+    GLO 13              ; D = file
+    ADI LOW(B_PAWN_FILE_CT)
+    PLO 10
+    LDI HIGH(B_PAWN_FILE_CT)
+    ADCI 0
+    PHI 10              ; R10 = &B_PAWN_FILE_CT[file]
+    LDN 10
+    LBNZ PP_W_NEXT      ; black pawn on same file, not passed
+
+    ; Check B_PAWN_FILE_CT[file-1] (skip if file == 0)
+    GLO 13
+    LBZ PP_W_LEFT_OK
+    DEC 10              ; R10 = &B_PAWN_FILE_CT[file-1]
+    LDN 10
+    INC 10              ; restore R10
+    LBNZ PP_W_NEXT      ; black pawn on left file
+PP_W_LEFT_OK:
+
+    ; Check B_PAWN_FILE_CT[file+1] (skip if file == 7)
+    GLO 13
+    XRI 7
+    LBZ PP_W_RIGHT_OK
+    INC 10              ; R10 = &B_PAWN_FILE_CT[file+1]
+    LDN 10
+    DEC 10              ; restore R10
+    LBNZ PP_W_NEXT      ; black pawn on right file
+PP_W_RIGHT_OK:
+
+    ; Passed! Scan ranks 7-2 for the most advanced white pawn
+    LDI HIGH(BOARD)
+    PHI 10
+
+    ; Rank 7: square = $60 + file
+    GLO 13
+    ORI $60
+    PLO 10
+    LDN 10
+    XRI W_PAWN
+    LBZ PP_W_R7
+
+    ; Rank 6: square = $50 + file
+    GLO 13
+    ORI $50
+    PLO 10
+    LDN 10
+    XRI W_PAWN
+    LBZ PP_W_R6
+
+    ; Rank 5: square = $40 + file
+    GLO 13
+    ORI $40
+    PLO 10
+    LDN 10
+    XRI W_PAWN
+    LBZ PP_W_R5
+
+    ; Rank 4: square = $30 + file
+    GLO 13
+    ORI $30
+    PLO 10
+    LDN 10
+    XRI W_PAWN
+    LBZ PP_W_R4
+
+    ; Rank 3: square = $20 + file
+    GLO 13
+    ORI $20
+    PLO 10
+    LDN 10
+    XRI W_PAWN
+    LBZ PP_W_R3
+
+    ; Rank 2: square = $10 + file
+    GLO 13
+    ORI $10
+    PLO 10
+    LDN 10
+    XRI W_PAWN
+    LBNZ PP_W_NEXT      ; no white pawn found
+
+    LDI 20              ; Rank 2 bonus
+    LBR PP_W_ADD
+PP_W_R3:
+    LDI 35
+    LBR PP_W_ADD
+PP_W_R4:
+    LDI 55
+    LBR PP_W_ADD
+PP_W_R5:
+    LDI 80
+    LBR PP_W_ADD
+PP_W_R6:
+    LDI 120
+    LBR PP_W_ADD
+PP_W_R7:
+    LDI 200
+PP_W_ADD:
+    STR 2
+    GLO 9
+    ADD
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9               ; R9 += passed pawn bonus
+
+PP_W_NEXT:
+    INC 11              ; next W_PAWN_FILE_CT entry
+    INC 13              ; file++
+    GLO 13
+    XRI 8
+    LBNZ PP_W_LOOP
+
+    ; --- Black passed pawns ---
+    LDI 0
+    PLO 13              ; R13.0 = file counter (0-7)
+    RLDI 11, B_PAWN_FILE_CT
+
+PP_B_LOOP:
+    LDN 11              ; D = B_PAWN_FILE_CT[file]
+    LBZ PP_B_NEXT       ; no black pawn on this file
+
+    ; Black pawn exists — check if passed (no white pawns on file-1, file, file+1)
+    ; Check W_PAWN_FILE_CT[file]
+    GLO 13
+    ADI LOW(W_PAWN_FILE_CT)
+    PLO 10
+    LDI HIGH(W_PAWN_FILE_CT)
+    ADCI 0
+    PHI 10              ; R10 = &W_PAWN_FILE_CT[file]
+    LDN 10
+    LBNZ PP_B_NEXT      ; white pawn on same file, not passed
+
+    ; Check W_PAWN_FILE_CT[file-1] (skip if file == 0)
+    GLO 13
+    LBZ PP_B_LEFT_OK
+    DEC 10
+    LDN 10
+    INC 10
+    LBNZ PP_B_NEXT
+PP_B_LEFT_OK:
+
+    ; Check W_PAWN_FILE_CT[file+1] (skip if file == 7)
+    GLO 13
+    XRI 7
+    LBZ PP_B_RIGHT_OK
+    INC 10
+    LDN 10
+    DEC 10
+    LBNZ PP_B_NEXT
+PP_B_RIGHT_OK:
+
+    ; Passed! Scan ranks 2-7 for the most advanced black pawn
+    LDI HIGH(BOARD)
+    PHI 10
+
+    ; Rank 2: square = $10 + file
+    GLO 13
+    ORI $10
+    PLO 10
+    LDN 10
+    XRI B_PAWN
+    LBZ PP_B_R2
+
+    ; Rank 3: square = $20 + file
+    GLO 13
+    ORI $20
+    PLO 10
+    LDN 10
+    XRI B_PAWN
+    LBZ PP_B_R3
+
+    ; Rank 4: square = $30 + file
+    GLO 13
+    ORI $30
+    PLO 10
+    LDN 10
+    XRI B_PAWN
+    LBZ PP_B_R4
+
+    ; Rank 5: square = $40 + file
+    GLO 13
+    ORI $40
+    PLO 10
+    LDN 10
+    XRI B_PAWN
+    LBZ PP_B_R5
+
+    ; Rank 6: square = $50 + file
+    GLO 13
+    ORI $50
+    PLO 10
+    LDN 10
+    XRI B_PAWN
+    LBZ PP_B_R6
+
+    ; Rank 7: square = $60 + file
+    GLO 13
+    ORI $60
+    PLO 10
+    LDN 10
+    XRI B_PAWN
+    LBNZ PP_B_NEXT      ; no black pawn found
+
+    LDI 20              ; Rank 7 bonus (just started)
+    LBR PP_B_SUB
+PP_B_R6:
+    LDI 35
+    LBR PP_B_SUB
+PP_B_R5:
+    LDI 55
+    LBR PP_B_SUB
+PP_B_R4:
+    LDI 80
+    LBR PP_B_SUB
+PP_B_R3:
+    LDI 120
+    LBR PP_B_SUB
+PP_B_R2:
+    LDI 200
+PP_B_SUB:
+    STR 2
+    GLO 9
+    SM                  ; D = R9.0 - bonus
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9               ; R9 -= passed pawn bonus (black advantage)
+
+PP_B_NEXT:
+    INC 11              ; next B_PAWN_FILE_CT entry
+    INC 13              ; file++
+    GLO 13
+    XRI 8
+    LBNZ PP_B_LOOP
+
+    ; ==================================================================
     ; Enemy King Edge Penalty (endgame only, when winning)
     ; Uses KING_EDGE_TABLE (already in binary, 64 bytes)
     ; Values: 0 at edges/corners, 60 at center
