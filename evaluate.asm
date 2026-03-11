@@ -74,8 +74,8 @@ EVALUATE:
     RLDI 11, W_PAWN_FILE_CT
     LDI 16              ; 16 bytes to clear
     PLO 8               ; R8.0 = loop counter
-    LDI 0
 EVAL_CLR_PAWN_CT:
+    LDI 0
     STR 11
     INC 11
     DEC 8

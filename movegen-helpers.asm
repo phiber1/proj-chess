@@ -190,6 +190,10 @@ ADD_MOVE_ENCODED:
     ; Ensure X=2 for stack operations
     SEX 2
 
+    ; Save flags in R8.1 IMMEDIATELY (D = flags on entry)
+    ; R8 is output register — ENCODE_MOVE_16BIT will overwrite it
+    PHI 8               ; R8.1 = flags (safe from D clobber)
+
     ; Bounds guard: cap at 64 moves per ply (128 bytes)
     ; R15 = ply start, R9 = current write pointer
     ; When (R9.0 XOR R15.0) has bit 7 set, we've crossed the 128-byte boundary
@@ -206,12 +210,10 @@ ADD_MOVE_ENCODED:
     GHI 7
     STXD
 
-    ; Store flags from D to MOVE_FLAGS_TEMP (R14 is off-limits)
-    STXD                ; Push flags to stack
+    ; Store saved flags from R8.1 to MOVE_FLAGS_TEMP
     RLDI 7, MOVE_FLAGS_TEMP
-    IRX
-    LDX                 ; Pop flags back to D
-    STR 7               ; Store to memory
+    GHI 8               ; D = saved flags
+    STR 7               ; MOVE_FLAGS_TEMP = flags
 
     CALL ENCODE_MOVE_16BIT
     ; R8 now has encoded move
