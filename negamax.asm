@@ -3362,13 +3362,14 @@ OCF_SCAN_LOOP:
 
     ; Decode move at R10 to get target square
     ; Move format: [flags:2][to:7][from:7]
-    ; Low byte bits 0-6 = from, High byte bits 0-5 << 1 | low byte bit 7 = to
-    LDA 10              ; Low byte
-    PLO 11              ; Save low byte
-    LDN 10              ; High byte
-    PHI 11              ; R11 = encoded move (hi.lo)
+    ; Move list is big-endian: high byte first, low byte second
+    LDA 10              ; High byte (first in big-endian)
+    PHI 11              ; R11.1 = high byte
+    LDN 10              ; Low byte (second in big-endian)
+    PLO 11              ; R11.0 = low byte
 
     ; Extract 'to' square: (high & $3F) << 1 | (low >> 7)
+    GHI 11              ; D = high byte (LDN left D with low byte)
     ANI $3F
     SHL
     PLO 13              ; R13.0 = to bits 1-6
