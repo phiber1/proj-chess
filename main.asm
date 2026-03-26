@@ -64,7 +64,7 @@ MAIN_CONTINUE:
     CALL UCI_INIT
 
     ; Enter main loop
-    BR MAIN_LOOP
+    LBR MAIN_LOOP
 
 ; ==============================================================================
 ; Main Loop

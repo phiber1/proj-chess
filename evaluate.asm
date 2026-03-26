@@ -142,7 +142,7 @@ EVAL_SCAN:
     STR 2               ; save rank<<4 on stack
     GLO 15              ; D = color (0=white, 8=black)
     LBNZ EVAL_BP_ADV
-    ; === White pawn: rank 7=$60 (+96), rank 6=$50 (+64), rank 5=$40 (+32) ===
+    ; === White pawn: rank 7=$60 (+150), rank 6=$50 (+100), rank 5=$40 (+50), rank 4=$30 (+25) ===
     LDN 2
     XRI $60
     LBZ EVAL_WP_R7
@@ -151,23 +151,32 @@ EVAL_SCAN:
     LBZ EVAL_WP_R6
     LDN 2
     XRI $40
+    LBZ EVAL_WP_R5
+    LDN 2
+    XRI $30
     LBNZ EVAL_NOT_ADV_PAWN
-    LDI 32              ; rank 5
+    LDI 25              ; rank 4
+    LBR EVAL_WP_ADD
+EVAL_WP_R5:
+    LDI 50              ; rank 5
     LBR EVAL_WP_ADD
 EVAL_WP_R7:
-    LDI 96              ; rank 7
+    LDI 150             ; rank 7
     LBR EVAL_WP_ADD
 EVAL_WP_R6:
-    LDI 64              ; rank 6
+    LDI 100             ; rank 6
 EVAL_WP_ADD:
     STR 2
     RLDI 11, ADV_PAWN_W
     LDN 11
     ADD
-    STR 11              ; ADV_PAWN_W += bonus
+    LBNF EVAL_WP_NOSAT  ; DF=0: no carry, no overflow
+    LDI 255             ; Overflow: saturate at 255
+EVAL_WP_NOSAT:
+    STR 11              ; ADV_PAWN_W = min(sum, 255)
     LBR EVAL_NOT_ADV_PAWN
 EVAL_BP_ADV:
-    ; === Black pawn: rank 2=$10 (+96), rank 3=$20 (+64), rank 4=$30 (+32) ===
+    ; === Black pawn: rank 2=$10 (+150), rank 3=$20 (+100), rank 4=$30 (+50), rank 5=$40 (+25) ===
     LDN 2
     XRI $10
     LBZ EVAL_BP_R2
@@ -176,20 +185,29 @@ EVAL_BP_ADV:
     LBZ EVAL_BP_R3
     LDN 2
     XRI $30
+    LBZ EVAL_BP_R4
+    LDN 2
+    XRI $40
     LBNZ EVAL_NOT_ADV_PAWN
-    LDI 32              ; rank 4
+    LDI 25              ; rank 5
+    LBR EVAL_BP_ADD
+EVAL_BP_R4:
+    LDI 50              ; rank 4
     LBR EVAL_BP_ADD
 EVAL_BP_R2:
-    LDI 96              ; rank 2
+    LDI 150             ; rank 2
     LBR EVAL_BP_ADD
 EVAL_BP_R3:
-    LDI 64              ; rank 3
+    LDI 100             ; rank 3
 EVAL_BP_ADD:
     STR 2
     RLDI 11, ADV_PAWN_B
     LDN 11
     ADD
-    STR 11              ; ADV_PAWN_B += bonus
+    LBNF EVAL_BP_NOSAT  ; DF=0: no carry, no overflow
+    LDI 255             ; Overflow: saturate at 255
+EVAL_BP_NOSAT:
+    STR 11              ; ADV_PAWN_B = min(sum, 255)
 EVAL_NOT_ADV_PAWN:
 
     ; ==================================================================
@@ -765,7 +783,7 @@ EG_B_HI:
 
     ; ==================================================================
     ; Advanced Pawn Bonus (endgame only)
-    ; Graduated: +32/+64/+96 cp based on distance from promotion
+    ; Graduated: +50/+100/+150 cp based on distance from promotion (saturated at 255)
     ; ==================================================================
 
     ; White advanced pawn bonus (accumulated)
@@ -799,7 +817,7 @@ EG_NO_B_ADV:
     ; A pawn is "passed" if no enemy pawns on same or adjacent files.
     ; Uses W_PAWN_FILE_CT / B_PAWN_FILE_CT arrays (already populated).
     ; Only checks ranks 5-7 (white) / 4-2 (black) for bonus.
-    ; Bonus: rank 5 = +40, rank 6 = +60, rank 7 = +120
+    ; Bonus: rank 2 = +25, rank 3 = +50, rank 4 = +90, rank 5 = +140, rank 6 = +200, rank 7 = +250
     ; ==================================================================
 
     ; --- White passed pawns ---
@@ -893,22 +911,22 @@ PP_W_RIGHT_OK:
     XRI W_PAWN
     LBNZ PP_W_NEXT      ; no white pawn found
 
-    LDI 20              ; Rank 2 bonus
+    LDI 25              ; Rank 2 bonus
     LBR PP_W_ADD
 PP_W_R3:
-    LDI 35
+    LDI 50
     LBR PP_W_ADD
 PP_W_R4:
-    LDI 55
+    LDI 90
     LBR PP_W_ADD
 PP_W_R5:
-    LDI 80
+    LDI 140
     LBR PP_W_ADD
 PP_W_R6:
-    LDI 120
+    LDI 200
     LBR PP_W_ADD
 PP_W_R7:
-    LDI 200
+    LDI 250
 PP_W_ADD:
     STR 2
     GLO 9
@@ -1016,22 +1034,22 @@ PP_B_RIGHT_OK:
     XRI B_PAWN
     LBNZ PP_B_NEXT      ; no black pawn found
 
-    LDI 20              ; Rank 7 bonus (just started)
+    LDI 25              ; Rank 7 bonus (just started)
     LBR PP_B_SUB
 PP_B_R6:
-    LDI 35
+    LDI 50
     LBR PP_B_SUB
 PP_B_R5:
-    LDI 55
+    LDI 90
     LBR PP_B_SUB
 PP_B_R4:
-    LDI 80
+    LDI 140
     LBR PP_B_SUB
 PP_B_R3:
-    LDI 120
+    LDI 200
     LBR PP_B_SUB
 PP_B_R2:
-    LDI 200
+    LDI 250
 PP_B_SUB:
     STR 2
     GLO 9

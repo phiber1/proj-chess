@@ -3565,8 +3565,12 @@ SEARCH_POSITION:
     INC 11
     STR 11
 
-    ; --- Initialize Zobrist hash (once — TT benefits from earlier depths) ---
-    CALL HASH_INIT
+    ; --- Zobrist hash: use the incremental hash from UCI parsing ---
+    ; Do NOT call HASH_INIT here! HASH_INIT includes castling/EP Zobrist
+    ; keys, but MAKE_MOVE doesn't XOR castling/EP changes. This creates a
+    ; mismatch between search hashes (from-scratch) and HASH_HIST entries
+    ; (incremental), which breaks repetition detection completely.
+    ; The hash left by UCI parsing is already correct and consistent.
 
 ; ======================================================================
 ; ITERATIVE DEEPENING LOOP
