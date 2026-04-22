@@ -33,26 +33,26 @@ KING_CENTER_TABLE:
     ; Rank 1
     DB -30,-20,-10,  0,  0,-10,-20,-30
 
-; King to edge table (penalty for king being in center - used for enemy)
-; Use this when we're winning to drive enemy king to corner
+; King to edge table (bonus for enemy king on edge/corner — drive-to-mate)
+; Use this when we're winning to drive enemy king to corner.
+; Higher values at edges/corners, lower in center.
 KING_EDGE_TABLE:
-    ; Higher penalty in center, lower on edges/corners
     ; Rank 8
-    DB   0, 10, 20, 30, 30, 20, 10,  0
+    DB  60, 50, 40, 30, 30, 40, 50, 60
     ; Rank 7
-    DB  10, 20, 30, 40, 40, 30, 20, 10
+    DB  50, 40, 30, 20, 20, 30, 40, 50
     ; Rank 6
-    DB  20, 30, 40, 50, 50, 40, 30, 20
+    DB  40, 30, 20, 10, 10, 20, 30, 40
     ; Rank 5
-    DB  30, 40, 50, 60, 60, 50, 40, 30
+    DB  30, 20, 10,  0,  0, 10, 20, 30
     ; Rank 4
-    DB  30, 40, 50, 60, 60, 50, 40, 30
+    DB  30, 20, 10,  0,  0, 10, 20, 30
     ; Rank 3
-    DB  20, 30, 40, 50, 50, 40, 30, 20
+    DB  40, 30, 20, 10, 10, 20, 30, 40
     ; Rank 2
-    DB  10, 20, 30, 40, 40, 30, 20, 10
+    DB  50, 40, 30, 20, 20, 30, 40, 50
     ; Rank 1
-    DB   0, 10, 20, 30, 30, 20, 10,  0
+    DB  60, 50, 40, 30, 30, 40, 50, 60
 
 ; ==============================================================================
 ; EVAL_ENDGAME - Add endgame-specific bonuses

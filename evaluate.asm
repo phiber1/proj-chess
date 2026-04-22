@@ -15,6 +15,11 @@ ROOK_VALUE      EQU 500
 QUEEN_VALUE     EQU 900
 KING_VALUE      EQU 20000   ; Effectively infinite (not used in material count)
 
+; Check bonus: credit the attacker when side-to-move is in check.
+; Applied at EVAL exit — rewards moves that deliver check, encourages
+; attacking play (especially with queen) in endgame mate-chasing.
+CHECK_BONUS     EQU 40
+
 ; Piece value table (indexed by piece type 0-6)
 PIECE_VALUES:
     DW 0            ; Empty (type 0)
@@ -1067,9 +1072,9 @@ PP_B_NEXT:
     LBNZ PP_B_LOOP
 
     ; ==================================================================
-    ; Enemy King Edge Penalty (endgame only, when winning)
+    ; Enemy King Edge Bonus (endgame only, when winning)
     ; Uses KING_EDGE_TABLE (already in binary, 64 bytes)
-    ; Values: 0 at edges/corners, 60 at center
+    ; Values: 60 at edges/corners, 0 at center — rewards driving to edge
     ; Scaled 2x via SHL for effective range 0-120cp
     ; ==================================================================
 
@@ -1139,6 +1144,56 @@ EG_DRIVE_WHITE:
     PHI 9               ; R9 -= edge penalty
 
 EG_EDGE_DONE:
+
+    ; ==================================================================
+    ; Check bonus: if side-to-move is in check, credit the attacker.
+    ; Score is white-relative, so white-in-check → R9 -= CHECK_BONUS;
+    ; black-in-check → R9 += CHECK_BONUS.
+    ; IS_IN_CHECK preserves R11/R12; we save R9 ourselves.
+    ; ==================================================================
+    GLO 9
+    STXD
+    GHI 9
+    STXD
+
+    CALL IS_IN_CHECK        ; uses R12 (side to move); D = 1 if in check
+    PLO 8                   ; R8.0 = result
+
+    IRX
+    LDXA
+    PHI 9
+    LDX
+    PLO 9                   ; R9 restored
+
+    GLO 8
+    LBZ CHECK_BONUS_DONE    ; not in check, skip
+
+    GLO 12                  ; side to move: WHITE=0, BLACK=8
+    LBZ CHECK_BONUS_SUB     ; white to move and white in check → penalty
+
+    ; Black to move and black in check → bonus to white
+    LDI CHECK_BONUS
+    STR 2
+    GLO 9
+    ADD
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+    LBR CHECK_BONUS_DONE
+
+CHECK_BONUS_SUB:
+    ; White to move and white in check → penalty to white
+    LDI CHECK_BONUS
+    STR 2
+    GLO 9
+    SM                      ; SM = D - M(R(X)) → R9.0 - CHECK_BONUS
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+
+CHECK_BONUS_DONE:
 
 BKS_DONE:
     RETN
