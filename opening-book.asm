@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 455, Total size: 8610 bytes
+; Total entries: 465, Total size: 8724 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -11,6 +11,7 @@
 ;   alekhine-modern: 30 entries
 ;   scandinavian: 31 entries
 ;   pirc-austrian: 23 entries
+;   opponent-prep (manual, 2026-04-21): 10 entries targeting Stockfish Skill 2 sidelines
 ; ==============================================================================
 
 ; Book format:
@@ -157,6 +158,29 @@ OPENING_BOOK:
     ; Ply 4: 14-34 63-53 13-33 76-55 -> 01-22 (9611x)
     DB $04, $14, $34, $63, $53, $13, $33, $76, $55, $01, $22
 
+    ; --- Opponent-prep additions (2026-04-21) ---
+    ; Targets Stockfish Skill-2 sidelines observed in match logs. See memory
+    ; 'book_strategy_shift' for rationale and 34-game OOB statistical analysis.
+
+    ; Ply 4: e2e4 g8f6 e4e5 f6e4 -> d2d3 (Alekhine-Krejcik: kick the loose knight)
+    DB $04, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23
+    ; Ply 4: e2e4 g8f6 e4e5 f6g8 -> d2d4 (Alekhine-retreat: claim center, Black gave up tempo)
+    DB $04, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33
+    ; Ply 4: e2e4 e7e6 d2d4 c7c6 -> b1c3 (Franco-Caro hybrid: flexible development)
+    DB $04, $14, $34, $64, $54, $13, $33, $62, $52, $01, $22
+    ; Ply 4: e2e4 c7c6 d2d4 d7d6 -> b1c3 (Caro without d5: normal development)
+    DB $04, $14, $34, $62, $52, $13, $33, $63, $53, $01, $22
+    ; Ply 4: e2e4 c7c6 d2d4 e7e6 -> b1c3 (Caro-French hybrid: develop)
+    DB $04, $14, $34, $62, $52, $13, $33, $64, $54, $01, $22
+    ; Ply 4: e2e4 c7c6 d2d4 d8c7 -> b1c3 (premature queen: ignore, develop)
+    DB $04, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22
+    ; Ply 4: e2e4 e7e6 d2d4 a7a5 -> b1c3 (bizarre flank move: ignore, develop)
+    DB $04, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22
+    ; Ply 4: e2e4 e7e5 g1f3 d7d5 -> e4d5 (Elephant Gambit: capture, always)
+    DB $04, $14, $34, $64, $44, $06, $25, $63, $43, $34, $43
+    ; Ply 4: e2e4 e7e5 g1f3 f8d6 -> f1c4 (odd bishop move: standard Italian setup)
+    DB $04, $14, $34, $64, $44, $06, $25, $75, $53, $05, $32
+
     ; === Ply 5 ===
     ; Ply 5: 14-34 64-44 05-32 71-52 06-25 -> 75-42 (780x)
     DB $05, $14, $34, $64, $44, $05, $32, $71, $52, $06, $25, $75, $42
@@ -248,6 +272,10 @@ OPENING_BOOK:
     DB $06, $13, $33, $63, $53, $14, $34, $76, $55, $01, $22, $66, $56, $15, $35
     ; Ply 6: 14-34 63-53 13-33 76-55 01-22 66-56 -> 15-35 (9611x)
     DB $06, $14, $34, $63, $53, $13, $33, $76, $55, $01, $22, $66, $56, $15, $35
+
+    ; --- Opponent-prep addition (2026-04-21) ---
+    ; Ply 6: e2e4 e7e6 d2d4 d7d5 e4e5 g8e7 -> g1f3 (French Advance ...Ne7: normal Nf3)
+    DB $06, $14, $34, $64, $54, $13, $33, $63, $43, $34, $44, $76, $64, $06, $25
 
     ; === Ply 7 ===
     ; Ply 7: 14-34 64-44 05-32 71-52 06-25 75-42 12-22 -> 76-55 (304x)
