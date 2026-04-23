@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 470, Total size: 8839 bytes
+; Total entries: 473, Total size: 8896 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -13,6 +13,7 @@
 ;   pirc-austrian: 23 entries
 ;   opponent-prep (manual, 2026-04-21): 10 entries targeting Stockfish Skill 2 sidelines
 ;   krejcik-sacrifice (2026-04-22): 5 entries for 1.e4 Nf6 2.e5 Ne4 3.d3 Nxf2!? line
+;   krejcik-retreat (2026-04-22): 3 entries for 1.e4 Nf6 2.e5 Ne4 3.d3 Nc5 line
 ; ==============================================================================
 
 ; Book format:
@@ -282,6 +283,10 @@ OPENING_BOOK:
     ; Ply 6: e2e4 g8f6 e4e5 f6e4 d2d3 e4f2 -> e1f2 (recapture the sac'd knight)
     DB $06, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $15, $04, $15
 
+    ; --- Krejcik-retreat-line addition (2026-04-22) ---
+    ; Ply 6: e2e4 g8f6 e4e5 f6e4 d2d3 e4c5 -> g1f3 (develop, defend e5)
+    DB $06, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25
+
     ; === Ply 7 ===
     ; Ply 7: 14-34 64-44 05-32 71-52 06-25 75-42 12-22 -> 76-55 (304x)
     DB $07, $14, $34, $64, $44, $05, $32, $71, $52, $06, $25, $75, $42, $12, $22, $76, $55
@@ -505,6 +510,10 @@ OPENING_BOOK:
     ; --- Krejcik-sacrifice-line addition (2026-04-22) ---
     ; Ply 8: ...e1f2 b8c6 -> g1f3 (develop knight, defend e5)
     DB $08, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $15, $04, $15, $71, $52, $06, $25
+
+    ; --- Krejcik-retreat-line addition (2026-04-22) ---
+    ; Ply 8: ...g1f3 d7d6 -> e5d6 (simplify, exchange)
+    DB $08, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25, $63, $53, $44, $53
 
     ; === Ply 9 ===
     ; Ply 9: 14-34 64-44 06-25 71-52 05-32 75-42 01-22 76-55 13-23 -> 63-53 (637x)
@@ -831,6 +840,10 @@ OPENING_BOOK:
     ; --- Krejcik-sacrifice-line addition (2026-04-22) ---
     ; Ply 10: ...g1f3 f7f6 -> e5f6 (exf6, simple capture)
     DB $0A, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $15, $04, $15, $71, $52, $06, $25, $65, $55, $44, $55
+
+    ; --- Krejcik-retreat-line addition (2026-04-22) ---
+    ; Ply 10: ...e5d6 c7d6 -> b1c3 (develop knight)
+    DB $0A, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25, $63, $53, $44, $53, $62, $53, $01, $22
 
     ; === Ply 11 ===
     ; Ply 11: 14-34 64-44 06-25 71-52 05-32 75-42 04-06 76-55 13-23 63-53 12-22 -> 60-50 (1090x)
