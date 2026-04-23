@@ -124,7 +124,7 @@ MOVE_TEMP_LO    EQU $644C   ; 1 byte - saved encoded move low byte
 
 ; Opening book support
 GAME_PLY        EQU $644D   ; 1 byte - game ply (moves since start position)
-BOOK_PLY_LIMIT  EQU 13      ; Stop MOVE_HIST recording past this ply (book depth + 1)
+BOOK_PLY_LIMIT  EQU 15      ; Stop MOVE_HIST recording past this ply (max book ply + 1)
 BOOK_MOVE_FROM  EQU $644E   ; 1 byte - book response from square
 BOOK_MOVE_TO    EQU $644F   ; 1 byte - book response to square
 
