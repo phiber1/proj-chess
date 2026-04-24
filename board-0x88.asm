@@ -216,6 +216,12 @@ EVAL_W_ROOK_F1    EQU $64B1   ; 1 byte - first white rook's file
 EVAL_W_ROOK_F2    EQU $64B2   ; 1 byte - second white rook's file
 EVAL_B_ROOK_F1    EQU $64B3   ; 1 byte - first black rook's file
 EVAL_B_ROOK_F2    EQU $64B4   ; 1 byte - second black rook's file
+; Queen counts (for redundant-queen cap: extra queens past the first score 0 cp)
+W_QUEEN_CNT       EQU $64B5   ; 1 byte - white queen count
+B_QUEEN_CNT       EQU $64B6   ; 1 byte - black queen count
+; Queen squares (last queen seen, for queen-king proximity bonus). $FF = no queen.
+W_QUEEN_SQ        EQU $6720   ; 1 byte - 0x88 square of white queen ($FF if none)
+B_QUEEN_SQ        EQU $6721   ; 1 byte - 0x88 square of black queen ($FF if none)
 
 ; ------------------------------------------------------------------------------
 ; UCI/Hash/TT variables: $64B8-$64C1

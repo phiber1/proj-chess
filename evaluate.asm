@@ -20,6 +20,21 @@ KING_VALUE      EQU 20000   ; Effectively infinite (not used in material count)
 ; attacking play (especially with queen) in endgame mate-chasing.
 CHECK_BONUS     EQU 40
 
+; Queen-king proximity bonus (Chebyshev distance lookup).
+; Indexed by distance 0-7. Distance 0 unreachable (queen can't be on king's
+; square). Encourages queen to attack enemy king in endgame, addressing the
+; "queen sits idle" pattern that emerged after the queen-cap removed
+; multi-promotion incentive.
+QUEEN_PROX_BONUS:
+    DB 0    ; distance 0 (not reachable)
+    DB 60   ; distance 1 (adjacent — strongest attack)
+    DB 50   ; distance 2
+    DB 40   ; distance 3
+    DB 30   ; distance 4
+    DB 20   ; distance 5
+    DB 10   ; distance 6
+    DB 0    ; distance 7 (far — no bonus)
+
 ; Piece value table (indexed by piece type 0-6)
 PIECE_VALUES:
     DW 0            ; Empty (type 0)
@@ -87,13 +102,17 @@ EVAL_CLR_PAWN_CT:
     GLO 8
     LBNZ EVAL_CLR_PAWN_CT
 
-    ; Initialize bishop counts + rook file trackers
+    ; Initialize bishop counts + rook file trackers + queen counts
     LDI 0
     RLDI 11, EVAL_W_BISHOPS
     STR 11              ; EVAL_W_BISHOPS = 0
     INC 11
     STR 11              ; EVAL_B_BISHOPS = 0
-    ; Rook files = $FF (no rook)
+    RLDI 11, W_QUEEN_CNT
+    STR 11              ; W_QUEEN_CNT = 0
+    INC 11
+    STR 11              ; B_QUEEN_CNT = 0
+    ; Rook files = $FF (no rook); queen squares also default to $FF (no queen)
     LDI $FF
     RLDI 11, EVAL_W_ROOK_F1
     STR 11              ; EVAL_W_ROOK_F1 = $FF
@@ -103,6 +122,10 @@ EVAL_CLR_PAWN_CT:
     STR 11              ; EVAL_B_ROOK_F1 = $FF
     INC 11
     STR 11              ; EVAL_B_ROOK_F2 = $FF
+    RLDI 11, W_QUEEN_SQ
+    STR 11              ; W_QUEEN_SQ = $FF
+    INC 11
+    STR 11              ; B_QUEEN_SQ = $FF
 
 EVAL_SCAN:
     ; Check if square is valid (R13 points to EVAL_SQ_INDEX)
@@ -308,6 +331,32 @@ EVAL_BR_F2:
     STR 11
 EVAL_NOT_ROOK_TRACK:
 
+    ; --- QUEEN: count + remember square (for redundant-queen cap and proximity bonus) ---
+    GLO 8               ; piece type
+    XRI 5               ; queen?
+    LBNZ EVAL_NOT_QUEEN_TRACK
+    GLO 15              ; color
+    LBNZ EVAL_BQ_TRACK
+    ; White queen
+    RLDI 11, W_QUEEN_CNT
+    LDN 11
+    ADI 1
+    STR 11
+    LDN 13              ; current 0x88 square from EVAL_SQ_INDEX
+    RLDI 11, W_QUEEN_SQ
+    STR 11
+    LBR EVAL_NOT_QUEEN_TRACK
+EVAL_BQ_TRACK:
+    ; Black queen
+    RLDI 11, B_QUEEN_CNT
+    LDN 11
+    ADI 1
+    STR 11
+    LDN 13              ; current 0x88 square from EVAL_SQ_INDEX
+    RLDI 11, B_QUEEN_SQ
+    STR 11
+EVAL_NOT_QUEEN_TRACK:
+
     ; Get piece value from table
     ; R8.0 = piece type (1-6), need to look up in PIECE_VALUES table
     GLO 8               ; Piece type from R8.0
@@ -362,6 +411,231 @@ EVAL_NEXT_SQUARE:
 
 EVAL_DONE:
     ; R9 contains material score
+
+    ; ==================================================================
+    ; Redundant-queen cap: extra queens beyond the first (per side) score
+    ; as 0 cp. Prevents the engine from preferring more pawn promotions
+    ; over delivering mate when it already has a queen — the eval bug
+    ; that caused yesterday's 3-queen shuffle endgame.
+    ; Implementation: subtract (W_QUEEN_CNT - 1) * 900 from white side,
+    ; add (B_QUEEN_CNT - 1) * 900 for black side.
+    ; ==================================================================
+
+    ; --- White side ---
+    RLDI 8, W_QUEEN_CNT
+    LDN 8
+    LBZ QC_W_DONE       ; 0 queens: nothing to cap
+    SMI 1
+    LBZ QC_W_DONE       ; 1 queen: no extras
+
+    PLO 7               ; R7.0 = number of extras (>= 1)
+    LDI 0
+    PHI 7               ; clean R7.1 for predictable DEC
+
+QC_W_LOOP:
+    LDI $84             ; low byte of 900 ($0384)
+    STR 2
+    GLO 9
+    SM
+    PLO 9
+    LDI $03             ; high byte of 900
+    STR 2
+    GHI 9
+    SMB
+    PHI 9
+    DEC 7
+    GLO 7
+    LBNZ QC_W_LOOP
+QC_W_DONE:
+
+    ; --- Black side (extras flip sign: ADD 900 each) ---
+    RLDI 8, B_QUEEN_CNT
+    LDN 8
+    LBZ QC_B_DONE
+    SMI 1
+    LBZ QC_B_DONE
+
+    PLO 7
+    LDI 0
+    PHI 7
+
+QC_B_LOOP:
+    LDI $84
+    STR 2
+    GLO 9
+    ADD
+    PLO 9
+    LDI $03
+    STR 2
+    GHI 9
+    ADC
+    PHI 9
+    DEC 7
+    GLO 7
+    LBNZ QC_B_LOOP
+QC_B_DONE:
+
+    ; ==================================================================
+    ; Queen-king proximity bonus
+    ; For each side that has a queen, bonus = lookup[chebyshev_distance]
+    ; from queen to enemy king. Encourages attacking play in endgame
+    ; (paired with queen-cap which removed the redundant-promotion bias).
+    ; ==================================================================
+
+    ; --- White queen → black king proximity ---
+    RLDI 8, W_QUEEN_SQ
+    LDN 8
+    XRI $FF
+    LBZ QP_W_DONE       ; W_QUEEN_SQ == $FF (no queen), skip
+
+    ; D was XOR'd; reload queen square
+    RLDI 8, W_QUEEN_SQ
+    LDN 8
+    PHI 7               ; R7.1 = W queen 0x88 square
+
+    RLDI 8, GAME_STATE + STATE_B_KING_SQ
+    LDN 8
+    PHI 8               ; R8.1 = B king 0x88 square (use R8.1 to free R8.0)
+
+    ; |q_rank - k_rank|
+    GHI 7
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR                 ; D = q_rank
+    PLO 13              ; R13.0 = q_rank
+    GHI 8
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR                 ; D = k_rank
+    STR 2
+    GLO 13
+    SD                  ; D = k_rank - q_rank
+    LBDF QP_W_RANK_OK
+    SDI 0               ; negate to get magnitude
+QP_W_RANK_OK:
+    PHI 13              ; R13.1 = |rank diff|
+
+    ; |q_file - k_file|
+    GHI 7
+    ANI $07             ; D = q_file
+    PLO 13              ; R13.0 = q_file
+    GHI 8
+    ANI $07             ; D = k_file
+    STR 2
+    GLO 13
+    SD                  ; D = k_file - q_file
+    LBDF QP_W_FILE_OK
+    SDI 0
+QP_W_FILE_OK:
+    PLO 13              ; R13.0 = |file diff|
+
+    ; max(R13.1, R13.0)
+    GHI 13
+    STR 2
+    GLO 13
+    SD                  ; D = R13.1 - R13.0 (rank - file)
+    LBDF QP_W_USE_RANK
+    GLO 13              ; file > rank → max = file
+    LBR QP_W_HAVE_DIST
+QP_W_USE_RANK:
+    GHI 13              ; rank >= file → max = rank
+QP_W_HAVE_DIST:
+    ; D = chebyshev distance (1-7 typically, 0 impossible)
+    ADI LOW(QUEEN_PROX_BONUS)
+    PLO 11
+    LDI 0
+    ADCI HIGH(QUEEN_PROX_BONUS)
+    PHI 11
+    LDN 11              ; D = bonus
+    STR 2
+    GLO 9
+    ADD
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+QP_W_DONE:
+
+    ; --- Black queen → white king proximity (subtract bonus from R9) ---
+    RLDI 8, B_QUEEN_SQ
+    LDN 8
+    XRI $FF
+    LBZ QP_B_DONE
+
+    RLDI 8, B_QUEEN_SQ
+    LDN 8
+    PHI 7
+
+    RLDI 8, GAME_STATE + STATE_W_KING_SQ
+    LDN 8
+    PHI 8
+
+    ; |q_rank - k_rank|
+    GHI 7
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR
+    PLO 13
+    GHI 8
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR
+    STR 2
+    GLO 13
+    SD
+    LBDF QP_B_RANK_OK
+    SDI 0
+QP_B_RANK_OK:
+    PHI 13
+
+    ; |q_file - k_file|
+    GHI 7
+    ANI $07
+    PLO 13
+    GHI 8
+    ANI $07
+    STR 2
+    GLO 13
+    SD
+    LBDF QP_B_FILE_OK
+    SDI 0
+QP_B_FILE_OK:
+    PLO 13
+
+    ; max
+    GHI 13
+    STR 2
+    GLO 13
+    SD
+    LBDF QP_B_USE_RANK
+    GLO 13
+    LBR QP_B_HAVE_DIST
+QP_B_USE_RANK:
+    GHI 13
+QP_B_HAVE_DIST:
+    ADI LOW(QUEEN_PROX_BONUS)
+    PLO 11
+    LDI 0
+    ADCI HIGH(QUEEN_PROX_BONUS)
+    PHI 11
+    LDN 11              ; D = bonus
+    STR 2
+    GLO 9
+    SM                  ; subtract bonus from white-relative score
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+QP_B_DONE:
+
     ; Add piece-square table bonuses
     CALL EVAL_PST
 
