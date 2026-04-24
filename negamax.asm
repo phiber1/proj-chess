@@ -148,11 +148,11 @@ RTC_NO_SAT:
     LDN 13
     LBNZ NEGAMAX_ABORT_RETURN   ; Already aborted, bail out
 
-    ; Check: elapsed >= 150 seconds?
+    ; Check: elapsed >= 180 seconds?
     RLDI 13, SEARCH_ELAPSED
     LDN 13                      ; Reload elapsed (clobbered above)
-    SMI 150                     ; D = elapsed - 150
-    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 120, continue
+    SMI 180                     ; D = elapsed - 180 (budget bumped 2026-04-23)
+    LBNF NEGAMAX_BUDGET_OK      ; DF=0: elapsed < 180, continue
 
     ; Time exceeded — set abort flag
     RLDI 13, SEARCH_ABORTED
