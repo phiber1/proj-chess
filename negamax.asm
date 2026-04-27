@@ -2237,9 +2237,17 @@ NEGAMAX_NO_MOVES:
 
     LBZ NEGAMAX_STALEMATE   ; Long branch - may cross page
 
-    ; Checkmate - return very low score (adjusted by depth for faster mates)
-    ; Score = -MATE_SCORE + depth
-    ; This makes shorter mates score higher
+    ; Checkmate - return mate-score adjusted by ply so shorter mates score higher.
+    ; Formula: score = -MATE_VAL + ply  (standard negamax mate convention)
+    ; The mated side's score is "less negative" the farther from root we are,
+    ; so after the negation chain back to root, the side delivering the mate
+    ; sees a HIGHER score for SHORTER mate sequences (mate-in-1 > mate-in-2 > ...).
+    ;
+    ; FIXED 2026-04-27: previously used SEARCH_DEPTH+1 (depth_remaining), which
+    ; INVERTED the preference — engine consistently picked longer mates over
+    ; shorter ones at d>=3. Manifested visibly only after 2271af2 enabled real
+    ; promotions (positions with multiple forced-mate sequences became reachable).
+    ;
     ; NOTE: Use $8001 (-32767) not $8000 (-32768) to avoid overflow when negating!
     ; -(-32768) = -32768 due to two's complement overflow, breaking score propagation!
     LDI $80
@@ -2247,10 +2255,9 @@ NEGAMAX_NO_MOVES:
     LDI $01
     PLO 9              ; R9 = -32767 (R6 is SCRT linkage - off limits!)
 
-    ; Add depth to make closer mates better
-    ; Load depth low byte from memory
-    RLDI 13, SEARCH_DEPTH + 1
-    LDN 13              ; D = depth low byte
+    ; Add ply (distance from root) so shorter mates score higher
+    RLDI 13, CURRENT_PLY
+    LDN 13              ; D = current ply (0 at root, increases with depth)
     ; Use COMPARE_TEMP for ADD scratch (NEVER use STR 2!)
     RLDI 10, COMPARE_TEMP
     SEX 10
