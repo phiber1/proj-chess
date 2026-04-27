@@ -1,6 +1,6 @@
 # RCA 1802/1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate.
+A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate four times.
 
 ## Quick Stats
 
@@ -8,11 +8,11 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 |------|-------|
 | **CPU** | RCA CDP1806 @ 12 MHz |
 | **RAM** | 32KB |
-| **Code Size** | ~21.3KB (21,343 bytes) |
-| **Search** | Iterative deepening, depth 2-3 |
-| **Opening Book** | 455 entries, 8 openings, 12 ply deep |
-| **Time Control** | 120 seconds per move (DS12887 RTC) |
-| **Wins vs Stockfish** | 2 (Stockfish limited to 5s/move, depth 3) |
+| **Code Size** | ~23.4KB (23,439 bytes) |
+| **Search** | Iterative deepening, depth 2-3 (with check extension) |
+| **Opening Book** | 473 entries, 8 openings + opponent-prep deviations, ply 14 deep |
+| **Time Control** | 180 seconds per move (DS12887 RTC) |
+| **Wins vs Stockfish** | 4 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
 
 ## Wins vs Stockfish
 
@@ -20,30 +20,41 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 |---|------|---------|--------|-------|
 | 1 | Feb 13, 2026 | Alekhine's Defense | Qg7# | 38 |
 | 2 | Mar 2, 2026 | Alekhine's Mokele Mbembe | Qg8# | 35 |
+| 3 | Mar 26, 2026 | Elephant Gambit | Rb8# | 36 |
+| 4 | Apr 21, 2026 | French Advance | Rf8# | 41 |
 
 ## Features
 
 ### Search
 - Negamax with alpha-beta pruning
 - Iterative deepening (depth 1 through target depth)
-- Transposition table (256 entries, Zobrist hashing)
+- Transposition table (256 entries, Zobrist hashing, mate-rejection guard for 16-bit hash collisions)
 - Null move pruning (NMP)
 - Late move reductions (LMR)
 - Reverse futility pruning (RFP) with depth/ply/check guards
-- Futility pruning at frontier nodes with sentinel guard
+- Futility pruning at frontier nodes with sentinel guard (per-ply table sized for MAX_PLY=8)
 - Check extension at search horizon (with ply guard)
 - Killer move ordering
 - Quiescence search with alpha-beta and capture ordering
-- Checkmate and stalemate detection
+- Checkmate detection with ply-based score adjustment (shorter mates score higher per standard convention)
+- Stalemate detection
 - Repetition detection (16-bit position hash history, 255 entries)
 - Fifty-move rule
 
 ### Evaluation
 - Material counting
 - Piece-square tables (all 6 piece types)
+- Bishop pair bonus
+- Rook on semi-open / open file bonus
 - Castling rights bonus (+20cp per side with rights remaining)
-- Graduated advanced pawn bonus (+32/+64/+96cp by rank, endgame only)
-- Endgame king centralization (piece-count weighted)
+- Graduated advanced pawn bonus (+25/+50/+100/+150cp by rank 4/5/6/7, endgame-gated, 8-bit saturated)
+- Passed pawn bonus (file-count detection: +25/+50/+90/+140/+200/+250cp by rank 2-7)
+- Pawn-bonus 1/4 scaling when own queen present (curbs redundant-promotion bias)
+- Queen redundancy cap (extra queens beyond first score 0cp; prevents multi-promotion shuffles)
+- Queen-king proximity bonus (Chebyshev distance lookup, 60→0cp by distance 1-7)
+- Drive-to-edge bonus on enemy king in winning endgame (KING_EDGE_TABLE)
+- Endgame king centralization for own king (piece-count weighted)
+- Check bonus (±40cp on checking moves, endgame-gated)
 - Endgame detection via non-king piece count
 
 ### Board Representation
@@ -56,8 +67,8 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 - Pawn promotion (all piece types, in search and UCI output)
 
 ### Opening Book
-- 455 entries across 8 openings at ply 12 (6 moves per side)
-- Giuoco Piano, Sicilian Rossolimo, French Advance, Caro-Kann Advance, QGD Exchange, Alekhine Modern, Scandinavian, Pirc Austrian
+- 473 entries: 8 mainline openings (Giuoco Piano, Sicilian Rossolimo, French Advance, Caro-Kann Advance, QGD Exchange, Alekhine Modern, Scandinavian, Pirc Austrian)
+- Plus opponent-prep deviations targeting Stockfish Skill-2 sidelines (Krejcik-sacrifice and Krejcik-retreat after Alekhine's Defense, extending coverage to ply 14)
 - Built from PGN databases with `tools/pgn_to_book.py`
 
 ### Interface
@@ -101,18 +112,23 @@ go depth 3       -> bestmove e2e4
 ## Memory Map
 
 ```
-$0000-$535E  Code (~21.3KB)
+$0000-$5B7F  Code (~23.4KB)
 $6000-$607F  Board array (128 bytes, 0x88 format)
 $6080-$608F  Game state (castling, en passant, king positions, etc.)
 $6090-$618F  Move history (undo stack, 256 bytes)
 $6200-$63FF  Move list (512 bytes, 4 plies)
-$6400-$64FF  Search workspace (killers, scores, depths, futility table, etc.)
+$6400-$64FF  Search workspace (killers, scores, undo state, queen counters, etc.)
 $6500-$66FD  Position hash history (255 entries, repetition detection)
-$6780-$67FF  Quiescence search workspace
-$6800-$6FFF  Transposition table (2KB, 256 entries x 8 bytes)
+$6700-$670F  Per-ply best-move table (8 plies × 2 bytes)
+$6710-$671F  Pawn file counts (eval transients, white + black)
+$6720-$6721  Queen square trackers (eval transients)
+$6722-$6741  Futility pruning table (8 plies × 4 bytes)
+$6800-$6FFF  Transposition table (2KB, 256 entries × 8 bytes)
 $7000-$77FF  UCI input buffer (2KB)
 $7F00-$7FFF  Stack
 ```
+
+Workspace area `$6200-$67FF` is zeroed at every `ucinewgame` to prevent stale state between games.
 
 ## File Structure
 
@@ -120,7 +136,7 @@ $7F00-$7FFF  Stack
 | File | Purpose |
 |------|---------|
 | `negamax.asm` | Alpha-beta search, iterative deepening, all pruning |
-| `evaluate.asm` | Material + PST + castling rights + pawn bonus evaluation |
+| `evaluate.asm` | Material + PST + pawn structure + queen-cap + queen-king proximity + endgame heuristics |
 | `pst.asm` | Piece-square tables (6 piece types) |
 | `endgame.asm` | Endgame king centralization heuristics |
 | `transposition.asm` | TT probe/store, Zobrist hash update |
@@ -141,7 +157,7 @@ $7F00-$7FFF  Stack
 |------|---------|
 | `uci.asm` | UCI protocol parser and response |
 | `serial-io.asm` | Serial I/O (BIOS or standalone) |
-| `opening-book.asm` | Opening book data (455 entries) |
+| `opening-book.asm` | Opening book data (473 entries) |
 | `opening-book-lookup.asm` | Book position matching |
 | `main.asm` | Entry point, initialization |
 | `config.asm` | Build configuration |
@@ -167,8 +183,8 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 | **CPU** | RCA 1802 @ 6.1 MHz | RCA 1806 @ 12 MHz |
 | **RAM** | 2KB | 32KB |
 | **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility + check ext |
-| **Opening Book** | Small | 455 entries, 8 openings |
-| **Wins** | N/A | 2 vs Stockfish |
+| **Opening Book** | Small | 473 entries, 8 openings + opponent-prep |
+| **Wins** | N/A | 4 vs Stockfish |
 
 ## Credits
 
