@@ -113,10 +113,20 @@ PRINT_DONE:
 #endif
 
 ; ==============================================================================
-; WORKSPACE_CLEAR - Zero all workspace RAM ($6200-$64FF)
+; WORKSPACE_CLEAR - Zero all workspace RAM ($6200-$67FF)
 ; ==============================================================================
-; Clears 768 bytes ($0300) to prevent stale variable bugs between runs.
+; Clears 1536 bytes ($0600) to prevent stale variable bugs between runs.
 ; Must be called before INIT_BOARD (which populates the board area).
+;
+; Range expanded 2026-04-24 from $6200-$64FF (768 bytes) to $6200-$67FF
+; (1536 bytes) to cover variables that have been added at $6500+ over time:
+;   $6500-$66FD: HASH_HIST (510 bytes - repetition detection)
+;   $6700-$670F: NODE_BEST_MOVE (16 bytes - per-ply best move)
+;   $6710-$671F: W/B_PAWN_FILE_CT (16 bytes - eval transients)
+;   $6720-$6721: W/B_QUEEN_SQ (eval transients)
+;   $6722-$6741: FUTILITY_TABLE (relocated 2026-04-24, 8-ply futility data)
+;   $6742-$67FF: free zone, cleared defensively
+; TT at $6800-$6FFF has its own TT_CLEAR routine.
 ;
 ; Uses: R9 (counter), R10 (pointer)
 ; ==============================================================================
@@ -126,11 +136,11 @@ WORKSPACE_CLEAR:
     LDI $00
     PLO 10              ; R10 = $6200
 
-    ; 768 bytes = $0300
-    LDI $03
+    ; 1536 bytes = $0600
+    LDI $06
     PHI 9
     LDI $00
-    PLO 9               ; R9 = $0300
+    PLO 9               ; R9 = $0600
 
 WORKSPACE_CLEAR_LOOP:
     LDI 0               ; Value to write (must reload — GHI/GLO clobber D)

@@ -263,8 +263,13 @@ CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extensio
 HASH_HIST       EQU $6500   ; 510 bytes - position hash history ($6500-$66FD, 255 entries)
 HASH_HIST_COUNT EQU $64EB   ; 1 byte - number of entries in hash history
 EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detection
-FUTILITY_TABLE  EQU $64ED   ; 16 bytes - per-ply futility data ($64ED-$64FC)
-                            ; 4 bytes/ply: [flag][eval_hi][eval_lo][pad] × 4 plies
+; FUTILITY_TABLE relocated 2026-04-24 from $64ED (16 bytes, 4 plies) to $6722
+; (32 bytes, 8 plies) to accommodate QS/check-extension reaching plies 4-7. With
+; the 180s budget bump, search reaches deeper plies more often, and the old
+; 4-ply size was overflowing into ADV_PAWN_W ($64FD) at ply 4 and HASH_HIST
+; ($6500+) at ply 5+, causing intermittent hangs. Old $64ED-$64FC now free.
+FUTILITY_TABLE  EQU $6722   ; 32 bytes - per-ply futility data ($6722-$6741)
+                            ; 4 bytes/ply: [flag][eval_hi][eval_lo][pad] × 8 plies
 ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
 ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
 UNDO_CAP_SQ     EQU $64FF   ; 1 byte - square where captured piece was (EP: computed, normal: to)
