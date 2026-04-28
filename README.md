@@ -1,6 +1,6 @@
 # RCA 1802/1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate four times.
+A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate five times.
 
 ## Quick Stats
 
@@ -8,11 +8,11 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 |------|-------|
 | **CPU** | RCA CDP1806 @ 12 MHz |
 | **RAM** | 32KB |
-| **Code Size** | ~23.4KB (23,439 bytes) |
-| **Search** | Iterative deepening, depth 2-3 (with check extension) |
-| **Opening Book** | 473 entries, 8 openings + opponent-prep deviations, ply 14 deep |
+| **Code Size** | ~23.6KB (23,632 bytes) |
+| **Search** | Adaptive iterative deepening, depth 2-3 (extends to 4 when time allows) |
+| **Opening Book** | 478 entries, 8 openings + opponent-prep deviations, ply 14 deep |
 | **Time Control** | 180 seconds per move (DS12887 RTC) |
-| **Wins vs Stockfish** | 4 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
+| **Wins vs Stockfish** | 5 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
 
 ## Wins vs Stockfish
 
@@ -22,12 +22,14 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 | 2 | Mar 2, 2026 | Alekhine's Mokele Mbembe | Qg8# | 35 |
 | 3 | Mar 26, 2026 | Elephant Gambit | Rb8# | 36 |
 | 4 | Apr 21, 2026 | French Advance | Rf8# | 41 |
+| 5 | Apr 27, 2026 | Alekhine's Defense (Ng8 retreat) | Qxe7# | 17 |
 
 ## Features
 
 ### Search
 - Negamax with alpha-beta pruning
-- Iterative deepening (depth 1 through target depth)
+- Adaptive iterative deepening: extends to depth 4 when depth 3 finishes fast (elapsed < 60s)
+  with a hard safety cap at depth 4 (MOVE_LIST sized for 4 plies)
 - Transposition table (256 entries, Zobrist hashing, mate-rejection guard for 16-bit hash collisions)
 - Null move pruning (NMP)
 - Late move reductions (LMR)
@@ -49,7 +51,7 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 - Castling rights bonus (+20cp per side with rights remaining)
 - Graduated advanced pawn bonus (+25/+50/+100/+150cp by rank 4/5/6/7, endgame-gated, 8-bit saturated)
 - Passed pawn bonus (file-count detection: +25/+50/+90/+140/+200/+250cp by rank 2-7)
-- Pawn-bonus 1/4 scaling when own queen present (curbs redundant-promotion bias)
+- Pawn-bonus 1/4 scaling in conversion phase only (own queen + opp has none) — curbs redundant-promotion bias without suppressing normal pawn play
 - Queen redundancy cap (extra queens beyond first score 0cp; prevents multi-promotion shuffles)
 - Queen-king proximity bonus (Chebyshev distance lookup, 60→0cp by distance 1-7)
 - Drive-to-edge bonus on enemy king in winning endgame (KING_EDGE_TABLE)
@@ -183,8 +185,8 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 | **CPU** | RCA 1802 @ 6.1 MHz | RCA 1806 @ 12 MHz |
 | **RAM** | 2KB | 32KB |
 | **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility + check ext |
-| **Opening Book** | Small | 473 entries, 8 openings + opponent-prep |
-| **Wins** | N/A | 4 vs Stockfish |
+| **Opening Book** | Small | 478 entries, 8 openings + opponent-prep |
+| **Wins** | N/A | 5 vs Stockfish |
 
 ## Credits
 
