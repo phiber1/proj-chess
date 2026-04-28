@@ -3669,15 +3669,50 @@ ITER_LOOP:
     ; --- Send UCI "info" for this depth ---
     CALL SEND_UCI_INFO
 
-    ; --- Check if we've reached TARGET_DEPTH ---
-    RLDI 10, CURRENT_MAX_DEPTH
-    LDN 10                      ; D = current depth
-    STR 2                       ; Push to stack for comparison
-    RLDI 10, TARGET_DEPTH
-    LDN 10                      ; D = target depth
-    SM                          ; D = target - current (M(R2) = current)
-    LBZ ITER_DONE               ; current == target, finished
+    ; --- Iterative deepening termination decision ---
+    ; UCI semantics: TARGET_DEPTH is treated as a CAP (max depth we may reach),
+    ; not a fixed target. The engine self-decides whether to attempt the next
+    ; deeper iteration based on elapsed time and a hard safety cap.
+    ;
+    ; Termination rules (stop if any are true; else continue to current+1):
+    ;   1. current >= TARGET_DEPTH        — respect UCI cap
+    ;   2. current >= 4                   — hard safety cap (MOVE_LIST sized
+    ;                                       for 4 plies; ply-4 non-leaf would
+    ;                                       overflow into $6400+ workspace)
+    ;   3. current >= 3 AND elapsed >= 60 — don't attempt d>=4 if d=3 was slow
+    ;
+    ; For TARGET_DEPTH=3: caps at 3 normally; rule 3 is redundant.
+    ; For TARGET_DEPTH=4: rule 3 prevents wasting time on a doomed d=4 attempt;
+    ;   if d=3 was fast, d=4 is attempted; otherwise d=3 result returned early.
+    ; For TARGET_DEPTH>=5: rule 2 caps at 4 regardless (defensive).
 
+    ; Rule 1: current >= TARGET_DEPTH?
+    RLDI 10, CURRENT_MAX_DEPTH
+    LDN 10
+    STR 2                       ; M(R2) = current
+    RLDI 10, TARGET_DEPTH
+    LDN 10                      ; D = target
+    SM                          ; D = target - current; DF=1 if target >= current
+    LBNF ITER_DONE              ; target < current — defensive (shouldn't happen)
+    LBZ ITER_DONE               ; target == current — UCI cap reached
+
+    ; Rule 2: current >= 4?
+    RLDI 10, CURRENT_MAX_DEPTH
+    LDN 10
+    SMI 4
+    LBDF ITER_DONE              ; current >= 4 — hard safety cap
+
+    ; Rule 3: current >= 3 AND elapsed >= 60?
+    RLDI 10, CURRENT_MAX_DEPTH
+    LDN 10
+    SMI 3
+    LBNF ITER_INCREMENT         ; current < 3 — always continue (cheap depths)
+    RLDI 10, SEARCH_ELAPSED
+    LDN 10
+    SMI 60
+    LBDF ITER_DONE              ; current >= 3 AND elapsed >= 60 — stop
+
+ITER_INCREMENT:
     ; --- Increment depth and loop ---
     RLDI 10, CURRENT_MAX_DEPTH
     LDN 10
