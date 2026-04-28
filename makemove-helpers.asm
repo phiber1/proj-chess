@@ -365,7 +365,7 @@ UPDATE_HALFMOVE_CLOCK:
 
     ; Check if capture (use R8.0, NOT R14!)
     GLO 8
-    BZ UPDATE_HALFMOVE_INCREMENT
+    LBZ UPDATE_HALFMOVE_INCREMENT   ; LBZ (was BZ) — code shift made target cross page
 
 UPDATE_HALFMOVE_RESET:
     ; Reset to 0

@@ -182,12 +182,19 @@ GEN_PAWN_CAPTURES_B:
     XRI 2
     LBNZ GEN_PAWN_EP_LEFT_B   ; Not a capture
 
-    ; Add capture
+    ; Add capture (or capture-promotion if dest rank == 0 for black)
     GHI 11              ; from (from R11.1)
     PHI 13
     GLO 11              ; to
     PLO 13
+    GLO 11
+    ANI $70             ; D = 0 iff dest is on rank 0 (black last rank)
+    LBZ GMP_B_CL_PROMO
     LDI MOVE_NORMAL
+    LBR GMP_B_CL_EMIT
+GMP_B_CL_PROMO:
+    LDI MOVE_PROMOTION
+GMP_B_CL_EMIT:
     CALL ADD_MOVE_ENCODED
 
 GEN_PAWN_EP_LEFT_B:
@@ -223,7 +230,15 @@ GEN_PAWN_RIGHT_B:
     PHI 13
     GLO 11              ; to
     PLO 13
+    ; Capture-promotion check (mirror of left capture).
+    GLO 11
+    ANI $70             ; D = 0 iff dest is on rank 0
+    LBZ GMP_B_CR_PROMO
     LDI MOVE_NORMAL
+    LBR GMP_B_CR_EMIT
+GMP_B_CR_PROMO:
+    LDI MOVE_PROMOTION
+GMP_B_CR_EMIT:
     CALL ADD_MOVE_ENCODED
 
 GEN_PAWN_EP_RIGHT_B:
@@ -317,7 +332,17 @@ GEN_PAWN_CAPTURES_W:
     PHI 13
     GLO 11              ; to
     PLO 13
+    ; Capture-promotion check: if dest rank == 7 (white last rank),
+    ; emit with MOVE_PROMOTION instead of MOVE_NORMAL.
+    GLO 11
+    ANI $70
+    XRI $70             ; D = 0 iff dest is on rank 7
+    LBZ GMP_W_CL_PROMO
     LDI MOVE_NORMAL
+    LBR GMP_W_CL_EMIT
+GMP_W_CL_PROMO:
+    LDI MOVE_PROMOTION
+GMP_W_CL_EMIT:
     CALL ADD_MOVE_ENCODED
 
 GEN_PAWN_EP_LEFT_W:
@@ -352,7 +377,16 @@ GEN_PAWN_RIGHT_W:
     PHI 13
     GLO 11              ; to
     PLO 13
+    ; Capture-promotion check (mirror of left capture).
+    GLO 11
+    ANI $70
+    XRI $70             ; D = 0 iff dest is on rank 7
+    LBZ GMP_W_CR_PROMO
     LDI MOVE_NORMAL
+    LBR GMP_W_CR_EMIT
+GMP_W_CR_PROMO:
+    LDI MOVE_PROMOTION
+GMP_W_CR_EMIT:
     CALL ADD_MOVE_ENCODED
 
 GEN_PAWN_EP_RIGHT_W:
