@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 473, Total size: 8896 bytes
+; Total entries: 478, Total size: 8975 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -14,6 +14,7 @@
 ;   opponent-prep (manual, 2026-04-21): 10 entries targeting Stockfish Skill 2 sidelines
 ;   krejcik-sacrifice (2026-04-22): 5 entries for 1.e4 Nf6 2.e5 Ne4 3.d3 Nxf2!? line
 ;   krejcik-retreat (2026-04-22): 3 entries for 1.e4 Nf6 2.e5 Ne4 3.d3 Nc5 line
+;   opponent-prep (2026-04-27): 5 entries continuing existing 2026-04-21 lines past the engine's first searched move
 ; ==============================================================================
 
 ; Book format:
@@ -287,6 +288,27 @@ OPENING_BOOK:
     ; Ply 6: e2e4 g8f6 e4e5 f6e4 d2d3 e4c5 -> g1f3 (develop, defend e5)
     DB $06, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25
 
+    ; --- Opponent-prep additions (2026-04-27) ---
+    ; Targets recurring OOB exits where existing 2026-04-21 ply-4 entries hit
+    ; book but black's continuation drove engine to weak/bad searched moves.
+    ; See bug_promotion_mate_score / book_strategy_shift in memory for context.
+
+    ; Ply 6: e2e4 c7c6 d2d4 d7d5 e4e5 e7e6 -> b1c3 (Caro-Kann Advance, ...e6 transposition: develop)
+    ; Engine already plays Nc3 here from search; book it for consistency + speed.
+    DB $06, $14, $34, $62, $52, $13, $33, $63, $43, $34, $44, $64, $54, $01, $22
+
+    ; Ply 6: e2e4 e7e6 d2d4 a7a5 b1c3 a5a4 -> g1f3 (continuation of bizarre flank: develop instead of Qf3)
+    ; Engine searches Qf3 (premature queen sortie) here without book guidance.
+    DB $06, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $40, $30, $06, $25
+
+    ; Ply 6: e2e4 c7c6 d2d4 d8c7 b1c3 g7g6 -> g1f3 (premature queen + fianchetto: develop instead of Rb1)
+    ; Engine searches Rb1 (rook lift) here without book guidance.
+    DB $06, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $66, $56, $06, $25
+
+    ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 -> g1f3 (Caro-French + Be7: develop instead of passive Bf4)
+    ; Engine searches Bf4 (passive) here without book guidance.
+    DB $06, $14, $34, $62, $52, $13, $33, $64, $54, $01, $22, $75, $64, $06, $25
+
     ; === Ply 7 ===
     ; Ply 7: 14-34 64-44 05-32 71-52 06-25 75-42 12-22 -> 76-55 (304x)
     DB $07, $14, $34, $64, $44, $05, $32, $71, $52, $06, $25, $75, $42, $12, $22, $76, $55
@@ -514,6 +536,11 @@ OPENING_BOOK:
     ; --- Krejcik-retreat-line addition (2026-04-22) ---
     ; Ply 8: ...g1f3 d7d6 -> e5d6 (simplify, exchange)
     DB $08, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25, $63, $53, $44, $53
+
+    ; --- Opponent-prep addition (2026-04-27) ---
+    ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
+    ; 3 recent matches reached this position; engine plays Nf3 from search. Book it.
+    DB $08, $14, $34, $64, $54, $13, $33, $63, $43, $34, $44, $62, $42, $12, $22, $73, $40, $06, $25
 
     ; === Ply 9 ===
     ; Ply 9: 14-34 64-44 06-25 71-52 05-32 75-42 01-22 76-55 13-23 -> 63-53 (637x)
