@@ -1066,10 +1066,24 @@ EG_B_HI:
     ; ==================================================================
 
     ; White advanced pawn bonus (accumulated)
+    ; Asymmetric scaling: 1/4 in conversion phase only (we have queen,
+    ; opp doesn't). Preserves full pawn aggression in opening (both have
+    ; queens) and post-queen-exchange middlegame (neither has queen).
     RLDI 11, ADV_PAWN_W
     LDN 11              ; D = accumulated white bonus (0-255)
     LBZ EG_NO_W_ADV     ; none, skip
     STR 2               ; save bonus on stack
+    RLDI 11, W_QUEEN_CNT
+    LDN 11
+    LBZ EG_W_ADV_GO     ; we don't have queen — full bonus, push toward promotion
+    RLDI 11, B_QUEEN_CNT
+    LDN 11
+    LBNZ EG_W_ADV_GO    ; opp has queen too — full bonus, normal play
+    LDN 2               ; conversion phase: scale to 1/4
+    SHR
+    SHR
+    STR 2
+EG_W_ADV_GO:
     GLO 9
     ADD                 ; R9.0 + bonus
     PLO 9
@@ -1078,11 +1092,22 @@ EG_B_HI:
     PHI 9               ; R9 += white pawn bonus
 EG_NO_W_ADV:
 
-    ; Black advanced pawn bonus (accumulated)
+    ; Black advanced pawn bonus (accumulated) — mirror of above
     RLDI 11, ADV_PAWN_B
     LDN 11
     LBZ EG_NO_B_ADV     ; none, skip
     STR 2               ; save bonus on stack
+    RLDI 11, B_QUEEN_CNT
+    LDN 11
+    LBZ EG_B_ADV_GO     ; black doesn't have queen — full bonus
+    RLDI 11, W_QUEEN_CNT
+    LDN 11
+    LBNZ EG_B_ADV_GO    ; white has queen too — full bonus
+    LDN 2               ; conversion phase (black side): scale to 1/4
+    SHR
+    SHR
+    STR 2
+EG_B_ADV_GO:
     GLO 9
     SM                  ; D = R9.0 - bonus
     PLO 9
@@ -1208,6 +1233,19 @@ PP_W_R7:
     LDI 250
 PP_W_ADD:
     STR 2
+    ; Asymmetric scaling (mirror of ADV_PAWN_W): scale 1/4 only in
+    ; conversion phase (W has queen, B doesn't).
+    RLDI 8, W_QUEEN_CNT
+    LDN 8
+    LBZ PP_W_ADD_GO     ; we don't have queen — full bonus
+    RLDI 8, B_QUEEN_CNT
+    LDN 8
+    LBNZ PP_W_ADD_GO    ; both have queens — full bonus
+    LDN 2               ; conversion phase: scale to 1/4
+    SHR
+    SHR
+    STR 2
+PP_W_ADD_GO:
     GLO 9
     ADD
     PLO 9
@@ -1331,6 +1369,19 @@ PP_B_R2:
     LDI 250
 PP_B_SUB:
     STR 2
+    ; Asymmetric scaling (mirror of PP_W_ADD): scale 1/4 only in
+    ; conversion phase (B has queen, W doesn't).
+    RLDI 8, B_QUEEN_CNT
+    LDN 8
+    LBZ PP_B_SUB_GO     ; black doesn't have queen — full bonus
+    RLDI 8, W_QUEEN_CNT
+    LDN 8
+    LBNZ PP_B_SUB_GO    ; both have queens — full bonus
+    LDN 2               ; conversion phase: scale to 1/4
+    SHR
+    SHR
+    STR 2
+PP_B_SUB_GO:
     GLO 9
     SM                  ; D = R9.0 - bonus
     PLO 9
