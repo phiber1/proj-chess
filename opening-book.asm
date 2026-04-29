@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 478, Total size: 8975 bytes
+; Total entries: 480, Total size: 9005 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -308,6 +308,18 @@ OPENING_BOOK:
     ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 -> g1f3 (Caro-French + Be7: develop instead of passive Bf4)
     ; Engine searches Bf4 (passive) here without book guidance.
     DB $06, $14, $34, $62, $52, $13, $33, $64, $54, $01, $22, $75, $64, $06, $25
+
+    ; --- Win-line lock-in (2026-04-28) ---
+    ; Ply 6: e2e4 e7e5 g1f3 f8d6 f1c4 c7c5 -> e1g1 (ELPH-Italian: castle short)
+    ; Both Apr 27 and Apr 28 wins followed this exact sequence; engine searches
+    ; ~180s to reach e1g1 each time. Book it to save time + lock the winning line.
+    DB $06, $14, $34, $64, $44, $06, $25, $75, $53, $05, $32, $62, $42, $04, $06
+
+    ; --- OOB-gap fix from 2026-04-28 loss (a-pawn promotion match) ---
+    ; Ply 6: e2e4 g8f6 e4e5 f6g8 d2d4 e7e6 -> g1f3 (Alekhine ...Ng8 retreat,
+    ; black plays ...e6: standard Nf3 development. Engine without book chose
+    ; Bd3 with d=2-only search (180s timeout); led to early-queen attack & loss.
+    DB $06, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $64, $54, $06, $25
 
     ; === Ply 7 ===
     ; Ply 7: 14-34 64-44 05-32 71-52 06-25 75-42 12-22 -> 76-55 (304x)
