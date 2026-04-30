@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 480, Total size: 9005 bytes
+; Total entries: 481, Total size: 9020 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -320,6 +320,13 @@ OPENING_BOOK:
     ; black plays ...e6: standard Nf3 development. Engine without book chose
     ; Bd3 with d=2-only search (180s timeout); led to early-queen attack & loss.
     DB $06, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $64, $54, $06, $25
+
+    ; --- OOB-gap fix from 2026-04-29 draw (Caro+e6+Qc7 d=2 cascade) ---
+    ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 d8c7 -> g1f3 (Caro-French + early Qc7:
+    ; standard Nf3 development. Without book, engine d=2-timed-out 3 moves in a
+    ; row and committed to a losing knight sacrifice at move 7 from a noisy +990cp
+    ; d=2 evaluation. Locks in development before the search drift compounds.
+    DB $06, $14, $34, $62, $52, $13, $33, $64, $54, $01, $22, $73, $62, $06, $25
 
     ; === Ply 7 ===
     ; Ply 7: 14-34 64-44 05-32 71-52 06-25 75-42 12-22 -> 76-55 (304x)
