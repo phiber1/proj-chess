@@ -49,6 +49,7 @@ def filter_go_command(line):
 
 def main():
     log = open(LOG_FILE, 'w')
+    log.write(f"# Match started: {time.strftime('%Y-%m-%d %H:%M:%S %Z')}\n")
     log_write(log, "ELPH Bridge started\n")
 
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)
