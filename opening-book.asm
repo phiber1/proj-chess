@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 485, Total size: 9080 bytes
+; Total entries: 486, Total size: 9095 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -333,6 +333,14 @@ OPENING_BOOK:
     ; black plays ...e6: standard Nf3 development. Engine without book chose
     ; Bd3 with d=2-only search (180s timeout); led to early-queen attack & loss.
     DB $06, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $64, $54, $06, $25
+
+    ; --- Sibling ...Ng8 ...d6 line, validated by 2026-05-01 win #8 ---
+    ; Ply 6: e2e4 g8f6 e4e5 f6g8 d2d4 d7d6 -> e5d6 (capture the pawn — standard
+    ; book reply). Engine has been finding exd6 itself from d=3 search; book
+    ; it to skip the 100+s opening-search drift. Pattern previously appeared
+    ; in 2 lost matches (engine same e5d6 pick); the 8th win confirmed it's
+    ; principled play, not coincidence.
+    DB $06, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $63, $53, $44, $53
 
     ; --- OOB-gap fix from 2026-04-29 draw (Caro+e6+Qc7 d=2 cascade) ---
     ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 d8c7 -> g1f3 (Caro-French + early Qc7:
