@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 481, Total size: 9020 bytes
+; Total entries: 483, Total size: 9050 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -327,6 +327,17 @@ OPENING_BOOK:
     ; row and committed to a losing knight sacrifice at move 7 from a noisy +990cp
     ; d=2 evaluation. Locks in development before the search drift compounds.
     DB $06, $14, $34, $62, $52, $13, $33, $64, $54, $01, $22, $73, $62, $06, $25
+
+    ; --- Caro-Kann Advance mainline coverage (2026-05-01) ---
+    ; Ply 6: e2e4 c7c6 d2d4 d7d5 e4e5 c8f5 -> g1f3 (Caro Advance ...Bf5: the
+    ; classical mainline, by far the most-played black response. Without book,
+    ; engine fell into 12-consecutive-move d=2 cascade in 2026-04-30 match.
+    DB $06, $14, $34, $62, $52, $13, $33, $63, $43, $34, $44, $72, $45, $06, $25
+
+    ; Ply 6: e2e4 c7c6 d2d4 d7d5 e4e5 d8b6 -> g1f3 (Caro Advance ...Qb6: early
+    ; queen sortie. Specific OOB exit from 2026-04-30 match where engine chose
+    ; passive Be2 from d=3 search, then drifted into noisy d=2 territory.
+    DB $06, $14, $34, $62, $52, $13, $33, $63, $43, $34, $44, $73, $51, $06, $25
 
     ; === Ply 7 ===
     ; Ply 7: 14-34 64-44 05-32 71-52 06-25 75-42 12-22 -> 76-55 (304x)
