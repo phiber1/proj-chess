@@ -945,16 +945,19 @@ EVAL_BR2_SEMI:
 EVAL_BR_DONE:
 
     ; ==================================================================
-    ; Endgame King Centralization
-    ; If few pieces remain (<=10 non-king), add centralization bonuses
-    ; using KING_CENTER_TABLE (in endgame.asm) scaled 4x via SHL SHL.
-    ; Overcomes PST_KING middlegame values in endgame positions.
+    ; Endgame phase eval (king centralization, advanced pawn, passed pawn,
+    ; king-edge drive) — gated by EG_PIECE_COUNT threshold.
+    ; Tightened 2026-04-30 from <21 to <12: previously fired after only 9
+    ; captures (mid-middlegame), causing premature king-walking with d=5
+    ; search exposing inappropriate king-centralization variations. <12
+    ; requires 18 captures, true late-endgame territory where king activity
+    ; and pawn promotion drives are actually correct strategy.
     ; ==================================================================
 
     RLDI 11, EG_PIECE_COUNT
     LDN 11              ; D = piece count
-    SMI 21              ; compare: count - 21
-    LBDF BKS_DONE       ; DF=1 means count >= 21, not endgame, skip
+    SMI 12              ; compare: count - 12
+    LBDF BKS_DONE       ; DF=1 means count >= 12, not endgame, skip
 
     ; === White king centralization ===
     RLDI 10, GAME_STATE + STATE_W_KING_SQ
