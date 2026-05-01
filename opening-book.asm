@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 484, Total size: 9065 bytes
+; Total entries: 485, Total size: 9080 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -304,6 +304,12 @@ OPENING_BOOK:
     ; Ply 6: e2e4 c7c6 d2d4 d8c7 b1c3 g7g6 -> g1f3 (premature queen + fianchetto: develop instead of Rb1)
     ; Engine searches Rb1 (rook lift) here without book guidance.
     DB $06, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $66, $56, $06, $25
+
+    ; Ply 6: e2e4 c7c6 d2d4 d8c7 b1c3 d7d6 -> g1f3 (Caro+Qc7+...d6: same Nf3
+    ; development as the sibling g6 entry above. From the 2026-05-01 winning
+    ; match — engine survived 8 moves of d=2 blindness here against a passive
+    ; Stockfish before reaching d=4. Book it to skip the blindness phase.
+    DB $06, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $63, $53, $06, $25
 
     ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 -> g1f3 (Caro-French + Be7: develop instead of passive Bf4)
     ; Engine searches Bf4 (passive) here without book guidance.
