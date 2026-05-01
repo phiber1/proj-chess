@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 483, Total size: 9050 bytes
+; Total entries: 484, Total size: 9065 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -314,6 +314,13 @@ OPENING_BOOK:
     ; Both Apr 27 and Apr 28 wins followed this exact sequence; engine searches
     ; ~180s to reach e1g1 each time. Book it to save time + lock the winning line.
     DB $06, $14, $34, $64, $44, $06, $25, $75, $53, $05, $32, $62, $42, $04, $06
+
+    ; --- Sibling line, 2026-05-01 (King's Knight match OOB exit) ---
+    ; Ply 6: e2e4 e7e5 g1f3 f8d6 f1c4 b8c6 -> e1g1 (Bd6+Bc4 with ...Nc6 dev)
+    ; Same Italian setup as the c7c5 line above, but black plays Nc6 instead.
+    ; In the 2026-05-01 match the engine reached d=4 only on move 7 and chose
+    ; e1g1 itself — validating the move; book it to skip the d=2 cascade.
+    DB $06, $14, $34, $64, $44, $06, $25, $75, $53, $05, $32, $71, $52, $04, $06
 
     ; --- OOB-gap fix from 2026-04-28 loss (a-pawn promotion match) ---
     ; Ply 6: e2e4 g8f6 e4e5 f6g8 d2d4 e7e6 -> g1f3 (Alekhine ...Ng8 retreat,
