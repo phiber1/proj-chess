@@ -192,6 +192,7 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 
 - **Engine design and implementation**: Claude Code (Anthropic) in collaboration with Mark Abene
 - **Target platform**: RCA CDP1802/CDP1806 (RCA Corporation, 1976)
+- **A18 cross-assembler**: William C. Colley, III / Herb Johnson
 - **BIOS**: Elf/OS (Mike Riley)
 - **UCI protocol**: Stefan Meyer-Kahlen
 - **CuteChess**: Ilari Pihlajisto, Arto Jonsson
