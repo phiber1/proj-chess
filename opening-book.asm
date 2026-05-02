@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 486, Total size: 9095 bytes
+; Total entries: 487, Total size: 9114 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -587,6 +587,13 @@ OPENING_BOOK:
     ; --- Krejcik-retreat-line addition (2026-04-22) ---
     ; Ply 8: ...g1f3 d7d6 -> e5d6 (simplify, exchange)
     DB $08, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25, $63, $53, $44, $53
+
+    ; --- Krejcik-retreat-line ply-8 sibling, 2026-05-01 loss data ---
+    ; Ply 8: e2e4 g8f6 e4e5 f6e4 d2d3 e4c5 g1f3 d7d5 -> d3d4 (push central pawn)
+    ; Black challenges center with ...d5; engine pushes d4 from search at d=3.
+    ; OOB exit from the 2026-05-01 evening loss where this position triggered
+    ; 7 consecutive d=2-only moves and a -2075cp collapse.
+    DB $08, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25, $63, $43, $23, $33
 
     ; --- Opponent-prep addition (2026-04-27) ---
     ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
