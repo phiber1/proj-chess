@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 487, Total size: 9114 bytes
+; Total entries: 488, Total size: 9133 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -594,6 +594,14 @@ OPENING_BOOK:
     ; OOB exit from the 2026-05-01 evening loss where this position triggered
     ; 7 consecutive d=2-only moves and a -2075cp collapse.
     DB $08, $14, $34, $76, $55, $34, $44, $55, $34, $13, $23, $34, $42, $06, $25, $63, $43, $23, $33
+
+    ; --- Caro-French + Be7 + d6 ply-8 extension, 2026-05-01 loss data ---
+    ; Ply 8: e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 g1f3 d7d6 -> c1f4 (active bishop dev)
+    ; Pushes our book penetration to 5 moves on this Caro-French line. Engine
+    ; chose Bf4 from d=2 search (180s timeout, score 260cp inflated) in the
+    ; 2026-05-01 evening queens-game loss. Booking the move avoids the d=2
+    ; noise that read +260 cp while the position was actually drifting.
+    DB $08, $14, $34, $62, $52, $13, $33, $64, $54, $01, $22, $75, $64, $06, $25, $63, $53, $02, $35
 
     ; --- Opponent-prep addition (2026-04-27) ---
     ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
