@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 489, Total size: 9144 bytes
+; Total entries: 490, Total size: 9163 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -607,6 +607,13 @@ OPENING_BOOK:
     ; 2026-05-01 evening queens-game loss. Booking the move avoids the d=2
     ; noise that read +260 cp while the position was actually drifting.
     DB $08, $14, $34, $62, $52, $13, $33, $64, $54, $01, $22, $75, $64, $06, $25, $63, $53, $02, $35
+
+    ; --- Caro-Kann Advance + ...e6 + ...Be7 ply-8, 2026-05-02 ---
+    ; Ply 8: e2e4 c7c6 d2d4 d7d5 e4e5 e7e6 b1c3 f8e7 -> g1f3 (flexible dev)
+    ; Caro Advance with ...e6 transposition then ...Be7. Bishop on e7 doesn't
+    ; threaten anything; just develop the kingside knight. Same principle as
+    ; the Caro-French + Be7 + d6 line above.
+    DB $08, $14, $34, $62, $52, $13, $33, $63, $43, $34, $44, $64, $54, $01, $22, $75, $64, $06, $25
 
     ; --- Opponent-prep addition (2026-04-27) ---
     ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
