@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 492, Total size: 9189 bytes
+; Total entries: 493, Total size: 9208 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -624,6 +624,13 @@ OPENING_BOOK:
     ; threaten anything; just develop the kingside knight. Same principle as
     ; the Caro-French + Be7 + d6 line above.
     DB $08, $14, $34, $62, $52, $13, $33, $63, $43, $34, $44, $64, $54, $01, $22, $75, $64, $06, $25
+
+    ; --- Italian Bd6+Nc6+O-O + ...a6 ply-8, 2026-05-02 ---
+    ; Ply 8: e2e4 e7e5 g1f3 f8d6 f1c4 b8c6 e1g1 a7a6 -> f1e1 (Re1, support e4)
+    ; Continues from the ELPH-Italian line where engine castles short. Black's
+    ; passive ...a6 is a non-threatening waiting move; we develop the rook
+    ; to e1 to support the e4 pawn and prepare future central tension.
+    DB $08, $14, $34, $64, $44, $06, $25, $75, $53, $05, $32, $71, $52, $04, $06, $60, $50, $05, $04
 
     ; --- Opponent-prep addition (2026-04-27) ---
     ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
