@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 500, Total size: 9317 bytes
+; Total entries: 501, Total size: 9332 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -322,6 +322,12 @@ OPENING_BOOK:
     ; e5 (Steinitz Variation continuation), consistent with other French
     ; Advance lines in book.
     DB $06, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $63, $43, $34, $44
+
+    ; Ply 6: e2e4 e7e6 d2d4 a7a5 b1c3 f8b4 -> e4e5 (French Winawer Advance)
+    ; Third sibling of the French ...a5 family (a4/d5/Bb4). Black pins our
+    ; Nc3 with Bb4 (Winawer pattern); we play the standard Advance reply
+    ; e5 to claim center and challenge black's bishop placement.
+    DB $06, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $75, $31, $34, $44
 
     ; Ply 6: e2e4 c7c6 d2d4 d8c7 b1c3 g7g6 -> g1f3 (premature queen + fianchetto: develop instead of Rb1)
     ; Engine searches Rb1 (rook lift) here without book guidance.
