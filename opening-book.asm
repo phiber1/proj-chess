@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 496, Total size: 9253 bytes
+; Total entries: 497, Total size: 9272 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -650,6 +650,12 @@ OPENING_BOOK:
     ; passive ...a6 is a non-threatening waiting move; we develop the rook
     ; to e1 to support the e4 pawn and prepare future central tension.
     DB $08, $14, $34, $64, $44, $06, $25, $75, $53, $05, $32, $71, $52, $04, $06, $60, $50, $05, $04
+
+    ; Ply 8: e2e4 g8f6 e4e5 f6g8 d2d4 d7d5 g1f3 c7c5 -> c2c3 (French Advance c3)
+    ; Brooklyn ...d5 continued: black challenges d4 with ...c5, position
+    ; transposes to French Advance theory. Mainline reply is c3 supporting
+    ; the d4 pawn. Builds on the Brooklyn-...d5 ply-6 entry added earlier.
+    DB $08, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $63, $43, $06, $25, $62, $42, $12, $22
 
     ; --- Opponent-prep addition (2026-04-27) ---
     ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
