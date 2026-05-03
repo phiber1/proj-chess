@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 490, Total size: 9163 bytes
+; Total entries: 491, Total size: 9174 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -188,6 +188,11 @@ OPENING_BOOK:
     ; to the e5 pawn while developing Nc6 instead. Capture the free knight.
     ; First killed-match book extension test on 2026-05-02.
     DB $04, $14, $34, $76, $55, $34, $44, $71, $52, $44, $55
+
+    ; Ply 4: e2e4 e7e5 g1f3 d7d6 -> d2d4 (Philidor's Defense: open the center
+    ; with d4, the mainline reply. Black's typical reply ...exd4 or ...Nd7
+    ; leads to slight white advantage. New 2026-05-02 opening encountered.
+    DB $04, $14, $34, $64, $44, $06, $25, $63, $53, $13, $33
 
     ; === Ply 5 ===
     ; Ply 5: 14-34 64-44 05-32 71-52 06-25 -> 75-42 (780x)
