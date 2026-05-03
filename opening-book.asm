@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 498, Total size: 9291 bytes
+; Total entries: 499, Total size: 9306 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -375,6 +375,12 @@ OPENING_BOOK:
     ; Textbook continuation after Philidor's Exchange. Knight recaptures on
     ; d4 — queen recapture (Qxd4) would expose Qd4 to ...Nc6 with tempo.
     DB $06, $14, $34, $64, $44, $06, $25, $63, $53, $13, $33, $44, $33, $25, $33
+
+    ; Ply 6: e2e4 e7e5 g1f3 d7d5 e4d5 g8f6 -> f1b5 (Elephant Gambit: Bb5+)
+    ; Black attacks the d5 pawn with ...Nf6 after the gambit accept. Standard
+    ; theory: Bb5+ develops with tempo, forces a defensive black move (Bd7
+    ; or c6) that lets white retain the gambit material edge.
+    DB $06, $14, $34, $64, $44, $06, $25, $63, $43, $34, $43, $76, $55, $05, $41
 
     ; --- OOB-gap fix from 2026-04-29 draw (Caro+e6+Qc7 d=2 cascade) ---
     ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 d8c7 -> g1f3 (Caro-French + early Qc7:
