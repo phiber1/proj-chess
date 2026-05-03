@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 493, Total size: 9208 bytes
+; Total entries: 494, Total size: 9223 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -356,6 +356,13 @@ OPENING_BOOK:
     ; in 2 lost matches (engine same e5d6 pick); the 8th win confirmed it's
     ; principled play, not coincidence.
     DB $06, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $63, $53, $44, $53
+
+    ; Ply 6: e2e4 g8f6 e4e5 f6g8 d2d4 d7d5 -> g1f3 (Brooklyn ...d5: Nf3 dev)
+    ; Black challenges center with ...d5 → French-like advance structure.
+    ; Nf3 is consistent flexible dev (c4 break is more aggressive but leads
+    ; to tactical complications we'd rather not enter from book without depth).
+    ; Completes the trio of Brooklyn ply-6 responses (e6/d6/d5).
+    DB $06, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $63, $43, $06, $25
 
     ; --- OOB-gap fix from 2026-04-29 draw (Caro+e6+Qc7 d=2 cascade) ---
     ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 d8c7 -> g1f3 (Caro-French + early Qc7:
