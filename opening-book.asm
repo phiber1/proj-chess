@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 495, Total size: 9238 bytes
+; Total entries: 496, Total size: 9253 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -310,6 +310,13 @@ OPENING_BOOK:
     ; Ply 6: e2e4 e7e6 d2d4 a7a5 b1c3 a5a4 -> g1f3 (continuation of bizarre flank: develop instead of Qf3)
     ; Engine searches Qf3 (premature queen sortie) here without book guidance.
     DB $06, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $40, $30, $06, $25
+
+    ; Ply 6: e2e4 e7e6 d2d4 a7a5 b1c3 d7d5 -> e4e5 (French Steinitz: close center)
+    ; Sibling to the ...a5a4 entry above. Black eventually plays the standard
+    ; French ...d5 push after the off-mainline ...a5; we close the center with
+    ; e5 (Steinitz Variation continuation), consistent with other French
+    ; Advance lines in book.
+    DB $06, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $63, $43, $34, $44
 
     ; Ply 6: e2e4 c7c6 d2d4 d8c7 b1c3 g7g6 -> g1f3 (premature queen + fianchetto: develop instead of Rb1)
     ; Engine searches Rb1 (rook lift) here without book guidance.
