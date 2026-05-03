@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 497, Total size: 9272 bytes
+; Total entries: 498, Total size: 9291 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -656,6 +656,12 @@ OPENING_BOOK:
     ; transposes to French Advance theory. Mainline reply is c3 supporting
     ; the d4 pawn. Builds on the Brooklyn-...d5 ply-6 entry added earlier.
     DB $08, $14, $34, $76, $55, $34, $44, $55, $76, $13, $33, $63, $43, $06, $25, $62, $42, $12, $22
+
+    ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 g8e7 g1f3 e7f5 -> c2c3 (defend d4)
+    ; French Advance + ...Ne7 + ...Nf5: black's knight maneuver targets d4.
+    ; c3 supports the pawn, prevents ...Nxd4 sacrifice idea, classical
+    ; French Advance wedge structure.
+    DB $08, $14, $34, $64, $54, $13, $33, $63, $43, $34, $44, $76, $64, $06, $25, $64, $45, $12, $22
 
     ; --- Opponent-prep addition (2026-04-27) ---
     ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
