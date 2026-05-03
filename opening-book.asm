@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 499, Total size: 9306 bytes
+; Total entries: 500, Total size: 9317 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -193,6 +193,11 @@ OPENING_BOOK:
     ; with d4, the mainline reply. Black's typical reply ...exd4 or ...Nd7
     ; leads to slight white advantage. New 2026-05-02 opening encountered.
     DB $04, $14, $34, $64, $44, $06, $25, $63, $53, $13, $33
+
+    ; Ply 4: e2e4 e7e6 d2d4 d7d6 -> b1c3 (Lengfellner System: Nc3 development)
+    ; French move order then Pirc-like ...d6 by black. Nc3 is the flexible
+    ; response, matches our Pirc/French treatment elsewhere.
+    DB $04, $14, $34, $64, $54, $13, $33, $63, $53, $01, $22
 
     ; === Ply 5 ===
     ; Ply 5: 14-34 64-44 05-32 71-52 06-25 -> 75-42 (780x)
