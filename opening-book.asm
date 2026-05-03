@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 488, Total size: 9133 bytes
+; Total entries: 489, Total size: 9144 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -183,6 +183,11 @@ OPENING_BOOK:
     DB $04, $14, $34, $64, $44, $06, $25, $63, $43, $34, $43
     ; Ply 4: e2e4 e7e5 g1f3 f8d6 -> f1c4 (odd bishop move: standard Italian setup)
     DB $04, $14, $34, $64, $44, $06, $25, $75, $53, $05, $32
+
+    ; Ply 4: e2e4 g8f6 e4e5 b8c6 -> e5f6 (Stockfish blunder: leaves Nf6 hanging
+    ; to the e5 pawn while developing Nc6 instead. Capture the free knight.
+    ; First killed-match book extension test on 2026-05-02.
+    DB $04, $14, $34, $76, $55, $34, $44, $71, $52, $44, $55
 
     ; === Ply 5 ===
     ; Ply 5: 14-34 64-44 05-32 71-52 06-25 -> 75-42 (780x)
