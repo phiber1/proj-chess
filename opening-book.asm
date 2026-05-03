@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; Combined Opening Book Data - Merged from multiple PGN sources
-; Total entries: 491, Total size: 9174 bytes
+; Total entries: 492, Total size: 9189 bytes
 ; Duplicates removed: 6
 ; Sources:
 ;   giuoco-piano: 97 entries
@@ -320,6 +320,11 @@ OPENING_BOOK:
     ; match — engine survived 8 moves of d=2 blindness here against a passive
     ; Stockfish before reaching d=4. Book it to skip the blindness phase.
     DB $06, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $63, $53, $06, $25
+
+    ; Ply 6: e2e4 c7c6 d2d4 d8c7 b1c3 g8f6 -> g1f3 (Caro+Qc7+...Nf6: standard
+    ; Nf3 development, completing the trio of Caro+Qc7 ply-6 entries
+    ; (g6/d6/Nf6 — the three most likely black 3rd moves after Qc7+Nc3).
+    DB $06, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $76, $55, $06, $25
 
     ; Ply 6: e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 -> g1f3 (Caro-French + Be7: develop instead of passive Bf4)
     ; Engine searches Bf4 (passive) here without book guidance.
