@@ -22,7 +22,9 @@
 ; ------------------------------------------------------------------------------
 ; Total: 14 bytes per recursion level
 ; At 6 ply depth: 84 bytes maximum
-; Stack allocation: 2KB ($7800-$7FFF) is more than sufficient
+; Stack working area: 1.25KB ($7B00-$7FFF). Shrunk 2026-04-28 from $7800-$7FFF
+; (2KB) to make room for MOVE_LIST relocation (5-ply expansion). Worst-case
+; observed usage <300 bytes including SCRT and QS, so 1.25KB has ~4× margin.
 ; ------------------------------------------------------------------------------
 
 ; ------------------------------------------------------------------------------
@@ -336,13 +338,13 @@ GET_STACK_DEPTH:
 ; DEBUG: Stack overflow check (optional, for development)
 ; ------------------------------------------------------------------------------
 ; Call periodically to ensure stack hasn't overflowed into other memory
-; Checks if 2 < $7800 (bottom of 2KB stack area)
+; Checks if 2 < $7B00 (bottom of 1.25KB stack area; below = MOVE_LIST at $7800)
 ; If overflow detected, could halt or set error flag
 ; ------------------------------------------------------------------------------
 CHECK_STACK_OVERFLOW:
     GHI 2
-    SMI $78             ; Compare with $78
-    BDF STACK_OK        ; If DF=1, 2 >= $7800, OK
+    SMI $7B             ; Compare with $7B
+    BDF STACK_OK        ; If DF=1, 2 >= $7B00, OK
     ; Stack overflow detected
     ; TODO: Set error flag or halt
     ; For now, just return

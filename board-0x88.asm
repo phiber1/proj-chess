@@ -53,7 +53,11 @@ KING_TYPE   EQU 6
 BOARD       EQU $6000   ; 128 bytes - 0x88 board array ($6000-$607F)
 GAME_STATE  EQU $6080   ; Game state structure (16 bytes) ($6080-$608F)
 MOVE_HIST   EQU $6090   ; Move history for undo (256 bytes) ($6090-$618F)
-MOVE_LIST   EQU $6200   ; Ply-indexed move lists (512 bytes) ($6200-$63FF)
+; MOVE_LIST relocated 2026-04-28 from $6200 (512B / 4 plies) to $7800 (640B / 5
+; plies) to support adaptive IDS extension to depth 5. Stack working area
+; correspondingly shrunk from $7800-$7FFF (2KB) to $7B00-$7FFF (1.25KB) — still
+; ~4× peak observed usage. See CHECK_STACK_OVERFLOW guard update in stack.asm.
+MOVE_LIST   EQU $7800   ; Ply-indexed move lists (640 bytes) ($7800-$7A7F)
                         ; Each ply gets 128 bytes (64 moves max): ply×128 + $6200
 QS_MOVE_LIST EQU $6780  ; Quiescence moves (128 bytes) ($6780-$67FF) - 64 captures max
 

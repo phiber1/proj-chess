@@ -751,11 +751,11 @@ RFP_SKIP:
     ;   offset_hi = ply >> 1, offset_lo = (ply & 1) << 7
 
     RLDI 10, CURRENT_PLY
-    LDN 10              ; D = current ply (0-3)
+    LDN 10              ; D = current ply (0-4 with d=5)
 
     ; Calculate high byte: HIGH(MOVE_LIST) + (ply >> 1)
     SHR                 ; D = ply >> 1 (0 or 1)
-    ADI HIGH(MOVE_LIST) ; D = $62 + (ply >> 1)
+    ADI HIGH(MOVE_LIST) ; D = $78 + (ply >> 1)
     PHI 9               ; R9.1 = high byte
 
     ; Calculate low byte: (ply & 1) << 7 = $00 or $80
@@ -1299,12 +1299,13 @@ LMR_NO_EXTRA_DEC:
     LDN 10              ; D = check flag
     LBZ CE_DONE         ; Not giving check, skip
 
-    ; Ply guard: don't extend if ply >= 3 (child would be ply 4,
-    ; overflowing MOVE_LIST into engine variables at $6400+)
+    ; Ply guard: don't extend if ply >= 4 (child would be ply 5).
+    ; With MAX_PLY=8 and MOVE_LIST sized for 5 plies + QS scratch beyond,
+    ; ply 4 extending to 5 stays within bounds.
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    SMI 3
-    LBDF CE_DONE        ; ply >= 3, skip extension
+    SMI 4
+    LBDF CE_DONE        ; ply >= 4, skip extension
 
     ; Only extend at horizon: depth <= 0 after decrement
     RLDI 13, SEARCH_DEPTH
@@ -3676,15 +3677,18 @@ ITER_LOOP:
     ;
     ; Termination rules (stop if any are true; else continue to current+1):
     ;   1. current >= TARGET_DEPTH        — respect UCI cap
-    ;   2. current >= 4                   — hard safety cap (MOVE_LIST sized
-    ;                                       for 4 plies; ply-4 non-leaf would
-    ;                                       overflow into $6400+ workspace)
-    ;   3. current >= 3 AND elapsed >= 60 — don't attempt d>=4 if d=3 was slow
+    ;   2. current >= 5                   — hard safety cap (MOVE_LIST sized
+    ;                                       for 5 plies at $7800-$7A7F; ply-5
+    ;                                       non-leaf would run past)
+    ;   3a. current == 3 AND elapsed >= 60  — don't attempt d=4 if d=3 was slow
+    ;   3b. current >= 4 AND elapsed >= 90  — don't attempt d=5 if d=4 was slow
     ;
     ; For TARGET_DEPTH=3: caps at 3 normally; rule 3 is redundant.
-    ; For TARGET_DEPTH=4: rule 3 prevents wasting time on a doomed d=4 attempt;
-    ;   if d=3 was fast, d=4 is attempted; otherwise d=3 result returned early.
-    ; For TARGET_DEPTH>=5: rule 2 caps at 4 regardless (defensive).
+    ; For TARGET_DEPTH=4: rule 3a prevents wasting time on a doomed d=4 attempt.
+    ; For TARGET_DEPTH>=5: rule 3b allows d=5 attempts up to 90s elapsed
+    ;   (looser than 3a's 60s — d=5 in middlegame typically takes 100-150s,
+    ;   needs more remaining budget; mid-search abort is the safety net).
+    ; For TARGET_DEPTH>=6: rule 2 caps at 5 regardless (defensive).
 
     ; Rule 1: current >= TARGET_DEPTH?
     RLDI 10, CURRENT_MAX_DEPTH
@@ -3696,21 +3700,32 @@ ITER_LOOP:
     LBNF ITER_DONE              ; target < current — defensive (shouldn't happen)
     LBZ ITER_DONE               ; target == current — UCI cap reached
 
-    ; Rule 2: current >= 4?
+    ; Rule 2: current >= 5?
     RLDI 10, CURRENT_MAX_DEPTH
     LDN 10
-    SMI 4
-    LBDF ITER_DONE              ; current >= 4 — hard safety cap
+    SMI 5
+    LBDF ITER_DONE              ; current >= 5 — hard safety cap
 
-    ; Rule 3: current >= 3 AND elapsed >= 60?
+    ; Rule 3: depth-conditional elapsed cutoff.
+    ;   current == 3 (about to try d=4): stop if elapsed >= 60
+    ;   current >= 4 (about to try d=5): stop if elapsed >= 90
     RLDI 10, CURRENT_MAX_DEPTH
     LDN 10
     SMI 3
     LBNF ITER_INCREMENT         ; current < 3 — always continue (cheap depths)
+    LBNZ RULE3_D5               ; current > 3 → use d=5 threshold (90s)
+    ; current == 3: rule 3a (60s cutoff before attempting d=4)
     RLDI 10, SEARCH_ELAPSED
     LDN 10
     SMI 60
-    LBDF ITER_DONE              ; current >= 3 AND elapsed >= 60 — stop
+    LBDF ITER_DONE              ; elapsed >= 60 — stop d=4
+    LBR ITER_INCREMENT
+RULE3_D5:
+    ; current >= 4: rule 3b (90s cutoff before attempting d=5)
+    RLDI 10, SEARCH_ELAPSED
+    LDN 10
+    SMI 90
+    LBDF ITER_DONE              ; elapsed >= 90 — stop d=5
 
 ITER_INCREMENT:
     ; --- Increment depth and loop ---
