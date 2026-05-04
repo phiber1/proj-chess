@@ -798,12 +798,15 @@ NEGAMAX_RESET_DONE:
 
     ; -----------------------------------------------
     ; Apply killer move ordering (search killers first)
-    ; Only at ply 0-2 to avoid overhead deep in tree
+    ; Apply at plies 0-4: with d=5 search now active, plies 3 and 4 are
+    ; non-leaves with rich subtrees where alpha-beta cutoffs from a
+    ; well-ordered list save exponentially more work. Skip only at ply >= 5
+    ; (where remaining depth is too shallow for ordering to pay off).
     ; -----------------------------------------------
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    SMI 3               ; Check if ply >= 3
-    LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 3
+    SMI 5               ; Check if ply >= 5
+    LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 5
 
     INC 2               ; Point to move count on stack
     LDN 2               ; D = move count (peek, don't pop)
@@ -813,12 +816,12 @@ NEGAMAX_RESET_DONE:
 NEGAMAX_SKIP_KILLER:
     ; -----------------------------------------------
     ; Order captures first (MVV-LVA preparation)
-    ; Only at ply 0-2 to avoid overhead deep in tree
+    ; Apply at plies 0-4 (same rationale as killers above).
     ; -----------------------------------------------
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    SMI 3               ; Check if ply >= 3
-    LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 3
+    SMI 5               ; Check if ply >= 5
+    LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 5
 
     INC 2               ; Point to move count on stack
     LDN 2               ; D = move count (peek, don't pop)
