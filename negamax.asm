@@ -259,6 +259,30 @@ REP_DEC:
 
 REP_NO_MATCH:
     ; -----------------------------------------------
+    ; Snapshot CHECK_EXT_FLAG → NODE_IN_CHECK[CURRENT_PLY]
+    ; -----------------------------------------------
+    ; CHECK_EXT_FLAG was just set by parent's move-loop iteration to
+    ; indicate "did my (parent's) move give check to opponent (us)". We
+    ; capture it here at NEGAMAX entry — before our own move loop starts
+    ; overwriting it — so downstream pruning code (LMP especially) can
+    ; tell whether THIS node is in check.
+    ;
+    ; Cost: ~10 instructions per node call. Negligible relative to per-
+    ; node search cost (~30K instructions median).
+    RLDI 10, CHECK_EXT_FLAG
+    LDN 10              ; D = current check flag (from parent)
+    PLO 13              ; R13.0 = check flag (temp)
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    ADI LOW(NODE_IN_CHECK)
+    PLO 10
+    LDI HIGH(NODE_IN_CHECK)
+    ADCI 0
+    PHI 10              ; R10 = NODE_IN_CHECK + ply
+    GLO 13              ; D = saved check flag
+    STR 10              ; NODE_IN_CHECK[ply] = check flag
+
+    ; -----------------------------------------------
     ; Transposition Table Probe
     ; -----------------------------------------------
     ; Hash is updated incrementally in MAKE/UNMAKE_MOVE,
@@ -1187,14 +1211,18 @@ NEGAMAX_NOT_FUTILE:
     ; literature: 20-40% node reduction at low depths with low risk.
     ; Conditions (all must hold to prune):
     ;   1. CURRENT_PLY > 0      — never prune at root (highest cost of error)
-    ;   2. SEARCH_DEPTH <= 2    — only at low depths (small subtrees)
-    ;   3. LMR_MOVE_INDEX >= 8  — first 8 moves search normally
-    ;   4. LMR_IS_CAPTURE == 0  — never prune captures
-    ;   5. DECODED_FLAGS != MOVE_PROMOTION
-    ; All checked before MAKE_MOVE so we save the make/recurse/unmake cost.
-    ; Move ordering must be working (TT/PV/captures/killers ahead of quiet
-    ; moves) for this to be safe — if good moves slipped past index 8, we'd
-    ; prune them. Phase 1/2/PV-first commits ensure that's not happening.
+    ;   2. NODE_IN_CHECK == 0   — never prune when we're in check (legal
+    ;                             escape moves can be late in ordering, and
+    ;                             pruning them = false mate detection)
+    ;   3. SEARCH_DEPTH <= 2    — only at low depths (small subtrees)
+    ;   4. LMR_MOVE_INDEX >= 8  — first 8 moves search normally
+    ;   5. LMR_IS_CAPTURE == 0  — never prune captures
+    ;   6. DECODED_FLAGS != MOVE_PROMOTION
+    ; The in-check guard (cond 2) was added 2026-05-05 after the move-21
+    ; replay surfaced a false +32766 mate at d=1/2/3: opponent in check
+    ; from our Qh5+, with many illegal pseudo-legal moves filling indices
+    ; 0-7, leaving the legal escapes (Ng6, gxh6) at index 9+ where LMP
+    ; pruned them, causing NEGAMAX_NO_MOVES to fire and report mate.
     ; -----------------------------------------------
 
     ; Cond 1: ply > 0?
@@ -1202,24 +1230,33 @@ NEGAMAX_NOT_FUTILE:
     LDN 10
     LBZ NEGAMAX_LMP_DONE        ; root: never prune
 
-    ; Cond 2: depth <= 2?
+    ; Cond 2: not in check at this node?
+    ADI LOW(NODE_IN_CHECK)
+    PLO 10
+    LDI HIGH(NODE_IN_CHECK)
+    ADCI 0
+    PHI 10                      ; R10 = NODE_IN_CHECK + ply
+    LDN 10                      ; D = node-in-check flag
+    LBNZ NEGAMAX_LMP_DONE       ; in check: skip LMP (legal escapes may be late)
+
+    ; Cond 3: depth <= 2?
     RLDI 10, SEARCH_DEPTH + 1
     LDN 10
     SMI 3
     LBDF NEGAMAX_LMP_DONE       ; depth >= 3: skip LMP
 
-    ; Cond 3: index >= 8?
+    ; Cond 4: index >= 8?
     RLDI 10, LMR_MOVE_INDEX
     LDN 10
     SMI 8
     LBNF NEGAMAX_LMP_DONE       ; index < 8: search normally
 
-    ; Cond 4: not a capture?
+    ; Cond 5: not a capture?
     RLDI 10, LMR_IS_CAPTURE
     LDN 10
     LBNZ NEGAMAX_LMP_DONE       ; capture: search normally
 
-    ; Cond 5: not a promotion?
+    ; Cond 6: not a promotion?
     RLDI 10, DECODED_FLAGS
     LDN 10
     XRI MOVE_PROMOTION

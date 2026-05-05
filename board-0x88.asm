@@ -274,6 +274,11 @@ EG_PIECE_COUNT  EQU $64EC   ; 1 byte - non-king piece count for endgame detectio
 ; ($6500+) at ply 5+, causing intermittent hangs. Old $64ED-$64FC now free.
 FUTILITY_TABLE  EQU $6722   ; 32 bytes - per-ply futility data ($6722-$6741)
                             ; 4 bytes/ply: [flag][eval_hi][eval_lo][pad] × 8 plies
+NODE_IN_CHECK   EQU $6742   ; 8 bytes - per-ply "is this node in check" snapshot
+                            ; ($6742-$6749). Snapshotted at NEGAMAX entry from
+                            ; CHECK_EXT_FLAG (set by parent's checking move).
+                            ; Used by LMP to avoid pruning legal escape moves
+                            ; when in check (parent was a checking move).
 ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
 ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
 UNDO_CAP_SQ     EQU $64FF   ; 1 byte - square where captured piece was (EP: computed, normal: to)
