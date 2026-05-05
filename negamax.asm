@@ -830,13 +830,40 @@ NEGAMAX_SKIP_KILLER:
 
 NEGAMAX_SKIP_CAPTURE_ORDER:
     ; -----------------------------------------------
-    ; Order TT move first (highest priority)
-    ; Ply 1+ only (root skips TT_PROBE)
+    ; Order TT/PV move first (highest-priority ordering hint)
+    ; At ply >= 1: TT_PROBE has populated TT_MOVE_HI/LO (or left empty zeros).
+    ; At root: ITER_BEST_FROM/TO holds the principal-variation move from the
+    ; prior iterative-deepening iteration. Copy it into TT_MOVE_HI/LO so the
+    ; existing ORDER_TT_MOVE puts it at the front. This PV-move-first
+    ; ordering is essentially free (no extra search; the move is already
+    ; computed) and typically halves node counts at the next depth via
+    ; immediate alpha-beta cutoffs.
+    ; ITER_BEST is initialized to $FF/$FF in SEARCH_POSITION; only valid
+    ; after at least one successful iteration completes.
     ; -----------------------------------------------
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    LBZ NEGAMAX_SKIP_TT_ORDER  ; Root: no valid TT move
+    LBNZ NEGAMAX_TT_ORDER_CALL  ; ply >= 1: TT_PROBE has populated TT_MOVE
 
+    ; Root: copy ITER_BEST into TT_MOVE if valid, else skip ordering pass.
+    RLDI 10, ITER_BEST_FROM
+    LDN 10
+    XRI $FF
+    LBZ NEGAMAX_SKIP_TT_ORDER   ; first iteration: no PV — skip
+
+    RLDI 10, ITER_BEST_FROM
+    LDA 10                      ; D = ITER_BEST_FROM, R10 -> ITER_BEST_TO
+    PHI 13
+    LDN 10                      ; D = ITER_BEST_TO
+    PLO 13
+    RLDI 10, TT_MOVE_HI
+    GHI 13
+    STR 10                      ; TT_MOVE_HI = ITER_BEST_FROM
+    INC 10
+    GLO 13
+    STR 10                      ; TT_MOVE_LO = ITER_BEST_TO
+
+NEGAMAX_TT_ORDER_CALL:
     INC 2               ; Peek move count from stack
     LDN 2
     DEC 2
