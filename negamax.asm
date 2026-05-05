@@ -1181,6 +1181,55 @@ NM_NOT_CASTLE:
 
 NEGAMAX_NOT_FUTILE:
 
+    ; -----------------------------------------------
+    ; Late Move Pruning (LMP) — at low depth, after first N quiet moves
+    ; have been searched, skip remaining quiet moves entirely. Empirical
+    ; literature: 20-40% node reduction at low depths with low risk.
+    ; Conditions (all must hold to prune):
+    ;   1. CURRENT_PLY > 0      — never prune at root (highest cost of error)
+    ;   2. SEARCH_DEPTH <= 2    — only at low depths (small subtrees)
+    ;   3. LMR_MOVE_INDEX >= 8  — first 8 moves search normally
+    ;   4. LMR_IS_CAPTURE == 0  — never prune captures
+    ;   5. DECODED_FLAGS != MOVE_PROMOTION
+    ; All checked before MAKE_MOVE so we save the make/recurse/unmake cost.
+    ; Move ordering must be working (TT/PV/captures/killers ahead of quiet
+    ; moves) for this to be safe — if good moves slipped past index 8, we'd
+    ; prune them. Phase 1/2/PV-first commits ensure that's not happening.
+    ; -----------------------------------------------
+
+    ; Cond 1: ply > 0?
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    LBZ NEGAMAX_LMP_DONE        ; root: never prune
+
+    ; Cond 2: depth <= 2?
+    RLDI 10, SEARCH_DEPTH + 1
+    LDN 10
+    SMI 3
+    LBDF NEGAMAX_LMP_DONE       ; depth >= 3: skip LMP
+
+    ; Cond 3: index >= 8?
+    RLDI 10, LMR_MOVE_INDEX
+    LDN 10
+    SMI 8
+    LBNF NEGAMAX_LMP_DONE       ; index < 8: search normally
+
+    ; Cond 4: not a capture?
+    RLDI 10, LMR_IS_CAPTURE
+    LDN 10
+    LBNZ NEGAMAX_LMP_DONE       ; capture: search normally
+
+    ; Cond 5: not a promotion?
+    RLDI 10, DECODED_FLAGS
+    LDN 10
+    XRI MOVE_PROMOTION
+    LBZ NEGAMAX_LMP_DONE        ; promotion: search normally
+
+    ; All conditions met — skip this move (LMP prune)
+    LBR NEGAMAX_NEXT_MOVE
+
+NEGAMAX_LMP_DONE:
+
     ; Set UNDO_PROMOTION based on move flags
     ; Must be done before MAKE_MOVE so promotions work correctly
     RLDI 10, UNDO_PROMOTION
