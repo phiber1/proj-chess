@@ -3337,39 +3337,48 @@ OKM_DONE:
     RETN
 
 ; ------------------------------------------------------------------------------
-; ORDER_CAPTURES_FIRST - Move captures to front of move list (MVV-LVA prep)
+; ORDER_CAPTURES_FIRST - Move captures to front of move list, sorted by
+;                        victim piece-type value (queen first, pawn last).
 ; ------------------------------------------------------------------------------
 ; Input:  R9 = start of move list
 ;         D = move count
-; Output: Move list reordered with captures at front
+; Output: Move list reordered with captures at front, victim-value descending
+;         (Q-takes, R-takes, B-takes, N-takes, P-takes, then non-captures).
 ; Uses:   R7, R8, R10, R11, R13
-; Note:   Call after GENERATE_MOVES, before move loop
-; TODO:   Add MVV-LVA scoring: victim_type * 8 - attacker_type (not yet implemented)
+; Note:   Call after GENERATE_MOVES, before move loop. Implements simplified
+;         victim-only sort (no attacker analysis): 5 passes filtering by
+;         piece-type value 5..1. Front pointer R8 persists across passes.
 ; ------------------------------------------------------------------------------
 ORDER_CAPTURES_FIRST:
     ; Save move count
     PLO 7               ; R7.0 = move count
     LBZ OCF_DONE        ; No moves
 
-    ; R8 = front pointer (where to put next capture)
+    ; R8 = front pointer (where to put next capture; persists across passes)
     GHI 9
     PHI 8
     GLO 9
     PLO 8               ; R8 = front = list start
 
-    ; R10 = scan pointer
+    ; Initialize filter: start with QUEEN piece type (5), decrement each pass
+    RLDI 13, COMPARE_TEMP
+    LDI 5
+    STR 13              ; M(COMPARE_TEMP) = filter type
+
+OCF_PASS_LOOP:
+    ; R10 = scan pointer (re-init each pass)
     GHI 9
     PHI 10
     GLO 9
     PLO 10              ; R10 = scan = list start
 
-    ; R7.1 = remaining count to scan
+    ; R7.1 = remaining count to scan (re-init each pass)
     GLO 7
     PHI 7
 
 OCF_SCAN_LOOP:
     GHI 7
-    LBZ OCF_DONE        ; No more moves to scan
+    LBZ OCF_PASS_DONE   ; No more moves to scan in this pass
 
     ; Decode move at R10 to get target square
     ; Move format: [flags:2][to:7][from:7]
@@ -3407,8 +3416,16 @@ OCF_TO_BIT0_CLR:
     ; If piece is 0 (empty), not a capture
     LBZ OCF_NEXT_MOVE   ; Empty square, skip
 
-    ; Non-empty = capture (we don't check color here for simplicity)
-    ; Fall through to OCF_IS_CAPTURE
+    ; Check victim type against current pass filter.
+    ; D still holds piece byte; mask off color to get type (1-6).
+    ANI PIECE_MASK      ; D = victim type (1-5; king=6 can't actually be captured)
+    STR 2               ; M(R2) = victim type (temp)
+    RLDI 13, COMPARE_TEMP
+    LDN 13              ; D = current pass filter type
+    XOR                 ; D = filter ^ victim (0 if match, since SEX 2 set globally)
+    LBNZ OCF_NEXT_MOVE  ; victim type doesn't match this pass — skip
+
+    ; Match: capture with current filter type. Fall through to swap.
 
 OCF_IS_CAPTURE:
     ; Move is a capture - swap to front if not already there
@@ -3465,6 +3482,14 @@ OCF_NEXT_MOVE:
     SMI 1
     PHI 7
     LBR OCF_SCAN_LOOP
+
+OCF_PASS_DONE:
+    ; Decrement filter type for next pass; loop until filter reaches 0.
+    RLDI 13, COMPARE_TEMP
+    LDN 13
+    SMI 1
+    STR 13              ; filter--
+    LBNZ OCF_PASS_LOOP  ; continue if filter > 0
 
 OCF_DONE:
     RETN
