@@ -1239,11 +1239,17 @@ NEGAMAX_NOT_FUTILE:
     LDN 10                      ; D = node-in-check flag
     LBNZ NEGAMAX_LMP_DONE       ; in check: skip LMP (legal escapes may be late)
 
-    ; Cond 3: depth <= 2?
+    ; Cond 3: depth == 1?
+    ; Narrowed 2026-05-05 from depth <= 2. Diagnostic test (Bb5+ position
+    ; from move 11 of 2026-05-05 win-#9 match) showed LMP firing at depth 2
+    ; could trigger false-mate-at-ply-1 score (32766) via a path that the
+    ; NODE_IN_CHECK in-check guard doesn't catch. Narrowing to depth==1
+    ; only eliminates the bug while preserving LMP's benefit on the move-21
+    ; class of position (which fires LMP at depth 1).
     RLDI 10, SEARCH_DEPTH + 1
     LDN 10
-    SMI 3
-    LBDF NEGAMAX_LMP_DONE       ; depth >= 3: skip LMP
+    SMI 2
+    LBDF NEGAMAX_LMP_DONE       ; depth >= 2: skip LMP
 
     ; Cond 4: index >= 8?
     RLDI 10, LMR_MOVE_INDEX
