@@ -1239,17 +1239,11 @@ NEGAMAX_NOT_FUTILE:
     LDN 10                      ; D = node-in-check flag
     LBNZ NEGAMAX_LMP_DONE       ; in check: skip LMP (legal escapes may be late)
 
-    ; Cond 3: depth == 1?
-    ; Narrowed 2026-05-05 from depth <= 2. Diagnostic test (Bb5+ position
-    ; from move 11 of 2026-05-05 win-#9 match) showed LMP firing at depth 2
-    ; could trigger false-mate-at-ply-1 score (32766) via a path that the
-    ; NODE_IN_CHECK in-check guard doesn't catch. Narrowing to depth==1
-    ; only eliminates the bug while preserving LMP's benefit on the move-21
-    ; class of position (which fires LMP at depth 1).
+    ; Cond 3: depth <= 2?
     RLDI 10, SEARCH_DEPTH + 1
     LDN 10
-    SMI 2
-    LBDF NEGAMAX_LMP_DONE       ; depth >= 2: skip LMP
+    SMI 3
+    LBDF NEGAMAX_LMP_DONE       ; depth >= 3: skip LMP
 
     ; Cond 4: index >= 8?
     RLDI 10, LMR_MOVE_INDEX
@@ -1748,6 +1742,20 @@ LMR_DO_RESEARCH:
     INC 10
     GLO 8               ; new_beta_lo
     STR 10              ; BETA = -alpha
+
+    ; ----------------------------------------------------------------
+    ; LMR-RESEARCH FIX 2026-05-06: refresh CHECK_EXT_FLAG before re-search.
+    ; The first reduced-depth call's child overwrote CHECK_EXT_FLAG with
+    ; whatever its last move-loop iteration left (typically 0 for non-checking
+    ; quiet moves). Re-search child's snapshot would read this stale value,
+    ; breaking the LMP in-check guard at line ~1238 even though our move IS
+    ; a check.  R12 is currently BLACK (child's color = opponent of parent
+    ; at root), so direct IS_IN_CHECK checks the opponent's king — exactly
+    ; what we want for "did parent's move give check".
+    ; ----------------------------------------------------------------
+    CALL IS_IN_CHECK
+    RLDI 10, CHECK_EXT_FLAG
+    STR 10              ; CHECK_EXT_FLAG = fresh "in check?" result
 
     ; Increment ply for recursive call
     RLDI 10, CURRENT_PLY
