@@ -701,6 +701,23 @@ OPENING_BOOK:
     ; 3 recent matches reached this position; engine plays Nf3 from search. Book it.
     DB $08, $14, $34, $64, $54, $13, $33, $63, $43, $34, $44, $62, $42, $12, $22, $73, $40, $06, $25
 
+    ; --- Caro+Qc7+d6+g6 Hippo ply-8, 2026-05-06 ---
+    ; Ply 8: e2e4 c7c6 d2d4 d8c7 b1c3 d7d6 g1f3 g7g6 -> e4e5 (space + force open)
+    ; 2026-05-06 loss in 20 moves: engine timed out at d=4 on five consecutive
+    ; OOB moves in this Hippo formation. Closed position branching ratio 2.3-3.6x
+    ; (vs 1.4-1.8x in open positions) made d=4 take 70-100s, leaving no budget
+    ; for d=5. Book e5 to force open position and improve move ordering for
+    ; subsequent OOB search. Theoretically strong: 5...dxe5 6.Nxe5 opens e-file
+    ; with active knight; black queen on c7 awkwardly placed.
+    DB $08, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $63, $53, $06, $25, $66, $56, $34, $44
+
+    ; --- Caro+Qc7+Nf6+d6 Hippo ply-8, 2026-05-06 ---
+    ; Ply 8: e2e4 c7c6 d2d4 d8c7 b1c3 g8f6 g1f3 d7d6 -> e4e5 (attack Nf6, force open)
+    ; 2026-05-06 second Hippo loss with Stockfish move-order variant: Nf6 first,
+    ; d6 second (vs prior g6-first order). Same anti-Hippo policy: e5 attacks
+    ; the knight and forces an open position the engine can navigate at d=4.
+    DB $08, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $76, $55, $06, $25, $63, $53, $34, $44
+
     ; === Ply 9 ===
     ; Ply 9: 14-34 64-44 06-25 71-52 05-32 75-42 01-22 76-55 13-23 -> 63-53 (637x)
     DB $09, $14, $34, $64, $44, $06, $25, $71, $52, $05, $32, $75, $42, $01, $22, $76, $55, $13, $23, $63, $53
