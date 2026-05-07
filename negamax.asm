@@ -3754,6 +3754,12 @@ ITER_LOOP:
     LDI 0
     STR 10
 
+    ; --- Capture iteration start time for iteration-time gate ---
+    RLDI 10, SEARCH_ELAPSED
+    LDN 10
+    RLDI 10, ITER_START_ELAPSED
+    STR 10
+
     ; --- Standard search init ---
     ; Alpha = -32767
     RLDI 10, ALPHA_HI
@@ -3828,22 +3834,23 @@ ITER_LOOP:
     ; --- Iterative deepening termination decision ---
     ; UCI semantics: TARGET_DEPTH is treated as a CAP (max depth we may reach),
     ; not a fixed target. The engine self-decides whether to attempt the next
-    ; deeper iteration based on elapsed time and a hard safety cap.
+    ; deeper iteration based on iteration-time prediction and a hard safety cap.
     ;
     ; Termination rules (stop if any are true; else continue to current+1):
-    ;   1. current >= TARGET_DEPTH        — respect UCI cap
-    ;   2. current >= 5                   — hard safety cap (MOVE_LIST sized
-    ;                                       for 5 plies at $7800-$7A7F; ply-5
-    ;                                       non-leaf would run past)
-    ;   3a. current == 3 AND elapsed >= 60  — don't attempt d=4 if d=3 was slow
-    ;   3b. current >= 4 AND elapsed >= 90  — don't attempt d=5 if d=4 was slow
+    ;   1. current >= TARGET_DEPTH   — respect UCI cap
+    ;   2. current >= 5              — hard safety cap (MOVE_LIST sized for 5 plies)
+    ;   3. current >= 3 AND predicted_next > remaining_budget — iter-time gate
     ;
-    ; For TARGET_DEPTH=3: caps at 3 normally; rule 3 is redundant.
-    ; For TARGET_DEPTH=4: rule 3a prevents wasting time on a doomed d=4 attempt.
-    ; For TARGET_DEPTH>=5: rule 3b allows d=5 attempts up to 90s elapsed
-    ;   (looser than 3a's 60s — d=5 in middlegame typically takes 100-150s,
-    ;   needs more remaining budget; mid-search abort is the safety net).
-    ; For TARGET_DEPTH>=6: rule 2 caps at 5 regardless (defensive).
+    ; Iter-time gate (rule 3, replaces 60s/90s cumulative thresholds 2026-05-06):
+    ;   predicted_next = 3 * last_iter_seconds  (BF=3, conservative)
+    ;   remaining      = 180 - SEARCH_ELAPSED
+    ;   stop if predicted_next >= remaining
+    ; Rationale: closed positions branch ~3x at d>=4 (vs ~1.8x in open). Old
+    ; cumulative gate let d=5 start with insufficient budget in Hippo-class
+    ; positions, wasting 80-110s/move on incomplete d=5 (lost match 2026-05-06
+    ; move 5-9, all d=4 timeouts). Iteration-time gate uses the actual measured
+    ; iteration time so it adapts to position. RTC is 1s resolution; gate only
+    ; applies at d>=3 where iteration times are reliably multi-second.
 
     ; Rule 1: current >= TARGET_DEPTH?
     RLDI 10, CURRENT_MAX_DEPTH
@@ -3861,26 +3868,44 @@ ITER_LOOP:
     SMI 5
     LBDF ITER_DONE              ; current >= 5 — hard safety cap
 
-    ; Rule 3: depth-conditional elapsed cutoff.
-    ;   current == 3 (about to try d=4): stop if elapsed >= 60
-    ;   current >= 4 (about to try d=5): stop if elapsed >= 90
+    ; Rule 3: iteration-time gate. Apply only at depth >= 3.
     RLDI 10, CURRENT_MAX_DEPTH
     LDN 10
     SMI 3
-    LBNF ITER_INCREMENT         ; current < 3 — always continue (cheap depths)
-    LBNZ RULE3_D5               ; current > 3 → use d=5 threshold (90s)
-    ; current == 3: rule 3a (60s cutoff before attempting d=4)
+    LBNF ITER_INCREMENT         ; current < 3 — always continue (RTC granularity)
+
+    ; last_iter_seconds = SEARCH_ELAPSED - ITER_START_ELAPSED
+    RLDI 10, ITER_START_ELAPSED
+    LDN 10
+    STR 2                       ; M(R2) = iter_start
+    RLDI 10, SEARCH_ELAPSED
+    LDN 10                      ; D = elapsed
+    SM                          ; D = elapsed - iter_start = last_iter
+    PLO 13                      ; R13.0 = last_iter
+
+    ; Fast path: last_iter > 60 → 3*last_iter overflows AND exceeds remaining
+    SMI 61
+    LBDF ITER_DONE              ; last_iter >= 61 — stop
+
+    ; predicted = 3 * last_iter (no overflow: last_iter <= 60, so 3x <= 180)
+    GLO 13                      ; D = last_iter
+    SHL                         ; D = 2 * last_iter
+    STR 2                       ; M(R2) = 2 * last_iter
+    GLO 13                      ; D = last_iter
+    ADD                         ; D = 3 * last_iter
+    PLO 13                      ; R13.0 = predicted
+
+    ; remaining = 180 - SEARCH_ELAPSED
     RLDI 10, SEARCH_ELAPSED
     LDN 10
-    SMI 60
-    LBDF ITER_DONE              ; elapsed >= 60 — stop d=4
-    LBR ITER_INCREMENT
-RULE3_D5:
-    ; current >= 4: rule 3b (90s cutoff before attempting d=5)
-    RLDI 10, SEARCH_ELAPSED
-    LDN 10
-    SMI 90
-    LBDF ITER_DONE              ; elapsed >= 90 — stop d=5
+    SDI 180                     ; D = 180 - elapsed
+    LBNF ITER_DONE              ; elapsed > 180 (defensive; budget abort handles too)
+
+    ; if predicted >= remaining: stop, else continue
+    STR 2                       ; M(R2) = remaining
+    GLO 13                      ; D = predicted
+    SM                          ; D = predicted - remaining
+    LBDF ITER_DONE              ; predicted >= remaining — stop
 
 ITER_INCREMENT:
     ; --- Increment depth and loop ---
