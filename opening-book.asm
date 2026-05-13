@@ -718,6 +718,15 @@ OPENING_BOOK:
     ; the knight and forces an open position the engine can navigate at d=4.
     DB $08, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $76, $55, $06, $25, $63, $53, $34, $44
 
+    ; --- Caro+Qc7+Nf6+d5 ply-8, 2026-05-13 ---
+    ; Ply 8: e2e4 c7c6 d2d4 d8c7 b1c3 g8f6 g1f3 d7d5 -> e4e5 (attack Nf6)
+    ; 2026-05-12 loss: Stockfish played 4...d5 instead of 4...d6, dropping
+    ; out of book at ply 8. Engine then searched and chose e4e5 anyway, but
+    ; black's Nxe4 outpost dragged the engine into a slow drift to -1785cp.
+    ; Same anti-Hippo policy: book the e5 thrust to lock in the line + save
+    ; ~165s of move-5 search.
+    DB $08, $14, $34, $62, $52, $13, $33, $73, $62, $01, $22, $76, $55, $06, $25, $63, $43, $34, $44
+
     ; === Ply 9 ===
     ; Ply 9: 14-34 64-44 06-25 71-52 05-32 75-42 01-22 76-55 13-23 -> 63-53 (637x)
     DB $09, $14, $34, $64, $44, $06, $25, $71, $52, $05, $32, $75, $42, $01, $22, $76, $55, $13, $23, $63, $53
