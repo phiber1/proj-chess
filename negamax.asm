@@ -49,6 +49,13 @@ NEGAMAX:
     ; Ensure X=2 for stack operations
     SEX 2
 
+    ; Stack overflow detection (added 2026-05-12). MOVE_LIST at $7800-$7A7F
+    ; sits directly below stack guard $7B00. If recursion pushes R2 below
+    ; $7B00, MOVE_LIST gets silently corrupted — the suspected cause of the
+    ; 2026-05-11 g8h7 illegal-move output. Flag is checked + emitted as
+    ; UCI info string at each IDS iteration boundary.
+    CALL CHECK_STACK_OVERFLOW
+
     ; -----------------------------------------------
     ; PLY LIMIT CHECK: Prevent array overflow
     ; -----------------------------------------------
@@ -2453,6 +2460,9 @@ QUIESCENCE_SEARCH:
     ; Ensure X=2 for stack operations
     SEX 2
 
+    ; Stack overflow detection (see NEGAMAX comment).
+    CALL CHECK_STACK_OVERFLOW
+
     ; Stand-pat: evaluate current position
     CALL EVALUATE
     ; Returns score in R9 (from white's perspective)
@@ -3939,6 +3949,21 @@ ITER_LOOP:
 
     ; --- Send UCI "info" for this depth ---
     CALL SEND_UCI_INFO
+
+    ; --- Stack overflow report (if detected this iteration) ---
+    ; CHECK_STACK_OVERFLOW (called from NEGAMAX/QSEARCH entry) sets
+    ; STACK_OVERFLOW_FLAG = R2.HI when R2 dips below $7B00. If nonzero,
+    ; emit info string and reset for next iteration. The raw R2.HI
+    ; remains inspectable via memory dump.
+    RLDI 10, STACK_OVERFLOW_FLAG
+    LDN 10
+    LBZ ITER_NO_SOVF
+    LDI 0
+    STR 10                      ; reset flag
+    RLDI 15, STR_INFO_SOVF
+    SEP 4
+    DW F_MSG
+ITER_NO_SOVF:
 
     ; --- Iterative deepening termination decision ---
     ; UCI semantics: TARGET_DEPTH is treated as a CAP (max depth we may reach),

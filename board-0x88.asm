@@ -258,6 +258,7 @@ ITER_SCORE_LO     EQU $64C9   ; 1 byte - score low byte (last completed depth)
 SEARCH_PREV_SECS  EQU $64CA   ; 1 byte - last RTC seconds reading (for delta)
 SEARCH_ELAPSED    EQU $64CB   ; 1 byte - accumulated elapsed seconds (0-255)
 ITER_START_ELAPSED EQU $64ED  ; 1 byte - SEARCH_ELAPSED snapshot at iteration start (for iter-time gate)
+STACK_OVERFLOW_FLAG EQU $64EE ; 1 byte - 0=no overflow; nonzero=R2.HI at last overflow detection
 UINT_BUFFER       EQU $64CC   ; 6 bytes - ASCII scratch for F_UINTOUT ($64CC-$64D1)
 NODE_TT_FLAGS     EQU $64D2   ; 8 bytes - TT bound type per ply ($64D2-$64D9)
 CHECK_EXT_FLAG    EQU $64DA   ; 1 byte - 1 if current move gives check (extension)

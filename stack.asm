@@ -343,11 +343,26 @@ GET_STACK_DEPTH:
 ; ------------------------------------------------------------------------------
 CHECK_STACK_OVERFLOW:
     GHI 2
-    SMI $7B             ; Compare with $7B
-    BDF STACK_OK        ; If DF=1, 2 >= $7B00, OK
-    ; Stack overflow detected
-    ; TODO: Set error flag or halt
-    ; For now, just return
+    SMI $7D             ; Compare with $7D (raised 2026-05-12 from $7B)
+    LBDF STACK_OK       ; If DF=1, R2.HI >= $7D, OK (no overflow)
+    ; Stack pointer below $7D00 — would corrupt XMODEM ($7C00-$7CFF)
+    ; or, if deeper, MOVE_LIST ($7800-$7A7F). Mark observed empirical
+    ; XMODEM corruption (2026-05-11 illegal-move match + 2026-05-12
+    ; XMODEM crash) so this is a real condition, not theoretical.
+    ;
+    ; Memory map with XMODEM resident:
+    ;   $7800-$7A7F  MOVE_LIST (640 B, 5 plies × 128)
+    ;   $7A80-$7AFF  gap (zeroed by WORKSPACE_CLEAR)
+    ;   $7B00-$7BFF  unused buffer between MOVE_LIST and XMODEM
+    ;   $7C00-$7CFF  XMODEM reserved — DO NOT TOUCH
+    ;   $7D00-$7FFF  stack working zone (768 B usable)
+    ;
+    ; Record R2.HI to flag byte. Multiple overflows: last one wins.
+    ; SEARCH_POSITION emits info string + resets flag at next IDS
+    ; iteration boundary.
+    RLDI 10, STACK_OVERFLOW_FLAG    ; RLDI clobbers D, must precede GHI 2
+    GHI 2
+    STR 10              ; STACK_OVERFLOW_FLAG = R2.HI
 STACK_OK:
     RETN
 
