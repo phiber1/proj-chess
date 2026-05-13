@@ -3278,23 +3278,26 @@ OTM_SCAN:
     GHI 7
     LBZ OTM_DONE        ; Scanned all, no match
 
-    ; Compare low byte (from + to.bit0 — flags don't affect low byte)
-    LDA 8               ; list move low byte
+    ; MOVE_LIST entries are stored HIGH byte first (ADD_MOVE_ENCODED
+    ; movegen-helpers.asm:221). Fixed 2026-05-13 — old code mistakenly
+    ; called LDA 8's read "low byte". Compare HIGH (mask flag bits 6-7)
+    ; first, then LOW.
+    LDA 8               ; list move HIGH byte; R8 advances
+    ANI $3F             ; mask off flag bits 6-7
     STR 2
-    GLO 11              ; TT low byte
+    GHI 11              ; TT encoded HIGH byte (flags=0)
     XOR
-    LBNZ OTM_NEXT       ; Low bytes differ
+    LBNZ OTM_NEXT       ; HIGH bytes differ
 
-    ; Low match — compare high byte masked (ignore flags in bits 6-7)
-    LDN 8               ; list move high byte
-    ANI $3F             ; mask off flags
+    ; HIGH match — compare LOW byte (no mask)
+    LDN 8               ; list move LOW byte; R8 stays
     STR 2
-    GHI 11              ; TT high (flags=0, already masked)
+    GLO 11              ; TT encoded LOW byte
     XOR
     LBZ OTM_FOUND       ; Match!
 
 OTM_NEXT:
-    INC 8               ; skip high byte
+    INC 8               ; skip past LOW byte to next entry
     GHI 7
     SMI 1
     PHI 7
@@ -3411,21 +3414,25 @@ OKM_SCAN_K1:
     GHI 7
     LBZ OKM_TRY_KILLER2 ; No more moves to scan
 
-    ; Compare move at R8 with killer1 (R11)
-    LDA 8               ; move low byte
+    ; MOVE_LIST entries stored HIGH first (ADD_MOVE_ENCODED:221). Killer is
+    ; stored with flags=0 (see beta-cutoff store at line ~2042). Compare
+    ; HIGH (mask flag bits 6-7 from list entry), then LOW. Fixed 2026-05-13
+    ; — old code had reversed byte order, so the optimization never matched.
+    LDA 8               ; list move HIGH byte; R8 advances
+    ANI $3F             ; mask off flag bits
     STR 2
-    GLO 11
+    GHI 11              ; killer1 HIGH (flags=0)
     XOR
-    LBNZ OKM_K1_NEXT    ; Low bytes don't match
+    LBNZ OKM_K1_NEXT    ; HIGH bytes don't match
 
-    LDN 8               ; move high byte
+    LDN 8               ; list move LOW byte; R8 stays
     STR 2
-    GHI 11
+    GLO 11              ; killer1 LOW
     XOR
     LBZ OKM_K1_FOUND    ; Match! Swap to front
 
 OKM_K1_NEXT:
-    INC 8               ; Skip high byte (already loaded)
+    INC 8               ; skip past LOW byte to next entry
     GHI 7
     SMI 1
     PHI 7               ; Decrement counter
@@ -3508,21 +3515,22 @@ OKM_SCAN_K2:
     GHI 7
     LBZ OKM_DONE        ; No more moves
 
-    ; Compare move at R8 with killer2 (R13)
-    LDA 8               ; move low byte
+    ; Byte-order fix (2026-05-13) — HIGH first with mask, then LOW.
+    LDA 8               ; list move HIGH byte; R8 advances
+    ANI $3F             ; mask off flag bits 6-7
     STR 2
-    GLO 13
+    GHI 13              ; killer2 HIGH (flags=0)
     XOR
-    LBNZ OKM_K2_NEXT    ; Low bytes don't match
+    LBNZ OKM_K2_NEXT    ; HIGH bytes don't match
 
-    LDN 8               ; move high byte
+    LDN 8               ; list move LOW byte; R8 stays
     STR 2
-    GHI 13
+    GLO 13              ; killer2 LOW
     XOR
     LBZ OKM_K2_FOUND    ; Match!
 
 OKM_K2_NEXT:
-    INC 8
+    INC 8               ; skip past LOW byte to next entry
     GHI 7
     SMI 1
     PHI 7
