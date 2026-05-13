@@ -2814,6 +2814,105 @@ QS_DELTA_NO_PRUNE:
     GLO 15
     STXD
 
+    ; ===============================================================
+    ; QSEARCH defender-check pre-filter (added 2026-05-07)
+    ; ===============================================================
+    ; QSEARCH lacks recursion: each capture is evaluated as if its
+    ; recapture won't happen. This causes phantom material wins when
+    ; we capture a defended piece with a more valuable attacker.
+    ;
+    ; Filter: if captor_value > victim_value AND target is defended
+    ; by enemy, skip this capture entirely. Single-level defender
+    ; check; doesn't see exchange chains, but catches the dominant
+    ; bug class (e.g., Bxg6 when h7-pawn defends).
+    ;
+    ; Empirical motivation (2026-05-07): post-Kxf7 d=1 returned +220cp
+    ; bestmove d3g6 (Bxg6) despite h7 pawn obviously recapturing —
+    ; QSEARCH saw bishop "win" but not the recapture.
+    ; ===============================================================
+
+    ; Load victim_value from board[to_square]
+    LDI HIGH(BOARD)
+    PHI 10
+    GLO 13                          ; to square
+    PLO 10
+    LDN 10
+    ANI $07                         ; victim piece type 1-6
+    SHL                             ; * 2 for 16-bit table
+    ADI LOW(PIECE_VALUES)
+    PLO 10
+    LDI HIGH(PIECE_VALUES)
+    ADCI 0
+    PHI 10
+    LDA 10                          ; victim_value hi
+    PHI 8
+    LDN 10                          ; victim_value lo
+    PLO 8                           ; R8 = victim_value
+
+    ; Load captor_value from board[from_square]
+    LDI HIGH(BOARD)
+    PHI 10
+    GHI 13                          ; from square
+    PLO 10
+    LDN 10
+    ANI $07                         ; captor piece type 1-6
+    SHL
+    ADI LOW(PIECE_VALUES)
+    PLO 10
+    LDI HIGH(PIECE_VALUES)
+    ADCI 0
+    PHI 10
+    LDA 10                          ; captor_value hi
+    PHI 7
+    LDN 10                          ; captor_value lo
+    PLO 7                           ; R7 = captor_value
+
+    ; Compare: victim - captor (16-bit signed). DF=1 if victim >= captor.
+    GLO 7
+    STR 2                           ; M(R2) = captor_lo
+    GLO 8
+    SM                              ; D = victim_lo - captor_lo
+    GHI 7
+    STR 2                           ; M(R2) = captor_hi
+    GHI 8
+    SMB                             ; D = victim_hi - captor_hi - borrow
+    LBDF QS_DEF_OK                  ; victim >= captor: no filter
+
+    ; Captor > victim. Check if target square is defended by enemy.
+    ; Save R11.1 (capture limit) and R13 (from/to) — IS_SQUARE_ATTACKED
+    ; restores R11.0 and R12.0 but clobbers everything else including
+    ; R13 and R15.0.
+    GHI 11
+    STXD                            ; push capture limit
+    GHI 13
+    STXD                            ; push from
+    GLO 13
+    STXD                            ; push to
+
+    ; Set R11.0 = target square, R12.0 already = our color
+    GLO 13
+    PLO 11
+    CALL IS_SQUARE_ATTACKED
+    PLO 7                           ; R7.0 = result (0=safe, 1=attacked)
+    SEX 2                           ; Defensive: ensure X=2 for following pop
+
+    ; Restore saved state
+    IRX
+    LDXA                            ; pop to → R13.0
+    PLO 13
+    LDXA                            ; pop from → R13.1
+    PHI 13
+    LDX                             ; pop capture limit → R11.1
+    PHI 11
+
+    GLO 7
+    LBNZ QS_DEF_SKIP                ; defended: filter fires, skip capture
+
+QS_DEF_OK:
+    ; ===============================================================
+    ; End QSEARCH defender-check pre-filter
+    ; ===============================================================
+
     ; Store from/to for MAKE_MOVE
     RLDI 10, MOVE_FROM
     GHI 13              ; from
@@ -2860,6 +2959,16 @@ QS_SET_PROMO:
     LDX
     PHI 15              ; R15.1 = move count high (0)
     LBR QS_LOOP         ; Skip this illegal capture, try next
+
+QS_DEF_SKIP:
+    ; Defender-check filter fired: skip capture WITHOUT make/unmake.
+    ; Pop R15 (saved before our filter ran) and continue.
+    IRX
+    LDXA
+    PLO 15              ; R15.0 = move count low
+    LDX
+    PHI 15              ; R15.1 = move count high (0)
+    LBR QS_LOOP
 
 QS_CAPTURE_LEGAL:
     ; Check capture limit - decrement and bail if exhausted
