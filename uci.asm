@@ -567,9 +567,116 @@ UCI_GO_SEARCH:
     CALL SEARCH_POSITION
 
 UCI_GO_SEND_MOVE:
-    ; Best move now at BEST_MOVE
+    ; Best move now at BEST_MOVE.
+    ;
+    ; --- Root-move validation (added 2026-05-12) ---
+    ; Defense against MOVE_LIST corruption causing illegal-move output.
+    ; Regenerate moves from current board; verify BEST_MOVE appears in
+    ; the regenerated list. If not, emit info string + substitute first
+    ; legal move. Catches the symptom of any state corruption affecting
+    ; root MOVE_LIST regardless of underlying cause.
 
-    ; Send best move
+    ; Encode BEST_MOVE for byte-by-byte comparison (mirrors ORDER_TT_MOVE)
+    RLDI 10, BEST_MOVE
+    LDA 10
+    PHI 13                      ; R13.1 = BEST_MOVE from (0x88)
+    LDN 10
+    PLO 13                      ; R13.0 = BEST_MOVE to (0x88)
+
+    RLDI 10, MOVE_FLAGS_TEMP
+    LDI 0
+    STR 10                      ; flags=0 for the comparison encoding
+
+    CALL ENCODE_MOVE_16BIT
+    ; R8 = encoded BEST_MOVE (flags=0)
+
+    ; Save encoded BEST_MOVE on stack across GENERATE_MOVES
+    ; (GENERATE_MOVES clobbers R11 — uses R11.1 as current-from-square)
+    GHI 8
+    STXD
+    GLO 8
+    STXD
+
+    ; Regenerate legal moves into MOVE_LIST
+    RLDI 9, MOVE_LIST
+    CALL GENERATE_MOVES
+    ; D = move count
+
+    PLO 7                       ; R7.0 = move count
+    PHI 7                       ; R7.1 = loop counter (D unchanged by PLO)
+
+    ; Restore encoded BEST_MOVE to R11
+    IRX
+    LDXA
+    PLO 11                      ; R11.0 = LOW
+    LDX
+    PHI 11                      ; R11.1 = HIGH
+
+    GHI 7                       ; check count
+    LBZ RMV_DONE                ; 0 moves (mate/stalemate) — leave as-is
+
+    RLDI 8, MOVE_LIST           ; R8 = scan pointer
+
+RMV_SCAN_LOOP:
+    GHI 7
+    LBZ RMV_NOT_FOUND
+
+    ; MOVE_LIST stores HIGH byte first (per ADD_MOVE_ENCODED line 221):
+    ; entry layout in memory is [HIGH][LOW] for each 2-byte move.
+    ; Compare HIGH byte (with flag bits 6-7 masked off)
+    LDA 8                       ; list move HIGH byte; R8++
+    ANI $3F                     ; mask off flag bits
+    STR 2
+    GHI 11                      ; encoded BEST_MOVE HIGH byte (flags=0)
+    XOR
+    LBNZ RMV_NEXT
+
+    ; HIGH bytes match — compare LOW byte (no masking needed)
+    LDN 8                       ; list move LOW byte; R8 stays
+    STR 2
+    GLO 11                      ; encoded BEST_MOVE LOW byte
+    XOR
+    LBZ RMV_DONE                ; Match — BEST_MOVE is legal, emit normally
+
+RMV_NEXT:
+    INC 8                       ; skip past LOW byte to next entry
+    GHI 7
+    SMI 1
+    PHI 7
+    LBR RMV_SCAN_LOOP
+
+RMV_NOT_FOUND:
+    ; BEST_MOVE not in regenerated legal list — corruption symptom.
+    RLDI 15, STR_INFO_RMV
+    SEP 4
+    DW F_MSG
+
+    ; Substitute first legal move from regenerated list
+    ; (memory order is [HIGH][LOW]; DECODE_MOVE_16BIT wants R8.0=LOW, R8.1=HIGH)
+    RLDI 8, MOVE_LIST
+    LDA 8                       ; HIGH byte from memory
+    PHI 11                      ; R11.1 = HIGH
+    LDN 8                       ; LOW byte from memory
+    PLO 11                      ; R11.0 = LOW
+
+    ; Now build R8 = [HIGH in .1, LOW in .0] for DECODE
+    GHI 11
+    PHI 8
+    GLO 11
+    PLO 8
+    CALL DECODE_MOVE_16BIT
+    ; R13.1 = from, R13.0 = to
+
+    ; Write back to BEST_MOVE
+    RLDI 10, BEST_MOVE
+    GHI 13
+    STR 10
+    INC 10
+    GLO 13
+    STR 10
+
+RMV_DONE:
+    ; Send best move (validated or substituted)
     RLDI 15, STR_BESTMOVE
     SEP 4
     DW F_MSG
