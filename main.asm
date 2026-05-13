@@ -152,6 +152,33 @@ WORKSPACE_CLEAR_LOOP:
     GLO 9
     LBNZ WORKSPACE_CLEAR_LOOP
 
+    ; Also clear MOVE_LIST area $7800-$7AFF (768 bytes).
+    ; MOVE_LIST was relocated $6200→$7800 in commit 3b16d64 for the d=5
+    ; expansion. Its zone now sits immediately below stack guard $7B00.
+    ; If GENERATE_MOVES is ever called with a corrupted count value, or
+    ; pointer math wanders past the per-ply allocation, residual data here
+    ; would decode as phantom moves. Zeroing means stale-bytes decode to
+    ; a1→a1 — still illegal but at least not a "real-looking" coordinates.
+    LDI $78
+    PHI 10
+    LDI $00
+    PLO 10              ; R10 = $7800
+
+    LDI $03
+    PHI 9
+    LDI $00
+    PLO 9               ; R9 = $0300 (768 bytes)
+
+WORKSPACE_CLEAR_ML_LOOP:
+    LDI 0
+    STR 10
+    INC 10
+    DEC 9
+    GHI 9
+    LBNZ WORKSPACE_CLEAR_ML_LOOP
+    GLO 9
+    LBNZ WORKSPACE_CLEAR_ML_LOOP
+
     RETN
 
 ; ==============================================================================

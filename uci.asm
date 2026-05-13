@@ -611,6 +611,27 @@ UCI_CMD_UCINEWGAME:
     ; Initialize board to starting position
     CALL INIT_BOARD
 
+    ; Compute and store starting-position Zobrist hash + first HASH_HIST entry.
+    ; UCI_CMD_POSITION normally does this when parsing "position startpos",
+    ; but the first such command after ucinewgame is frequently dropped at
+    ; the start of every match since 2026-04-30 ("PARTIAL_ECHO 'sition
+    ; startpos'"). The bridge sends ucinewgame and position back-to-back,
+    ; and BIOS serial RX drops the first 1-2 bytes during the long
+    ; WORKSPACE_CLEAR/TT_CLEAR processing window. Without hash init here,
+    ; the first search runs with hash=0 and pollutes TT with mis-keyed
+    ; entries that persist for the entire match.
+    CALL HASH_INIT
+    RLDI 10, HASH_HIST
+    RLDI 13, HASH_HI
+    LDA 13                  ; D = HASH_HI, R13 → HASH_LO
+    STR 10
+    INC 10
+    LDN 13                  ; D = HASH_LO
+    STR 10
+    RLDI 10, HASH_HIST_COUNT
+    LDI 1
+    STR 10                  ; HASH_HIST_COUNT = 1 (startpos stored)
+
     RETN
 
 ; ------------------------------------------------------------------------------
