@@ -898,7 +898,18 @@ NEGAMAX_TT_ORDER_CALL:
     INC 2               ; Peek move count from stack
     LDN 2
     DEC 2
-    CALL ORDER_TT_MOVE
+    ; --- ORDER_TT_MOVE disabled 2026-05-13 pending 32-bit TT hash widening ---
+    ; The byte-order fix in ORDER_TT_MOVE (commit 8aa04e6) is correct, but
+    ; enabling it surfaced a regression: with TT keyed on only 16 hash bits,
+    ; collisions are frequent (2^16 = 65k positions per slot). A TT_MOVE
+    ; from a colliding position gets promoted to the front of the move list
+    ; for the WRONG position; alpha-beta commits to that move's search line;
+    ; depth-limited search can't refute it. Observed concretely 2026-05-13:
+    ; engine chose Qg4-g7-h8 (queen sac into rook taking + queen recapture)
+    ; with ordering enabled; chose sensible Qg4-c8 with ordering disabled.
+    ; Killer ordering above is safe (not hash-keyed; per-ply table only).
+    ; Re-enable this CALL when TT_HASH is widened to 32 bits.
+    ; CALL ORDER_TT_MOVE
 
 NEGAMAX_SKIP_TT_ORDER:
 
