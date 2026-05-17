@@ -330,28 +330,18 @@ TT_PROBE:
     LDN 10
     PLO 7               ; R7 = current hash
 
-    ; Calculate TT entry address: TT_TABLE + (hash_lo * 8)
-    ; Since TT_ENTRY_SIZE = 8, multiply by 8 (shift left 3)
+    ; Calculate TT entry address: TT_TABLE + (index * 8)
+    ; XOR-fold indexing (2026-05-15): index = (hash_hi XOR hash_lo) & $FF.
+    GHI 7               ; hash_hi
+    STR 2
     GLO 7               ; hash_lo
+    XOR                 ; D = hash_hi XOR hash_lo
     ANI TT_INDEX_MASK   ; Mask to table size
-    SHL                 ; x2
-    SHL                 ; x4
-    SHL                 ; x8
-    PLO 10              ; Low byte of offset
-    LDI 0
-    ADCI 0              ; Handle carry from shifts
-    ; Actually need to handle this more carefully
-    ; hash_lo * 8: max $FF * 8 = $7F8
-    ; Need 16-bit result
-
-    ; Redo: hash_lo * 8
-    GLO 7               ; hash_lo
-    ANI TT_INDEX_MASK
     SHL                 ; x2, carry into DF
     PLO 10
     LDI 0
-    SHLC                ; Shift carry into D
-    PHI 10              ; R10.1 = high byte so far
+    SHLC                ; carry into D
+    PHI 10              ; R10.1 = high so far
     GLO 10
     SHL                 ; x4
     PLO 10
@@ -493,10 +483,13 @@ TT_STORE:
     LDN 10
     PLO 7               ; R7 = current hash
 
-    ; Calculate TT entry address: TT_TABLE + (hash_lo * 8)
-    GLO 7
+    ; Calculate TT entry address: TT_TABLE + (index * 8) — XOR-fold (must match TT_PROBE)
+    GHI 7               ; hash_hi
+    STR 2
+    GLO 7               ; hash_lo
+    XOR                 ; D = hash_hi XOR hash_lo
     ANI TT_INDEX_MASK
-    SHL                 ; x2
+    SHL                 ; x2, carry into DF
     PLO 10
     LDI 0
     SHLC
