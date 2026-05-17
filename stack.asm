@@ -343,12 +343,12 @@ GET_STACK_DEPTH:
 ; ------------------------------------------------------------------------------
 CHECK_STACK_OVERFLOW:
     GHI 2
-    SMI $7D             ; Compare with $7D (raised 2026-05-12 from $7B)
+    SMI $7D             ; Compare with $7D
     LBDF STACK_OK       ; If DF=1, R2.HI >= $7D, OK (no overflow)
     ; Stack pointer below $7D00 — would corrupt XMODEM ($7C00-$7CFF)
-    ; or, if deeper, MOVE_LIST ($7800-$7A7F). Mark observed empirical
-    ; XMODEM corruption (2026-05-11 illegal-move match + 2026-05-12
-    ; XMODEM crash) so this is a real condition, not theoretical.
+    ; or, if deeper, MOVE_LIST ($7800-$7A7F). System state at this point
+    ; is unsafe; allowing execution to continue produces garbage I/O and
+    ; runaway corruption (observed 2026-05-15 match crash).
     ;
     ; Memory map with XMODEM resident:
     ;   $7800-$7A7F  MOVE_LIST (640 B, 5 plies × 128)
@@ -357,12 +357,16 @@ CHECK_STACK_OVERFLOW:
     ;   $7C00-$7CFF  XMODEM reserved — DO NOT TOUCH
     ;   $7D00-$7FFF  stack working zone (768 B usable)
     ;
-    ; Record R2.HI to flag byte. Multiple overflows: last one wins.
-    ; SEARCH_POSITION emits info string + resets flag at next IDS
-    ; iteration boundary.
+    ; Record R2.HI to flag byte so it's recoverable via memory dump after
+    ; the trap, then hard-halt via MARK + SEP 1. MARK saves X:P; SEP 1
+    ; transfers control to R1 (BIOS monitor). No info-string emit attempt
+    ; — emitting via the corrupted stack would garble the UART output and
+    ; mask the real failure (changed 2026-05-16).
     RLDI 10, STACK_OVERFLOW_FLAG    ; RLDI clobbers D, must precede GHI 2
     GHI 2
-    STR 10              ; STACK_OVERFLOW_FLAG = R2.HI
+    STR 10              ; STACK_OVERFLOW_FLAG = R2.HI (for post-mortem)
+    MARK                ; Save X:P to memory (1802 monitor-trap convention)
+    SEP 1               ; Hard halt → R1 (BIOS monitor entry)
 STACK_OK:
     RETN
 

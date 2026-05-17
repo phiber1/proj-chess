@@ -3969,19 +3969,10 @@ ITER_LOOP:
     ; --- Send UCI "info" for this depth ---
     CALL SEND_UCI_INFO
 
-    ; --- Stack overflow report (if detected this iteration) ---
-    ; CHECK_STACK_OVERFLOW (called from NEGAMAX/QSEARCH entry) sets
-    ; STACK_OVERFLOW_FLAG = R2.HI when R2 dips below $7B00. If nonzero,
-    ; emit info string and reset for next iteration. The raw R2.HI
-    ; remains inspectable via memory dump.
-    RLDI 10, STACK_OVERFLOW_FLAG
-    LDN 10
-    LBZ ITER_NO_SOVF
-    LDI 0
-    STR 10                      ; reset flag
-    RLDI 15, STR_INFO_SOVF
-    SEP 4
-    DW F_MSG
+    ; Stack-overflow handling moved to CHECK_STACK_OVERFLOW (2026-05-16):
+    ; it now traps via MARK/SEP 1 immediately on detection, so this
+    ; IDS-boundary report path is unreachable. STACK_OVERFLOW_FLAG remains
+    ; written by the guard for post-trap memory dump inspection.
 ITER_NO_SOVF:
 
     ; --- Iterative deepening termination decision ---

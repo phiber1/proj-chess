@@ -35,7 +35,8 @@ STR_BESTMOVE    DB "bestmove ", 0
 STR_INFO_DEPTH  DB "info depth ", 0
 STR_SCORE_CP    DB " score cp ", 0
 STR_NODES       DB " nodes ", 0
-STR_INFO_SOVF   DB "info string STACK_OVERFLOW", 13, 10, 0
+; STR_INFO_SOVF removed 2026-05-16 — CHECK_STACK_OVERFLOW now hard-traps
+; via MARK/SEP 1 instead of emitting an info string via a corrupted stack.
 STR_INFO_RMV    DB "info string ROOT_MOVE_INVALID_SUBSTITUTED", 13, 10, 0
 
 ; ------------------------------------------------------------------------------
