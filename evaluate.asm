@@ -1118,6 +1118,16 @@ EVAL_BR_DONE:
     ; and pawn promotion drives are actually correct strategy.
     ; ==================================================================
 
+    ; Item-B gate (2026-05-19): snapshot pre-endgame score (material +
+    ; PST + structure + king-safety) for the material-deficit gate at
+    ; BKS_DONE. PERMANENT.
+    RLDI 10, EVAL_PREEG
+    GHI 9
+    STR 10
+    INC 10
+    GLO 9
+    STR 10
+
     RLDI 11, EG_PIECE_COUNT
     LDN 11              ; D = piece count
     SMI 12              ; compare: count - 12
@@ -1668,6 +1678,78 @@ CHECK_BONUS_SUB:
 CHECK_BONUS_DONE:
 
 BKS_DONE:
+    ; ==================================================================
+    ; Item-B material-deficit gate (2026-05-19)
+    ; ------------------------------------------------------------------
+    ; EVAL_PREEG = core score (material+PST+structure+king-safety),
+    ; captured before the endgame block. If a side is materially lost
+    ; (|preeg| >= 300 against it) the endgame activity/pawn-push bonuses
+    ; must not let the position read as drawish:
+    ;   preeg <= -300 (white lost): R9 = min(R9, preeg)
+    ;   preeg >= +300 (black lost): R9 = max(R9, preeg)
+    ;   else (|preeg| < 300): unchanged — winning conversions keep full
+    ;   endgame bonuses (16-win behaviour preserved).
+    ; 300 = $012C.  delta = R9 - preeg via COMPARE_TEMP (eval scores are
+    ; well within signed-16 range here; mate scores never reach the
+    ; piece-count-gated endgame block).
+    ; FOLLOW-UP (see MEMORY TODO): replace the hard step gate with a
+    ; graduated ramp to remove the threshold cliff.
+    ; ==================================================================
+    RLDI 10, EVAL_PREEG
+    LDA 10
+    PHI 7               ; R7.1 = preeg hi
+    LDN 10
+    PLO 7               ; R7.0 = preeg lo
+
+    ; A = preeg + 299 ; white-lost (preeg <= -300) iff A < 0 (sign set).
+    ; (preeg=-300 -> A=-1 set; preeg=-299 -> A=0 clear) single check.
+    GLO 7
+    ADI $2B             ; LOW(299)
+    PLO 8
+    GHI 7
+    ADCI $01            ; HIGH(299)
+    ANI $80
+    LBNZ GATE_WLOST     ; A negative -> white lost
+    ; B = preeg - 300 ; black-lost (preeg >= +300) iff B >= 0 (sign clear)
+    GLO 7
+    SMI $2C
+    GHI 7
+    SMBI $01
+    ANI $80
+    LBNZ GATE_DONE      ; B negative -> preeg < +300 -> neither lost
+    ; black lost: R9 = max(R9, preeg) -> if R9 < preeg, R9 = preeg
+    CALL GATE_DELTA_SIGN    ; D bit7 = sign of (R9 - preeg)
+    ANI $80
+    LBZ GATE_DONE       ; R9 - preeg >= 0 -> R9 >= preeg -> keep (max)
+    LBR GATE_SETPE      ; R9 < preeg -> clamp up
+GATE_WLOST:
+    ; white lost: R9 = min(R9, preeg) -> if R9 > preeg, R9 = preeg
+    CALL GATE_DELTA_SIGN
+    ANI $80
+    LBNZ GATE_DONE      ; R9 - preeg < 0 -> R9 < preeg -> keep (min)
+GATE_SETPE:
+    GHI 7
+    PHI 9
+    GLO 7
+    PLO 9               ; R9 = preeg
+GATE_DONE:
+    RETN
+
+; Helper: D.bit7 = sign of (R9 - preeg).  R7 = preeg.  Uses COMPARE_TEMP.
+; Straight 16-bit subtract; eval scores bounded well within signed-16 in
+; the endgame block so the sign is reliable.
+GATE_DELTA_SIGN:
+    RLDI 10, COMPARE_TEMP
+    SEX 10
+    GLO 7
+    STR 10
+    GLO 9
+    SM                  ; D = R9.lo - preeg.lo
+    GHI 7
+    STR 10
+    GHI 9
+    SMB                 ; D = R9.hi - preeg.hi - borrow (sign of delta)
+    SEX 2
     RETN
 
 ; ------------------------------------------------------------------------------
