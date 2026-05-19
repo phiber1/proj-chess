@@ -62,9 +62,173 @@ PIECE_VALUES:
 ;   4. King safety (TODO)
 ;   5. Mobility (TODO)
 ; ------------------------------------------------------------------------------
+
+; ------------------------------------------------------------------------------
+; CHECK_INSUFFICIENT_MATERIAL - Detect the canonical dead-draw material configs
+; ------------------------------------------------------------------------------
+; Returns D = 1 if the position is one of:
+;   K vs K, K+N vs K, K+B vs K, K+B vs K+B (bishops on same square colour)
+; else D = 0.  These are the four cases where neither side can force mate
+; (item C — added 2026-05-18).  Returning 0 from EVALUATE for these stops the
+; engine meandering in drawn endgames until the 50-move rule.
+;
+; Scans BOARD once, early-aborting to "not draw" the moment a pawn, rook, or
+; queen is seen, or when the minor count exceeds 2.  In any position with
+; pawns/rooks/queens (every opening/middlegame) the very first occupied square
+; aborts the scan, so cost is ~1 iteration in normal play; only true bare-king
+; endgames pay the full 128-square walk.
+;
+; Provably safe for non-drawn positions: the short-circuit only fires when
+; material is EXACTLY one of the four configs above. Any pawn/rook/queen or a
+; 3rd minor falls through untouched — cannot alter winning/losing eval.
+;
+; Uses: R7 (sq index), R8 (piece + type/sqcolor scratch), R10 (board ptr),
+;       R11 (.0=minor total, .1=white bishop count),
+;       R13 (.0=black bishop count, .1=bishop sq-colour bits)
+; Does NOT touch R6 (SCRT) or R9 (caller score, not yet set at call site).
+; ------------------------------------------------------------------------------
+CHECK_INSUFFICIENT_MATERIAL:
+    LDI 0
+    PLO 11              ; R11.0 = minor total (bishops + knights)
+    PHI 11              ; R11.1 = white bishop count
+    PLO 13              ; R13.0 = black bishop count
+    PHI 13              ; R13.1 = bishop sq-colour bits (b0=W, b1=B)
+
+    LDI 0
+    PLO 7               ; R7.0 = square index 0
+
+CIM_LOOP:
+    GLO 7
+    ANI $88
+    LBNZ CIM_NEXT       ; off-board 0x88 square, skip
+
+    ; R10 = BOARD + sq
+    GLO 7
+    ADI LOW(BOARD)
+    PLO 10
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 10
+    LDN 10              ; D = piece
+    LBZ CIM_NEXT        ; empty square
+
+    PLO 8               ; R8.0 = full piece byte (kept all loop)
+    ANI PIECE_MASK      ; D = piece type 1-6
+    PHI 8               ; R8.1 = piece type
+
+    XRI KING_TYPE       ; king? (always present, never counted)
+    LBZ CIM_NEXT
+
+    GHI 8               ; type
+    XRI PAWN_TYPE
+    LBZ CIM_NOT_DRAW    ; any pawn → not insufficient
+    GHI 8
+    XRI ROOK_TYPE
+    LBZ CIM_NOT_DRAW    ; any rook → not insufficient
+    GHI 8
+    XRI QUEEN_TYPE
+    LBZ CIM_NOT_DRAW    ; any queen → not insufficient
+
+    ; piece is a minor (knight=2 or bishop=3)
+    GLO 11
+    ADI 1
+    PLO 11              ; minor total++
+    SMI 3
+    LBDF CIM_NOT_DRAW   ; >=3 minors → not one of the four cases
+
+    GHI 8               ; type
+    XRI BISHOP_TYPE
+    LBNZ CIM_NEXT       ; knight — counted in total, nothing more
+
+    ; --- bishop: compute its square colour = ((sq>>4)+(sq&7)) & 1 ---
+    GLO 7
+    ANI $07             ; file
+    STR 2               ; M(R2) = file
+    GLO 7
+    SHR
+    SHR
+    SHR
+    SHR                 ; D = sq>>4 = rank (valid sq → high nibble 0-7)
+    ADD                 ; D = rank + file
+    ANI $01             ; D = square colour 0/1
+    PHI 8               ; R8.1 = square colour
+
+    GLO 8               ; full piece byte
+    ANI COLOR_MASK      ; 0 = white bishop, 8 = black bishop
+    LBNZ CIM_BLACK_B
+
+    ; white bishop
+    GHI 11
+    ADI 1
+    PHI 11              ; white bishop count++
+    GHI 8               ; square colour
+    LBZ CIM_NEXT        ; colour 0 → leave bit0 clear
+    GHI 13
+    ORI $01
+    PHI 13              ; bit0 = white bishop on colour-1 square
+    LBR CIM_NEXT
+
+CIM_BLACK_B:
+    GLO 13
+    ADI 1
+    PLO 13              ; black bishop count++
+    GHI 8               ; square colour
+    LBZ CIM_NEXT
+    GHI 13
+    ORI $02
+    PHI 13              ; bit1 = black bishop on colour-1 square
+
+CIM_NEXT:
+    GLO 7
+    ADI 1
+    PLO 7
+    XRI $80             ; scanned squares 0..127?
+    LBNZ CIM_LOOP
+
+    ; --- decision ---
+    GLO 11              ; minor total
+    LBZ CIM_DRAW        ; 0 minors → K vs K
+    SMI 1
+    LBZ CIM_DRAW        ; 1 minor  → K+N vs K or K+B vs K (either side)
+
+    ; minor total == 2 (>=3 already rejected mid-scan).
+    ; Draw only if exactly one bishop per side AND same square colour.
+    GHI 11              ; white bishop count
+    SMI 1
+    LBNZ CIM_NOT_DRAW   ; != 1
+    GLO 13              ; black bishop count
+    SMI 1
+    LBNZ CIM_NOT_DRAW   ; != 1
+    GHI 13
+    ANI $03             ; b0=white sqcolour, b1=black sqcolour
+    LBZ CIM_DRAW        ; 00 → both colour-0 → same → draw
+    XRI $03
+    LBZ CIM_DRAW        ; 11 → both colour-1 → same → draw
+    LBR CIM_NOT_DRAW    ; 01/10 → opposite colours (not in item-C list)
+
+CIM_DRAW:
+    LDI 1
+    RETN
+
+CIM_NOT_DRAW:
+    LDI 0
+    RETN
+
+; ------------------------------------------------------------------------------
 EVALUATE:
     ; Ensure X=2 for all stack/memory operations
     SEX 2
+
+    ; Insufficient-material dead-draw short-circuit (item C, 2026-05-18).
+    ; Safe by construction: only fires for K-K / K+N-K / K+B-K / K+B-K+B
+    ; same-colour; any other material falls through to the full eval.
+    CALL CHECK_INSUFFICIENT_MATERIAL
+    LBZ EVAL_NOT_DEAD_DRAW
+    LDI 0
+    PHI 9
+    PLO 9              ; R9 = 0 (draw)
+    RETN
+EVAL_NOT_DEAD_DRAW:
 
     ; Initialize score to 0
     ; NOTE: Use R9 for score, NOT R6! R6 is SCRT linkage register!

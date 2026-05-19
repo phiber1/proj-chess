@@ -272,7 +272,7 @@ EVAL_PST_LOOP:
     ; Simpler: XOR with $38 flips rank (keeps file same within rank)
     GLO 15               ; Get piece
     ANI COLOR_MASK
-    BZ EVAL_PST_WHITE
+    LBZ EVAL_PST_WHITE   ; long branch: insertion shifted page boundary
 
     ; Black piece - flip rank
     GLO 13
