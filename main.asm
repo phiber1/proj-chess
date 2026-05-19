@@ -182,70 +182,12 @@ WORKSPACE_CLEAR_ML_LOOP:
     RETN
 
 ; ==============================================================================
-; Test Functions (SEARCH_POSITION is in negamax.asm)
+; Dead test/utility stubs (TEST_MOVE_GEN, TEST_MAKE_UNMAKE, TEST_SEARCH,
+; PRINT_BOARD, MOVE_TO_STRING, STRING_TO_MOVE) and the unused leftover strings
+; VERSION_STRING/ENGINE_NAME/ENGINE_AUTHOR removed 2026-05-18. The live UCI id
+; strings are STR_ID_NAME/STR_ID_AUTHOR in uci.asm; these had zero references.
+; Reclaims space so the binary tail stays below \$6000 (BOARD) after item-C.
 ; ==============================================================================
-
-TEST_MOVE_GEN:
-    CALL INIT_BOARD
-
-    RLDI 9, MOVE_LIST
-
-    RLDI 10, BOARD
-
-    CALL GET_SIDE_TO_MOVE
-    PLO 12
-
-    CALL GENERATE_MOVES
-    RETN
-
-TEST_MAKE_UNMAKE:
-    CALL INIT_BOARD
-    CALL TEST_MOVE_GEN
-
-    ; Load first move from move list into R11 (NOT R6 - R6 is SCRT linkage!)
-    RLDI 10, MOVE_LIST
-
-    LDA 10
-    PLO 11
-    LDN 10
-    PHI 11              ; R11 = first move
-
-    RLDI 10, BOARD
-
-    CALL MAKE_MOVE
-    CALL UNMAKE_MOVE
-    RETN
-
-TEST_SEARCH:
-    CALL INIT_BOARD
-
-    ; Set depth in memory (R5 is SRET - cannot use!)
-    RLDI 13, SEARCH_DEPTH
-    LDI 0
-    STR 13              ; SEARCH_DEPTH high = 0
-    INC 13
-    LDI 3
-    STR 13              ; SEARCH_DEPTH low = 3
-
-    CALL SEARCH_POSITION
-    RETN
-
-; ==============================================================================
-; Utility Functions
-; ==============================================================================
-
-PRINT_BOARD:
-    ; TODO: Implementation
-    RETN
-
-MOVE_TO_STRING:
-    CALL DECODE_MOVE_16BIT
-    ; TODO: Implementation
-    RETN
-
-STRING_TO_MOVE:
-    ; TODO: Implementation
-    RETN
 
 ; ==============================================================================
 ; Messages
@@ -256,16 +198,6 @@ MSG_STARTUP:
     DB "RCA 1802/1806 Chess Engine", 13, 10
     DB "Initializing...", 13, 10
     DB 0
-
-; Version string
-VERSION_STRING:
-    DB "RCA Chess Engine v0.1", 0
-
-ENGINE_NAME:
-    DB "RCA-Chess-1806", 0
-
-ENGINE_AUTHOR:
-    DB "Generated with Claude Code", 0
 
 ; ==============================================================================
 ; End of Main Program
