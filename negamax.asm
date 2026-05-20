@@ -341,6 +341,25 @@ REP_NO_MATCH:
     CALL TT_PROBE       ; D = required depth, returns D = 1 if hit
     LBZ NEGAMAX_TT_MISS ; No hit, continue with search
 
+    ; --- Restrict TT score-cutoff to depth=1 only (2026-05-20) ---
+    ; 16-bit Zobrist hash gives ~1/65536 false-match rate per TT probe.
+    ; Empirically, a single bad TT score at depth >= 2 corrupts the entire
+    ; subtree below it, propagating phantom scores back to the root. The
+    ; turn-18 e4e6 loss (2026-05-20) was caused by a depth-2 collision:
+    ; phantom +225 cp for a queen-loss move, engine committed via search.
+    ; A/B testing confirmed:
+    ;   No depth restriction        -> bestmove e4e6 (+225, queen sac)
+    ;   Cutoff at depth < 3 only    -> bestmove e4e6 (still wrong)
+    ;   Cutoff at depth < 2 only    -> bestmove e1c1 (+175, sensible castle)
+    ;   No cutoff at all            -> bestmove e1c1 (+175, sensible castle)
+    ; Threshold 2 keeps the depth-1 cutoffs (most numerous, smallest
+    ; per-collision blast radius) and eliminates the destructive deeper
+    ; cutoffs. TT_MOVE_HI/LO still populated for ordering regardless.
+    RLDI 13, SEARCH_DEPTH + 1
+    LDN 13              ; D = depth low byte
+    SMI 2               ; D - 2, DF=1 if depth >= 2
+    LBDF NEGAMAX_TT_MISS    ; deeper than 1-ply remaining, skip cutoff
+
     ; TT hit - check if it's usable (EXACT bound)
     RLDI 10, TT_FLAG
     LDN 10              ; D = TT flag
