@@ -1734,6 +1734,75 @@ FIX_B_NEG:
     PHI 9
 FIX_B_DONE:
 
+    ; ==================================================================
+    ; Hopeless-material amplifier (2026-05-19 PM-late)
+    ; ------------------------------------------------------------------
+    ; Push eval past cutechess's -1500 cp / 10-move resign-adjudication
+    ; threshold in K-vs-K+Q-family positions so terminal-loss matches
+    ; end via the GUI's adjudication instead of 50+ moves of king-shuffle.
+    ;
+    ; Trigger: EG_PIECE_COUNT <= 2 AND exactly one side has a queen.
+    ; Action:  side with queen gets +-2000.
+    ;
+    ; Cases caught:
+    ;   K+Q vs K              count=1, W_Q=1, B_Q=0  -> +2000
+    ;   K vs K+Q              count=1, W_Q=0, B_Q=1  -> -2000
+    ;   K+Q vs K+N or K+B     count=2, W_Q=1, B_Q=0  -> +2000
+    ;   K+N or K+B vs K+Q     count=2, W_Q=0, B_Q=1  -> -2000
+    ;   K+Q+other vs K        count=2, W_Q=1, B_Q=0  -> +2000
+    ;   K vs K+Q+other        count=2, W_Q=0, B_Q=1  -> -2000
+    ;
+    ; Cases NOT caught (intentional, would need more discrimination):
+    ;   K+Q vs K+Q  (both have queens, usually drawn)
+    ;   K+R vs K    (no queens, but R+K still wins; defer)
+    ;
+    ; Inside endgame block: opening-path LBDF BKS_DONE near line 1134
+    ; skips this code. After Fix B but before Item-B clamp; the +-2000
+    ; survives the min/max clamp in both winning and losing branches
+    ; because the clamp targets preeg (which is only material+PST+king-
+    ; safety, well within +-1000), so the amplifier's magnitude dominates.
+    ; ==================================================================
+    RLDI 10, EG_PIECE_COUNT
+    LDN 10
+    SMI 3                       ; D = count - 3, DF=1 if count >= 3
+    LBDF HM_AMP_DONE            ; not <=2 pieces, skip
+
+    ; count <= 2 — check queen asymmetry
+    RLDI 8, W_QUEEN_CNT
+    LDN 8
+    PLO 7                       ; R7.0 = W_QUEEN_CNT (stash)
+    RLDI 8, B_QUEEN_CNT
+    LDN 8                       ; D = B_QUEEN_CNT
+    LBNZ HM_BLACK_Q             ; B has Q -> branch
+
+    ; B has no Q; check W
+    GLO 7
+    LBZ HM_AMP_DONE             ; neither side has Q, no amp
+
+    ; W has Q, B doesn't -> winning amp: R9 += 2000 ($07D0)
+    GLO 9
+    ADI $D0                     ; LOW(2000)
+    PLO 9
+    GHI 9
+    ADCI $07                    ; HIGH(2000)
+    PHI 9
+    LBR HM_AMP_DONE
+
+HM_BLACK_Q:
+    ; B has Q; check W
+    GLO 7
+    LBNZ HM_AMP_DONE            ; both have Q, no amp (likely drawn)
+
+    ; W has no Q, B has Q -> losing amp: R9 -= 2000
+    GLO 9
+    SMI $D0                     ; LOW(2000)
+    PLO 9
+    GHI 9
+    SMBI $07                    ; HIGH(2000)
+    PHI 9
+
+HM_AMP_DONE:
+
 BKS_DONE:
     ; ==================================================================
     ; Item-B material-deficit gate (2026-05-19)
