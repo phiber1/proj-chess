@@ -353,10 +353,10 @@ EVAL_WP_R5:
     LDI 50              ; rank 5
     LBR EVAL_WP_ADD
 EVAL_WP_R7:
-    LDI 150             ; rank 7
+    LDI 90              ; rank 7  (was 150, Fix A 2026-05-19)
     LBR EVAL_WP_ADD
 EVAL_WP_R6:
-    LDI 100             ; rank 6
+    LDI 70              ; rank 6  (was 100, Fix A 2026-05-19)
 EVAL_WP_ADD:
     STR 2
     RLDI 11, ADV_PAWN_W
@@ -387,10 +387,10 @@ EVAL_BP_R4:
     LDI 50              ; rank 4
     LBR EVAL_BP_ADD
 EVAL_BP_R2:
-    LDI 150             ; rank 2
+    LDI 90              ; rank 2  (was 150, Fix A 2026-05-19)
     LBR EVAL_BP_ADD
 EVAL_BP_R3:
-    LDI 100             ; rank 3
+    LDI 70              ; rank 3  (was 100, Fix A 2026-05-19)
 EVAL_BP_ADD:
     STR 2
     RLDI 11, ADV_PAWN_B
@@ -1395,10 +1395,10 @@ PP_W_R5:
     LDI 140
     LBR PP_W_ADD
 PP_W_R6:
-    LDI 200
+    LDI 160             ; was 200, Fix A 2026-05-19
     LBR PP_W_ADD
 PP_W_R7:
-    LDI 250
+    LDI 180             ; was 250, Fix A 2026-05-19
 PP_W_ADD:
     STR 2
     ; Asymmetric scaling (mirror of ADV_PAWN_W): scale 1/4 only in
@@ -1531,10 +1531,10 @@ PP_B_R4:
     LDI 140
     LBR PP_B_SUB
 PP_B_R3:
-    LDI 200
+    LDI 160             ; was 200, Fix A 2026-05-19
     LBR PP_B_SUB
 PP_B_R2:
-    LDI 250
+    LDI 180             ; was 250, Fix A 2026-05-19
 PP_B_SUB:
     STR 2
     ; No conversion-phase scaling on opponent pawns: we want full sensitivity
@@ -1733,6 +1733,50 @@ GATE_SETPE:
     GLO 7
     PLO 9               ; R9 = preeg
 GATE_DONE:
+    ; ==================================================================
+    ; Fix B — keep-queen-when-winning (2026-05-19)
+    ; ------------------------------------------------------------------
+    ; Deter unforced Q-for-R sacs while winning. If preeg >= +300 and
+    ; we still have a queen, R9 += 200 (so giving up the queen *costs*
+    ; that +200). Mirror for losing side. Combined with Item-B clamp:
+    ; in losing positions the +200 push is on top of the clamp.
+    ; R7 = preeg (still valid from Item-B load above).
+    ; ==================================================================
+    GLO 7
+    SMI $2C             ; LOW(300)
+    GHI 7
+    SMBI $01            ; HIGH(300)
+    ANI $80
+    LBNZ FIX_B_NEG      ; sign set -> preeg < +300 -> try losing branch
+    ; preeg >= +300: winning. If W_QUEEN_CNT > 0, R9 += 200.
+    RLDI 8, W_QUEEN_CNT
+    LDN 8
+    LBZ FIX_B_DONE
+    GLO 9
+    ADI $C8             ; LOW(200)
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+    LBR FIX_B_DONE
+FIX_B_NEG:
+    GLO 7
+    ADI $2B             ; LOW(299)
+    GHI 7
+    ADCI $01            ; HIGH(299)
+    ANI $80
+    LBZ FIX_B_DONE      ; sign clear -> preeg > -300 -> neither lost
+    ; preeg <= -300: losing. If B_QUEEN_CNT > 0, R9 -= 200.
+    RLDI 8, B_QUEEN_CNT
+    LDN 8
+    LBZ FIX_B_DONE
+    GLO 9
+    SMI $C8             ; LOW(200)
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+FIX_B_DONE:
     RETN
 
 ; Helper: D.bit7 = sign of (R9 - preeg).  R7 = preeg.  Uses COMPARE_TEMP.
