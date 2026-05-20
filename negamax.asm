@@ -898,18 +898,27 @@ NEGAMAX_TT_ORDER_CALL:
     INC 2               ; Peek move count from stack
     LDN 2
     DEC 2
-    ; --- ORDER_TT_MOVE disabled 2026-05-13 pending 32-bit TT hash widening ---
-    ; The byte-order fix in ORDER_TT_MOVE (commit 8aa04e6) is correct, but
-    ; enabling it surfaced a regression: with TT keyed on only 16 hash bits,
-    ; collisions are frequent (2^16 = 65k positions per slot). A TT_MOVE
-    ; from a colliding position gets promoted to the front of the move list
-    ; for the WRONG position; alpha-beta commits to that move's search line;
-    ; depth-limited search can't refute it. Observed concretely 2026-05-13:
-    ; engine chose Qg4-g7-h8 (queen sac into rook taking + queen recapture)
-    ; with ordering enabled; chose sensible Qg4-c8 with ordering disabled.
-    ; Killer ordering above is safe (not hash-keyed; per-ply table only).
-    ; Re-enable this CALL when TT_HASH is widened to 32 bits.
-    ; CALL ORDER_TT_MOVE
+    ; --- ORDER_TT_MOVE re-enabled 2026-05-20 ---
+    ; Disabled in 36f1328 (2026-05-13) due to 1/256 false-hit rate from
+    ; the TT index using hash_lo directly (verification effectively 8-bit).
+    ; XOR-fold indexing in 41f846a (2026-05-16) restored true 16-bit
+    ; verification, dropping the per-probe false-match rate to 1/65536.
+    ; Expected bad-ordering frequency at d=5 (~3000 probes) ~= 0.05 per
+    ; search — and ORDER_TT_MOVE additionally validates that the stored
+    ; move is in the current legal-move list before promoting, so even
+    ; the rare colliding hits only impact ordering when the stored move
+    ; happens to also be legal in our position.
+    ;
+    ; Validated 2026-05-20 on turn-53 horizon position
+    ; (4R3/5pk1/PR6/2P2p1P/3b4/5n2/r7/5K2 w): d=5 node count dropped
+    ; from 1214 (off) to 995 (on), -18%, with identical bestmove + score.
+    ; A/B test 2026-05-20 turn-29 position
+    ; (4rrk1/1p5p/2p3p1/q7/1B1Pp1b1/1pP3N1/1P3QPP/1RK4R w): same bestmove
+    ; with ordering on or off, ruling out collision-driven queen-sac at
+    ; this position. Net: safe at 16-bit verification.
+    ; Watch for queen-sac patterns in match play that do NOT reproduce
+    ; with ordering off — if any, disable again pending 32-bit hash widening.
+    CALL ORDER_TT_MOVE
 
 NEGAMAX_SKIP_TT_ORDER:
 
