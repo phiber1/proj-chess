@@ -236,7 +236,33 @@ NEGAMAX_NOT_FIFTY:
     RLDI 13, HASH_HIST_COUNT
     LDN 13
     LBZ REP_NO_MATCH    ; Empty history
-    PLO 11              ; R11.0 = loop counter
+    PLO 11              ; R11.0 = loop counter (= HASH_HIST_COUNT)
+
+    ; Hybrid 2-fold (early) / 3-fold (late) repetition detection (2026-05-20).
+    ; Strict 3-fold everywhere (the rolled-back attempt) cost too much in
+    ; opening — d=4/d=5 timeouts in most post-book turns because the loss
+    ; of 2-fold-as-pruning forced full subtree expansion. The score-zero
+    ; betrayal pattern documented in score_zero_betrayal_pattern.md only
+    ; fires in middlegame/endgame shuffle scenarios well past ply 30, so
+    ; we restore the 2-fold pruning shortcut in opening (where it's safe
+    ; because the engine isn't shuffling) and keep strict 3-fold for the
+    ; late game (where the hallucination actually appears).
+    ;
+    ; Implementation: pre-load R11.1 with a bias so the loop's threshold
+    ; check (SMI 2 / LBDF RETURN_DRAW) fires at the right match count.
+    ;   Early (HASH_HIST_COUNT < 30): R11.1 = 1, first match → 2 → fires (2-fold)
+    ;   Late  (HASH_HIST_COUNT >= 30): R11.1 = 0, two matches needed     (3-fold)
+    ; Threshold 30 plies = 15 fullmoves, conservative middlegame entry.
+    ; If match data shows the hallucination pattern leaks into ply<30
+    ; positions or the timeouts persist past 30, tune by editing the
+    ; SMI immediate below.
+    GLO 11              ; D = HASH_HIST_COUNT (still in R11.0)
+    SMI 30              ; D - 30, sets DF
+    LDI 1               ; default: early-game bias = 1 (2-fold)
+    LBNF REP_INIT_DONE  ; HASH_HIST_COUNT < 30 → keep bias=1
+    LDI 0               ; late game: bias = 0 (strict 3-fold)
+REP_INIT_DONE:
+    PHI 11              ; R11.1 = match count = bias
 
     RLDI 9, HASH_HIST   ; R9 → first entry
 
@@ -253,8 +279,15 @@ REP_CHECK_LOOP:
     STR 2
     GLO 8               ; D = current.lo
     XOR
-    LBZ RETURN_DRAW     ; MATCH! Return draw (shared code)
-    LBR REP_DEC         ; Mismatch, R9 already past both bytes
+    LBNZ REP_DEC        ; Lo mismatch, R9 already past both bytes
+
+    ; Both bytes match — increment counter, fire at threshold
+    GHI 11
+    ADI 1
+    PHI 11              ; ++match_count
+    SMI 2               ; D = count - 2; DF=1 iff count >= 2
+    LBDF RETURN_DRAW    ; threshold met (2-fold in early, 3-fold in late)
+    LBR REP_DEC         ; below threshold, keep looking
 
 REP_SKIP_LO:
     INC 9               ; Skip lo byte
