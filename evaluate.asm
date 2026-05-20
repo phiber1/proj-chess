@@ -1677,6 +1677,63 @@ CHECK_BONUS_SUB:
 
 CHECK_BONUS_DONE:
 
+    ; ==================================================================
+    ; Fix B — keep-queen-when-winning (2026-05-19, relocated 2026-05-19 PM)
+    ; ------------------------------------------------------------------
+    ; Deter unforced Q-for-R sacs in winning positions while we still
+    ; have a queen. Phase-gated by location: this code is inside the
+    ; endgame block, so the LBDF BKS_DONE skip near line 1134 (piece
+    ; count >= 12 = opening/middlegame) bypasses it. First deployment
+    ; (commit 474579f) placed Fix B AFTER BKS_DONE, which let it fire
+    ; during opening/middlegame search leaves and made the engine play
+    ; passively (knights to the rim, queen retreats from active squares,
+    ; king shuffling) whenever preeg crossed +300. Moving it inside the
+    ; endgame block restores Win #17-style aggression while keeping the
+    ; anti-Q-for-R sac intent active in the late game.
+    ; Loads R7 = preeg locally; Item-B gate at BKS_DONE re-loads it for
+    ; the opening path which skips this code.
+    ; ==================================================================
+    RLDI 10, EVAL_PREEG
+    LDA 10
+    PHI 7               ; R7.1 = preeg hi
+    LDN 10
+    PLO 7               ; R7.0 = preeg lo
+    GLO 7
+    SMI $2C             ; LOW(300)
+    GHI 7
+    SMBI $01            ; HIGH(300)
+    ANI $80
+    LBNZ FIX_B_NEG      ; sign set -> preeg < +300 -> try losing branch
+    ; preeg >= +300: winning. If W_QUEEN_CNT > 0, R9 += 200.
+    RLDI 8, W_QUEEN_CNT
+    LDN 8
+    LBZ FIX_B_DONE
+    GLO 9
+    ADI $C8             ; LOW(200)
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+    LBR FIX_B_DONE
+FIX_B_NEG:
+    GLO 7
+    ADI $2B             ; LOW(299)
+    GHI 7
+    ADCI $01            ; HIGH(299)
+    ANI $80
+    LBZ FIX_B_DONE      ; sign clear -> preeg > -300 -> neither lost
+    ; preeg <= -300: losing. If B_QUEEN_CNT > 0, R9 -= 200.
+    RLDI 8, B_QUEEN_CNT
+    LDN 8
+    LBZ FIX_B_DONE
+    GLO 9
+    SMI $C8             ; LOW(200)
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+FIX_B_DONE:
+
 BKS_DONE:
     ; ==================================================================
     ; Item-B material-deficit gate (2026-05-19)
@@ -1733,50 +1790,6 @@ GATE_SETPE:
     GLO 7
     PLO 9               ; R9 = preeg
 GATE_DONE:
-    ; ==================================================================
-    ; Fix B — keep-queen-when-winning (2026-05-19)
-    ; ------------------------------------------------------------------
-    ; Deter unforced Q-for-R sacs while winning. If preeg >= +300 and
-    ; we still have a queen, R9 += 200 (so giving up the queen *costs*
-    ; that +200). Mirror for losing side. Combined with Item-B clamp:
-    ; in losing positions the +200 push is on top of the clamp.
-    ; R7 = preeg (still valid from Item-B load above).
-    ; ==================================================================
-    GLO 7
-    SMI $2C             ; LOW(300)
-    GHI 7
-    SMBI $01            ; HIGH(300)
-    ANI $80
-    LBNZ FIX_B_NEG      ; sign set -> preeg < +300 -> try losing branch
-    ; preeg >= +300: winning. If W_QUEEN_CNT > 0, R9 += 200.
-    RLDI 8, W_QUEEN_CNT
-    LDN 8
-    LBZ FIX_B_DONE
-    GLO 9
-    ADI $C8             ; LOW(200)
-    PLO 9
-    GHI 9
-    ADCI 0
-    PHI 9
-    LBR FIX_B_DONE
-FIX_B_NEG:
-    GLO 7
-    ADI $2B             ; LOW(299)
-    GHI 7
-    ADCI $01            ; HIGH(299)
-    ANI $80
-    LBZ FIX_B_DONE      ; sign clear -> preeg > -300 -> neither lost
-    ; preeg <= -300: losing. If B_QUEEN_CNT > 0, R9 -= 200.
-    RLDI 8, B_QUEEN_CNT
-    LDN 8
-    LBZ FIX_B_DONE
-    GLO 9
-    SMI $C8             ; LOW(200)
-    PLO 9
-    GHI 9
-    SMBI 0
-    PHI 9
-FIX_B_DONE:
     RETN
 
 ; Helper: D.bit7 = sign of (R9 - preeg).  R7 = preeg.  Uses COMPARE_TEMP.
