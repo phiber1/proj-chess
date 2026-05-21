@@ -108,8 +108,8 @@ fi
 echo "  - support.asm"
 cat support.asm >> "$OUTPUT"
 
-echo "  - math.asm"
-cat math.asm >> "$OUTPUT"
+# math.asm removed 2026-05-21 — MUL16/MUL16_FAST/DIV16 had zero callers,
+# entire file was dead code (~240 bytes reclaimed)
 
 echo "  - stack.asm"
 cat stack.asm >> "$OUTPUT"

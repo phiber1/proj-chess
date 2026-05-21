@@ -1893,140 +1893,16 @@ GATE_DELTA_SIGN:
     RETN
 
 ; ------------------------------------------------------------------------------
-; EVALUATE_MATERIAL - Material-only evaluation (fast version)
+; 2026-05-21 — Reclaimed ~135 bytes of dead helpers (zero callers):
+;   EVALUATE_MATERIAL (was just LBR EVALUATE, called only from removed EVAL_WITH_PST)
+;   EVAL_WITH_PST + EVAL_PST_SCAN + EVAL_PST_NEXT (a TODO stub that called the
+;     material eval then scanned the board but never actually applied any PST
+;     value — the comment literally said "; TODO: Implement PST lookup and
+;     addition". Real PST is computed by EVAL_PST in pst.asm, called from
+;     line 804 above.)
+;   SQUARE_0x88_TO_0x40 helper (never referenced; 0x88-to-0-63 conversion is
+;     inlined where needed)
 ; ------------------------------------------------------------------------------
-; Simplified evaluation for leaf nodes where speed is critical
-; Input:  A = board pointer
-; Output: R9 = material score (NOT R6 - R6 is SCRT linkage, off limits!)
-; ------------------------------------------------------------------------------
-EVALUATE_MATERIAL:
-    ; Alias to main evaluate for now
-    ; Later can optimize this path
-    LBR EVALUATE
-
-; ------------------------------------------------------------------------------
-; PST Evaluation (Piece-Square Tables) - TODO
-; ------------------------------------------------------------------------------
-; Adds positional bonuses based on piece placement
-; Tables stored in ROM/fixed RAM
-;
-; Structure:
-;   - 6 tables (pawn, knight, bishop, rook, queen, king)
-;   - Each table: 64 bytes (one per square)
-;   - Values: signed offsets to add to material
-;
-; Total size: 6 * 64 = 384 bytes
-; Location: $2000-$217F (from memory map)
-; ------------------------------------------------------------------------------
-
-; PST table labels defined in pst.asm (follow code placement)
-
-EVAL_WITH_PST:
-    ; Call material evaluation first
-    CALL EVALUATE_MATERIAL
-    ; Returns in R9 (NOT R6 - R6 is SCRT linkage, off limits!)
-
-    ; Save material score (R9) to stack
-    GLO 9
-    STXD
-    GHI 9
-    STXD
-
-    ; Scan board again for PST bonuses
-    RLDI 10, BOARD
-
-    ; Initialize square counter in memory (avoid R14!)
-    RLDI 13, EVAL_SQ_INDEX
-    LDI 0
-    STR 13              ; Square counter = 0
-    PHI 8
-    PLO 8              ; 8 = PST score accumulator
-
-EVAL_PST_SCAN:
-    LDN 13              ; Get square counter from memory
-    ANI $88
-    LBNZ EVAL_PST_NEXT
-
-    LDN 10
-    LBZ EVAL_PST_NEXT
-
-    ; TODO: Implement PST lookup and addition
-    ; 1. Get piece type and color
-    ; 2. Calculate PST table address
-    ; 3. Convert 0x88 square to 0-63 index
-    ; 4. Load PST value
-    ; 5. Add/subtract based on color
-
-EVAL_PST_NEXT:
-    INC 10
-    ; Increment square counter in memory
-    LDN 13
-    ADI 1
-    STR 13
-    SMI 128
-    LBNF EVAL_PST_SCAN  ; Long branch - BM can't reach target
-
-    ; Add PST score to material score
-    ; Restore material score from stack into R9
-    IRX
-    LDXA
-    PHI 9
-    LDX
-    PLO 9              ; R9 = material score restored
-
-    ; R9 = R9 + R8 (PST score) via R7
-    GLO 8
-    PLO 7
-    GHI 8
-    PHI 7
-    ; ADD16 inline: R9 = R9 + R7
-    GLO 9
-    STR 2
-    GLO 7
-    ADD
-    PLO 9
-    GHI 9
-    STR 2
-    GHI 7
-    ADC
-    PHI 9              ; R9 = total score (material + PST)
-
-    RETN
-
-; ------------------------------------------------------------------------------
-; Evaluation Helpers
-; ------------------------------------------------------------------------------
-
-; SQUARE_0x88_TO_0x40 - Convert 0x88 square to 0-63 index
-; Input:  D = 0x88 square
-; Output: D = 0-63 index
-; Uses stack instead of R14
-SQUARE_0x88_TO_0x40:
-    SEX 2               ; Ensure X=2 for stack operations
-    PLO 13              ; Save square
-
-    ; Rank = square >> 4
-    SHR
-    SHR
-    SHR
-    SHR                 ; D = rank (0-7)
-
-    ; Multiply rank by 8 (shift left 3)
-    SHL
-    SHL
-    SHL                 ; D = rank * 8
-
-    STXD                ; Save rank*8 to stack
-
-    ; File = square & 7
-    GLO 13
-    ANI $07             ; D = file (0-7)
-
-    ; Index = rank * 8 + file
-    IRX
-    ADD                 ; D = (rank * 8) + file
-
-    RETN
 
 ; ==============================================================================
 ; End of Evaluation

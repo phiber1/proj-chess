@@ -1,159 +1,15 @@
 ; ==============================================================================
-; RCA 1802/1806 Chess Engine - Stack Management Utilities
+; RCA 1802/1806 Chess Engine - Stack Management
 ; ==============================================================================
-; Register save/restore for recursion
-; Stack grows downward from $7FFF
-; 2 is the stack pointer (X register)
-; ==============================================================================
-
-; ------------------------------------------------------------------------------
-; Stack Frame for Negamax Recursion
-; ------------------------------------------------------------------------------
-; Each recursive call saves:
-;   6  (alpha)          - 2 bytes
-;   7  (beta)           - 2 bytes
-;   8  (best score)     - 2 bytes
-;   9  (move list ptr)  - 2 bytes
-;   B  (current move)   - 2 bytes
-;   C  (color)          - 2 bytes
-;   Return address       - 2 bytes
-; NOTE: R5 is SRET in BIOS mode - DO NOT save/restore!
-; NOTE: Depth is now in memory at SEARCH_DEPTH, not R5
-; ------------------------------------------------------------------------------
-; Total: 14 bytes per recursion level
-; At 6 ply depth: 84 bytes maximum
-; Stack working area: 1.25KB ($7B00-$7FFF). Shrunk 2026-04-28 from $7800-$7FFF
-; (2KB) to make room for MOVE_LIST relocation (5-ply expansion). Worst-case
-; observed usage <300 bytes including SCRT and QS, so 1.25KB has ~4× margin.
-; ------------------------------------------------------------------------------
-
-; ------------------------------------------------------------------------------
-; INIT_STACK - Initialize stack pointer
-; ------------------------------------------------------------------------------
-; Call this once at program startup
-; Sets 2 to $7FFF (top of 32KB RAM)
-; ------------------------------------------------------------------------------
-INIT_STACK:
-    LDI $7F
-    PHI 2              ; 2.1 = $7F
-    LDI $FF
-    PLO 2              ; 2.0 = $FF (2 = $7FFF)
-    SEX 2              ; Set 2 as index register for stack ops
-    RETN
-
-; ------------------------------------------------------------------------------
-; PUSH16 - Push 16-bit value onto stack
-; ------------------------------------------------------------------------------
-; Input:  6 = 16-bit value to push
-; Output: Stack updated, 2 decremented by 2
-; Uses:   None (6 preserved)
-; ------------------------------------------------------------------------------
-; PUSH16_R5 - REMOVED: R5 is SRET in BIOS mode, never touch it!
-; PUSH16_R6 - REMOVED: R6 is SCRT linkage, corrupted by every CALL!
-
-PUSH16_R7:
-    GLO 7
-    STXD
-    GHI 7
-    STXD
-    RETN
-
-PUSH16_R8:
-    GLO 8
-    STXD
-    GHI 8
-    STXD
-    RETN
-
-PUSH16_R9:
-    GLO 9
-    STXD
-    GHI 9
-    STXD
-    RETN
-
-PUSH16_RB:
-    GLO 11
-    STXD
-    GHI 11
-    STXD
-    RETN
-
-PUSH16_RC:
-    GLO 12
-    STXD
-    GHI 12
-    STXD
-    RETN
-
-; ------------------------------------------------------------------------------
-; POP16 - Pop 16-bit value from stack
-; ------------------------------------------------------------------------------
-; Input:  Stack pointer at saved value
-; Output: 6 = popped value, 2 incremented by 2
-; Uses:   D
-; ------------------------------------------------------------------------------
-; POP16_R5 - REMOVED: R5 is SRET in BIOS mode, never touch it!
-; POP16_R6 - REMOVED: R6 is SCRT linkage, corrupted by every CALL!
-
-POP16_R7:
-    IRX
-    LDXA
-    PHI 7
-    LDX
-    PLO 7
-    RETN
-
-POP16_R8:
-    IRX
-    LDXA
-    PHI 8
-    LDX
-    PLO 8
-    RETN
-
-POP16_R9:
-    IRX
-    LDXA
-    PHI 9
-    LDX
-    PLO 9
-    RETN
-
-POP16_RB:
-    IRX
-    LDXA
-    PHI 11
-    LDX
-    PLO 11
-    RETN
-
-POP16_RC:
-    IRX
-    LDXA
-    PHI 12
-    LDX
-    PLO 12
-    RETN
-
-; ------------------------------------------------------------------------------
-; SAVE_SEARCH_CONTEXT / RESTORE_SEARCH_CONTEXT - REMOVED (Dec 28, 2025)
-; ------------------------------------------------------------------------------
-; The stack-based save/restore caused endless problems with SCRT interference:
-;   - Bug #4: RESTORE popping SCRT linkage as context
-;   - Bug #5: SAVE corrupting R6 on return
-;   - Bug #6: Can't modify R3 while P=3 (required trampoline hack)
+; Two roles:
+;   - SAVE_PLY_STATE / RESTORE_PLY_STATE: per-ply register-snapshot save
+;     and restore around recursive NEGAMAX calls.
+;   - CHECK_STACK_OVERFLOW: defensive guard for stack growing past $7D00.
 ;
-; Replaced with ply-indexed state arrays (SAVE_PLY_STATE / RESTORE_PLY_STATE).
-; This approach uses fixed memory at PLY_STATE_BASE + (ply × 10), completely
-; avoiding stack manipulation. System stack is now only used for SCRT linkage.
-; ------------------------------------------------------------------------------
-
-; ==============================================================================
-; PLY-INDEXED STATE MANAGEMENT (Replaces stack-based SAVE/RESTORE)
-; ==============================================================================
-; These functions use a fixed memory array indexed by CURRENT_PLY.
-; No stack manipulation = no SCRT interference!
+; 2026-05-21 — Reclaimed ~85 bytes by removing dead helpers (zero callers):
+;   INIT_STACK, PUSH16_R7/8/9/B/C, POP16_R7/8/9/B/C, PUSH_BYTE, POP_BYTE,
+;   GET_STACK_DEPTH. The engine inlines its stack ops via direct STXD/LDXA;
+;   these wrapper subroutines were never called.
 ; ==============================================================================
 
 ; ------------------------------------------------------------------------------
@@ -282,86 +138,36 @@ RESTORE_PLY_STATE:
     RETN
 
 ; ------------------------------------------------------------------------------
-; SAVE_PARTIAL - REMOVED: R6 is SCRT linkage, alpha/beta now memory-based
-; ------------------------------------------------------------------------------
-; SAVE_ALPHA_BETA and RESTORE_ALPHA_BETA removed - they used R6 which is
-; corrupted by every CALL. Alpha/beta are now stored in memory (ALPHA_LO/HI,
-; BETA_LO/HI) and saved/restored inline in negamax.asm.
-; ------------------------------------------------------------------------------
-
-; SAVE_ALPHA_BETA - REMOVED: R6 is SCRT linkage, alpha/beta now memory-based
-; RESTORE_ALPHA_BETA - REMOVED: R6 is SCRT linkage, alpha/beta now memory-based
-; SAVE_DEPTH_COLOR - REMOVED: R5 is SRET, depth is now in memory (SEARCH_DEPTH)
-; RESTORE_DEPTH_COLOR - REMOVED: R5 is SRET, depth is now in memory (SEARCH_DEPTH)
-
-; ------------------------------------------------------------------------------
-; Stack Utilities
+; Notes on removed routines (historical context — see git log for the prior code):
+; SAVE_ALPHA_BETA / RESTORE_ALPHA_BETA — REMOVED: R6 is SCRT linkage; alpha/beta
+;   stored in memory (ALPHA_LO/HI, BETA_LO/HI) and saved/restored inline in negamax.asm.
+; SAVE_DEPTH_COLOR / RESTORE_DEPTH_COLOR — REMOVED: R5 is SRET; depth is in
+;   memory (SEARCH_DEPTH).
 ; ------------------------------------------------------------------------------
 
-; PUSH_BYTE - Push single byte to stack
-PUSH_BYTE:
-    ; Input: D = byte to push
-    STXD
-    RETN
-
-; POP_BYTE - Pop single byte from stack
-POP_BYTE:
-    ; Output: D = popped byte
-    IRX
-    LDXA
-    RETN
-
-; GET_STACK_DEPTH - Get current stack usage
-; Output: R9 = bytes used (stack depth) - NOT R6! R6 is SCRT linkage!
-GET_STACK_DEPTH:
-    LDI $7F
-    PHI 9
-    LDI $FF
-    PLO 9              ; R9 = $7FFF (initial stack)
-
-    ; Subtract current stack pointer
-    GLO 2
-    STR 2
-    GLO 9
-    SM
-    PLO 9
-
-    GHI 2
-    STR 2
-    GHI 9
-    SMB
-    PHI 9
-    ; R9 now contains bytes used
-    RETN
-
 ; ------------------------------------------------------------------------------
-; DEBUG: Stack overflow check (optional, for development)
+; CHECK_STACK_OVERFLOW — defensive guard against stack growing past $7D00
 ; ------------------------------------------------------------------------------
-; Call periodically to ensure stack hasn't overflowed into other memory
-; Checks if 2 < $7B00 (bottom of 1.25KB stack area; below = MOVE_LIST at $7800)
-; If overflow detected, could halt or set error flag
+; Called periodically to ensure the stack hasn't grown below $7D00, which would
+; corrupt XMODEM ($7C00-$7CFF) or, deeper, MOVE_LIST ($7800-$7A7F).
+;
+; Memory map with XMODEM resident:
+;   $7800-$7A7F  MOVE_LIST (640 B, 5 plies × 128)
+;   $7A80-$7AFF  gap (zeroed by WORKSPACE_CLEAR)
+;   $7B00-$7BFF  N2 overflow-page code (2026-05-21)
+;   $7C00-$7CFF  XMODEM reserved — DO NOT TOUCH
+;   $7D00-$7FFF  stack working zone (768 B usable)
+;
+; Records R2.HI to STACK_OVERFLOW_FLAG (recoverable via memory dump after
+; the trap), then hard-halts via MARK + SEP 1. MARK saves X:P; SEP 1 transfers
+; control to R1 (BIOS monitor). No info-string emit attempt — emitting via
+; the corrupted stack would garble UART output and mask the real failure
+; (changed 2026-05-16).
 ; ------------------------------------------------------------------------------
 CHECK_STACK_OVERFLOW:
     GHI 2
     SMI $7D             ; Compare with $7D
     LBDF STACK_OK       ; If DF=1, R2.HI >= $7D, OK (no overflow)
-    ; Stack pointer below $7D00 — would corrupt XMODEM ($7C00-$7CFF)
-    ; or, if deeper, MOVE_LIST ($7800-$7A7F). System state at this point
-    ; is unsafe; allowing execution to continue produces garbage I/O and
-    ; runaway corruption (observed 2026-05-15 match crash).
-    ;
-    ; Memory map with XMODEM resident:
-    ;   $7800-$7A7F  MOVE_LIST (640 B, 5 plies × 128)
-    ;   $7A80-$7AFF  gap (zeroed by WORKSPACE_CLEAR)
-    ;   $7B00-$7BFF  unused buffer between MOVE_LIST and XMODEM
-    ;   $7C00-$7CFF  XMODEM reserved — DO NOT TOUCH
-    ;   $7D00-$7FFF  stack working zone (768 B usable)
-    ;
-    ; Record R2.HI to flag byte so it's recoverable via memory dump after
-    ; the trap, then hard-halt via MARK + SEP 1. MARK saves X:P; SEP 1
-    ; transfers control to R1 (BIOS monitor). No info-string emit attempt
-    ; — emitting via the corrupted stack would garble the UART output and
-    ; mask the real failure (changed 2026-05-16).
     RLDI 10, STACK_OVERFLOW_FLAG    ; RLDI clobbers D, must precede GHI 2
     GHI 2
     STR 10              ; STACK_OVERFLOW_FLAG = R2.HI (for post-mortem)
