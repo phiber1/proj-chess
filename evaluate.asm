@@ -1109,6 +1109,20 @@ EVAL_BR2_SEMI:
 EVAL_BR_DONE:
 
     ; ==================================================================
+    ; N2: hanging-pawn penalty (2026-05-21)
+    ; ------------------------------------------------------------------
+    ; For each pawn, check if attacked by opposing B/Q (4 diagonals with
+    ; blocker awareness) or opposing N (8 L-pattern squares). Defender
+    ; check via own-pawn backward-diagonal adjacency. Per-attacker
+    ; penalty: -25 cp (white pawn) / +25 cp (black pawn) per attacker.
+    ; Routine lives in overflow page \$7B00 (see n2_hanging.asm).
+    ; Catches the 2026-05-20 PM match's recurring blunder pattern:
+    ; pushing pawns into known bishop attack ranges (move 38 g2-g4
+    ; with Bf5 attacking g4, move 61 e5-e6 with bishop attacking e6).
+    ; ==================================================================
+    CALL N2_HANGING_PAWN
+
+    ; ==================================================================
     ; Endgame phase eval (king centralization, advanced pawn, passed pawn,
     ; king-edge drive) — gated by EG_PIECE_COUNT threshold.
     ; Tightened 2026-04-30 from <21 to <12: previously fired after only 9

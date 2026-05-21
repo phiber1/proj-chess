@@ -168,6 +168,12 @@ else
     cat main.asm >> "$OUTPUT"
 fi
 
+# Overflow-page code (ORG $7B00) — must be last so no subsequent ORG affects layout
+if [ -f n2_hanging.asm ]; then
+    echo "  - n2_hanging.asm (overflow page \$7B00)"
+    cat n2_hanging.asm >> "$OUTPUT"
+fi
+
 echo ""
 echo "Step 3: Concatenation complete. Output: $OUTPUT"
 echo "  File size: $(wc -l < "$OUTPUT") lines"
