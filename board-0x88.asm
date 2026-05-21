@@ -285,6 +285,8 @@ NODE_IN_CHECK   EQU $6742   ; 8 bytes - per-ply "is this node in check" snapshot
 ; (material+PST+structure+king-safety), big-endian. Used by the
 ; endgame-block gate at BKS_DONE in EVALUATE.
 EVAL_PREEG      EQU $64EF   ; 2 bytes ($64EF-$64F0)
+N2_ATK_COUNT    EQU $64F1   ; 1 byte - N2/N3 hanging-piece attacker count
+                            ; (scratch, reset per piece checked in N2_HANGING_PAWN)
 ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
 ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
 UNDO_CAP_SQ     EQU $64FF   ; 1 byte - square where captured piece was (EP: computed, normal: to)
