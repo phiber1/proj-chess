@@ -1438,6 +1438,49 @@ NEGAMAX_MOVE_LEGAL:
     XRI MOVE_PROMOTION  ; Zero if promotion
     LBZ LMR_SKIP        ; Promotion, skip LMR
 
+    ; ----------------------------------------------------------
+    ; Condition 5 (Phase 4 #3, 2026-05-21): skip LMR for advanced
+    ; pawn pushes. Lets push branches keep nominal depth so
+    ; promotion-threat consequences become visible at d=5 instead
+    ; of LMR's reduced d=3-4. Rank-based proxy for "when behind"
+    ; because EVAL_PREEG isn't reliably current at internal LMR
+    ; sites (only set at leaves). Exempt iff:
+    ;   (W pawn AND rank >= 5)  OR  (B pawn AND rank <= 4)
+    ; Move just played, pawn is now at UNDO_TO (MAKE_MOVE at 1364).
+    ; ----------------------------------------------------------
+    RLDI 10, UNDO_TO
+    LDN 10
+    PLO 7               ; R7.0 = UNDO_TO (saved for rank check)
+    ADI LOW(BOARD)
+    PLO 11
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 11
+    LDN 11              ; D = piece byte at UNDO_TO
+
+    PLO 8
+    ANI PIECE_MASK
+    XRI PAWN_TYPE
+    LBNZ COND5_DONE     ; not a pawn — normal LMR rules apply
+    GLO 8
+    ANI COLOR_MASK
+    PHI 8               ; R8.1 = color (0=W, 8=B)
+
+    ; Rank check: DF=1 iff (UNDO_TO & $70) >= $40 (i.e., rank >= 5)
+    GLO 7
+    ANI $70
+    SMI $40
+    GHI 8               ; D = color
+    LBZ COND5_W
+    ; --- BLACK pawn ---
+    LBDF COND5_DONE     ; rank >= 5 for black = NOT exempt
+    LBR LMR_SKIP        ; rank < 5 (i.e., <= 4) for black = exempt
+COND5_W:
+    ; --- WHITE pawn ---
+    LBNF COND5_DONE     ; rank < 5 for white = NOT exempt
+    LBR LMR_SKIP        ; rank >= 5 for white = exempt
+COND5_DONE:
+
     ; All conditions met - set LMR_REDUCED = 1
     RLDI 10, LMR_REDUCED
     LDI 1
@@ -1990,6 +2033,53 @@ LMR_NO_RESEARCH:
     PHI 13
     LDN 10              ; SCORE_LO -> low byte
     PLO 13              ; R13 = negated score from memory
+
+    ; =========================================================
+    ; Phase 4 #1: push-into-attack root penalty (2026-05-21 PM)
+    ; ---------------------------------------------------------
+    ; At root only (CURRENT_PLY == 0), if the move just played was
+    ; a pawn push to a square attacked by opp B/Q and not defended
+    ; by an own pawn, subtract 150 cp from the returned score so
+    ; alpha-beta sees this move as worse. Acts before beta cutoff
+    ; and BEST_SCORE compare, so penalty propagates to root choice.
+    ; Board is in pre-move state here (UNMAKE_MOVE ran at 1921);
+    ; the moved pawn is back at UNDO_FROM. IS_PUSH_INTO_ATTACK
+    ; reads UNDO_FROM/UNDO_TO and uses N2 helpers in the $7B00 page.
+    ; =========================================================
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    LBNZ PIA_GLUE_DONE      ; not root, skip
+    CALL IS_PUSH_INTO_ATTACK
+    PLO 8                   ; save flag in R8.0 (helper returns D=1/0)
+    ; Reload R13 from SCORE memory (helper clobbered R13)
+    RLDI 10, SCORE_HI
+    LDA 10
+    PHI 13
+    LDN 10
+    PLO 13
+    GLO 8
+    LBZ PIA_GLUE_DONE       ; not push-into-attack, no penalty
+
+    ; Mate-score guard (2026-05-22): R13.hi is $7F for positive mate-class
+    ; ($7FF7..$7FFF) or $80 for negative ($8001..$8009). Subtracting 150
+    ; from a near-min mate score (e.g. $8005 = -32763) wraps signed-16 to
+    ; a positive value ($7F6F = +32623), inverting the move's evaluation.
+    ; Skip the penalty for any mate-class score.
+    GHI 13
+    XRI $7F
+    LBZ PIA_GLUE_DONE       ; positive mate-class, leave score alone
+    GHI 13
+    XRI $80
+    LBZ PIA_GLUE_DONE       ; negative mate-class, leave score alone
+
+    ; Apply -150 cp to R13
+    GLO 13
+    SMI 150
+    PLO 13
+    GHI 13
+    SMBI 0
+    PHI 13
+PIA_GLUE_DONE:
 
     ; -----------------------------------------------
     ; Beta Cutoff Check: if (score >= beta) return beta
@@ -4232,6 +4322,101 @@ SUCI_POSITIVE:
     LDI 10
     CALL SERIAL_WRITE_CHAR
 
+    RETN
+
+; ==============================================================================
+; IS_PUSH_INTO_ATTACK — Phase 4 #1 helper (2026-05-21)
+; ==============================================================================
+; Returns D=1 if the move just played is a pawn push to a square attacked by
+; opposing B/Q on diagonals AND no own-pawn defender on backward-diagonals.
+; D=0 otherwise. Operates on PRE-MOVE board state (after UNMAKE_MOVE), so the
+; moved pawn is at UNDO_FROM, not UNDO_TO. Attacker/defender walks proceed
+; from UNDO_TO regardless — UNDO_TO's content doesn't matter (diagonal walks
+; advance by delta first).
+;
+; Scope: same as N2/N3 — opp bishops/queens on diagonals only. Catches the
+; documented turn-38 g4→Bxg4 and turn-61 e6→Bxe6+ patterns. Doesn't catch
+; knight forks or rook/queen file attacks on pawn destinations.
+;
+; Defender check: own-pawn on backward-diagonal of UNDO_TO. Doesn't see
+; non-pawn defenders (knight, bishop, rook covering the destination). Accept
+; the over-penalty risk; same scope as N2/N3.
+;
+; Input:  UNDO_FROM, UNDO_TO in memory; BOARD in pre-move state
+; Output: D = 1 if push-into-attack-undefended, else 0
+; Uses:   R7, R8, R10, R11, R13 (clobbers all; caller must save R13 if needed)
+; ==============================================================================
+IS_PUSH_INTO_ATTACK:
+    SEX 2
+
+    ; --- Step 1: piece-type check (pre-move: pawn is at UNDO_FROM) ---
+    RLDI 10, UNDO_FROM
+    LDA 10              ; D = UNDO_FROM; R10 → UNDO_TO
+    ADI LOW(BOARD)
+    PLO 11
+    LDI HIGH(BOARD)
+    ADCI 0
+    PHI 11
+    LDN 11              ; D = piece byte at UNDO_FROM
+
+    PLO 8               ; R8.0 = piece byte
+    ANI PIECE_MASK
+    XRI PAWN_TYPE
+    LBNZ PIA_NO         ; not a pawn → 0
+
+    GLO 8
+    ANI COLOR_MASK
+    PHI 8               ; R8.1 = piece color (0=W, 8=B)
+
+    ; Load UNDO_TO into R7.0 (square used by N2 helpers for walks)
+    LDN 10              ; R10 still at UNDO_TO
+    PLO 7
+
+    ; --- Step 2: defender check (own pawn at backward-diagonal of UNDO_TO) ---
+    GHI 8
+    LBNZ PIA_DCB1
+    LDI $EF             ; white: -17 (backward-left)
+    LBR PIA_DCG1
+PIA_DCB1:
+    LDI $0F             ; black: +15 (backward from black POV)
+PIA_DCG1:
+    CALL N2_CHECK_DEF
+    LBNZ PIA_NO         ; defended → 0
+
+    GHI 8
+    LBNZ PIA_DCB2
+    LDI $F1             ; white: -15 (backward-right)
+    LBR PIA_DCG2
+PIA_DCB2:
+    LDI $11             ; black: +17
+PIA_DCG2:
+    CALL N2_CHECK_DEF
+    LBNZ PIA_NO         ; defended → 0
+
+    ; --- Step 3: attacker count via 4 diagonal walks from UNDO_TO ---
+    LDI 0
+    RLDI 10, N2_ATK_COUNT
+    STR 10              ; reset counter
+
+    LDI $11
+    CALL N2_DIAG_WALK
+    LDI $0F
+    CALL N2_DIAG_WALK
+    LDI $EF
+    CALL N2_DIAG_WALK
+    LDI $F1
+    CALL N2_DIAG_WALK
+
+    ; --- Step 4: any attackers? ---
+    RLDI 10, N2_ATK_COUNT
+    LDN 10
+    LBZ PIA_NO          ; 0 attackers → 0
+
+    LDI 1
+    RETN
+
+PIA_NO:
+    LDI 0
     RETN
 
 ; ==============================================================================
