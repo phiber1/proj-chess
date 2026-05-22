@@ -1439,13 +1439,21 @@ NEGAMAX_MOVE_LEGAL:
     LBZ LMR_SKIP        ; Promotion, skip LMR
 
     ; ----------------------------------------------------------
-    ; Condition 5 (Phase 4 #3, 2026-05-21): skip LMR for advanced
-    ; pawn pushes. Lets push branches keep nominal depth so
-    ; promotion-threat consequences become visible at d=5 instead
-    ; of LMR's reduced d=3-4. Rank-based proxy for "when behind"
-    ; because EVAL_PREEG isn't reliably current at internal LMR
-    ; sites (only set at leaves). Exempt iff:
-    ;   (W pawn AND rank >= 5)  OR  (B pawn AND rank <= 4)
+    ; Condition 5 (Phase 4 #3, 2026-05-21; tightened 2026-05-22):
+    ; skip LMR for pawn pushes near promotion. Lets push branches
+    ; keep nominal depth so promotion-threat consequences become
+    ; visible at d=5 instead of LMR's reduced d=3-4. Rank-based
+    ; proxy for "when behind" because EVAL_PREEG isn't reliably
+    ; current at internal LMR sites (only set at leaves).
+    ;
+    ; Tightened to rank 6+ (white) / rank 3- (black) — original
+    ; rank 5+ / 4- exempted too many middlegame pushes, doubling
+    ; node cost and forcing d=3-4 completions in opening/middlegame
+    ; (2026-05-21 match analysis). Rank-6 threshold makes #3 mostly
+    ; inert until late middlegame / endgame where pushes are 2
+    ; squares from promotion.
+    ;
+    ; Exempt iff: (W pawn AND rank >= 6) OR (B pawn AND rank <= 3)
     ; Move just played, pawn is now at UNDO_TO (MAKE_MOVE at 1364).
     ; ----------------------------------------------------------
     RLDI 10, UNDO_TO
@@ -1466,19 +1474,19 @@ NEGAMAX_MOVE_LEGAL:
     ANI COLOR_MASK
     PHI 8               ; R8.1 = color (0=W, 8=B)
 
-    ; Rank check: DF=1 iff (UNDO_TO & $70) >= $40 (i.e., rank >= 5)
+    ; Rank check: DF=1 iff (UNDO_TO & $70) >= $50 (i.e., rank >= 6)
     GLO 7
     ANI $70
-    SMI $40
+    SMI $50
     GHI 8               ; D = color
     LBZ COND5_W
     ; --- BLACK pawn ---
-    LBDF COND5_DONE     ; rank >= 5 for black = NOT exempt
-    LBR LMR_SKIP        ; rank < 5 (i.e., <= 4) for black = exempt
+    LBDF COND5_DONE     ; rank >= 6 for black = NOT exempt
+    LBR LMR_SKIP        ; rank < 6 (i.e., <= 3 for black) = exempt
 COND5_W:
     ; --- WHITE pawn ---
-    LBNF COND5_DONE     ; rank < 5 for white = NOT exempt
-    LBR LMR_SKIP        ; rank >= 5 for white = exempt
+    LBNF COND5_DONE     ; rank < 6 for white = NOT exempt
+    LBR LMR_SKIP        ; rank >= 6 for white = exempt
 COND5_DONE:
 
     ; All conditions met - set LMR_REDUCED = 1
