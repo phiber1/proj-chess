@@ -339,6 +339,24 @@ MM_CASTLE_DONE:
     RLDI 9, UNDO_CAPTURED
     LDN 9               ; D = captured piece
     PHI 10              ; R10.1 = captured piece
+
+    ; ====== State-conditional eval foundation (Phase 2 audit 2026-05-22) ======
+    ; Set CASTLED_FLAGS bit for the side that just castled.
+    ; SIDE memory still holds the moving side (toggle happens in MM_NOT_KING).
+    ; Castling rights enforce single-castle: bit was 0 before this MAKE.
+    RLDI 9, SIDE
+    LDN 9                   ; D = side (0=W, 8=B)
+    LBNZ MM_CFL_BLACK
+    LDI $01                 ; white castled bit
+    LBR MM_CFL_OR
+MM_CFL_BLACK:
+    LDI $10                 ; black castled bit
+MM_CFL_OR:
+    STR 2                   ; save bit on stack scratch
+    RLDI 9, CASTLED_FLAGS
+    LDN 9
+    OR                      ; D = flags | bit
+    STR 9
     ; Fall through to MM_NOT_KING
 
 MM_NOT_KING:
@@ -744,7 +762,7 @@ UM_CASTLE_KS:
     PHI 8               ; R8.1 = h1/h8
     CALL HASH_XOR_PIECE_SQ
 
-    LBR UM_NOT_KING
+    LBR UM_CASTLE_FLAG_CLEAR
 
 UM_CASTLE_QS:
     ; Queenside undo: rook from to+1 (d-file) back to to-2 (a-file)
@@ -784,6 +802,25 @@ UM_CASTLE_QS:
     SMI 2                ; D = to - 2
     PHI 8               ; R8.1 = a1/a8
     CALL HASH_XOR_PIECE_SQ
+
+UM_CASTLE_FLAG_CLEAR:
+    ; ====== State-conditional eval foundation (Phase 2 audit 2026-05-22) ======
+    ; Clear CASTLED_FLAGS bit for the side whose castle we're undoing.
+    ; R10.0 still holds the moving piece (the king); read color from it.
+    GLO 10
+    ANI COLOR_MASK
+    LBNZ UM_CFL_BLACK
+    LDI $FE                 ; mask: clear bit 0 (white)
+    LBR UM_CFL_AND
+UM_CFL_BLACK:
+    LDI $EF                 ; mask: clear bit 4 (black)
+UM_CFL_AND:
+    STR 2                   ; save mask on stack scratch
+    RLDI 9, CASTLED_FLAGS
+    LDN 9
+    AND                     ; D = flags & mask
+    STR 9
+    ; Fall through to UM_NOT_KING
 
 UM_NOT_KING:
     ; Restore castling rights to GAME_STATE + STATE_CASTLING

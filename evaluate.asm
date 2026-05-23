@@ -804,9 +804,18 @@ QP_B_DONE:
     CALL EVAL_PST
 
     ; ==================================================================
-    ; Castling Rights Bonus
-    ; +20cp per side that still has castling rights remaining
-    ; Incentivizes preserving the option to castle
+    ; Castling Rights Bonus (Phase 2 fix 2026-05-22: 20 → 50)
+    ; +50cp per side that still has castling rights remaining.
+    ;
+    ; Bumped from +20 to +50 because +20 was too weak to deter
+    ; premature king moves. King PST: e1=-20, f1=+10 (=+30 PST gain
+    ; for Kf1). With castling rights at +20, losing rights for Kf1
+    ; was net +10 cp gain — engine moved king to f1 instead of
+    ; castling. With +50, losing rights costs -50, so Kf1 is now
+    ; -20 net (worse than staying or developing a piece).
+    ;
+    ; Validated empirically against 2026-05-22 PM match's move-15
+    ; e1f1 mistake (engine in check, chose Kf1 over Bc1-d2 block).
     ; ==================================================================
     RLDI 11, GAME_STATE + STATE_CASTLING
     LDN 11              ; D = castling rights byte
@@ -814,22 +823,242 @@ QP_B_DONE:
     ANI $03             ; white bits (WK|WQ)
     LBZ EVAL_NO_W_CASTLE
     GLO 9
-    ADI 20
+    ADI 50
     PLO 9
     GHI 9
     ADCI 0
-    PHI 9               ; R9 += 20 (white has castling rights)
+    PHI 9               ; R9 += 50 (white has castling rights)
 EVAL_NO_W_CASTLE:
     LDN 2               ; reload castling byte
     ANI $0C             ; black bits (BK|BQ)
     LBZ EVAL_NO_B_CASTLE
     GLO 9
-    SMI 20
+    SMI 50
     PLO 9
     GHI 9
     SMBI 0
-    PHI 9               ; R9 -= 20 (black has castling rights)
+    PHI 9               ; R9 -= 50 (black has castling rights)
 EVAL_NO_B_CASTLE:
+
+    ; ==================================================================
+    ; State-conditional walked-king penalty (Phase 2 audit 2026-05-22)
+    ; ------------------------------------------------------------------
+    ; If a side hasn't castled (CASTLED_FLAGS bit clear) AND their king
+    ; has moved away from its starting square, they walked the king out
+    ; of the castling opportunity — apply a -50 cp penalty. This is the
+    ; state-conditional companion to the static king PST: PST values for
+    ; "side" squares (f1, h1, etc.) are correct for castled-then-walked,
+    ; wrong for walked-without-castling. The flag distinguishes them.
+    ;
+    ; CASTLED_FLAGS bits: 0 = white castled, 4 = black castled.
+    ; e1 = $04 (0x88), e8 = $74.
+    ; ==================================================================
+    RLDI 10, CASTLED_FLAGS
+    LDN 10
+    STR 2                       ; save flags on stack scratch
+
+    ; --- White check ---
+    RLDI 10, GAME_STATE + STATE_W_KING_SQ
+    LDN 10                      ; D = white king sq
+    XRI $04                     ; e1 = $04
+    LBZ EVAL_CFL_W_DONE         ; king still on e1, no penalty
+    LDN 2                       ; reload CASTLED_FLAGS
+    ANI $01                     ; white castled bit
+    LBNZ EVAL_CFL_W_DONE        ; white castled, no penalty
+    ; Walked king without castling: R9 -= 50
+    GLO 9
+    SMI 50
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+EVAL_CFL_W_DONE:
+
+    ; --- Black check ---
+    RLDI 10, GAME_STATE + STATE_B_KING_SQ
+    LDN 10                      ; D = black king sq
+    XRI $74                     ; e8 = $74
+    LBZ EVAL_CFL_B_DONE         ; king still on e8, no penalty
+    LDN 2                       ; reload CASTLED_FLAGS
+    ANI $10                     ; black castled bit
+    LBNZ EVAL_CFL_B_DONE        ; black castled, no penalty
+    ; Walked king without castling (black perspective: R9 += 50)
+    GLO 9
+    ADI 50
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+EVAL_CFL_B_DONE:
+
+    ; ==================================================================
+    ; State-conditional pawn shield eval (Phase 2 audit 2026-05-22)
+    ; ------------------------------------------------------------------
+    ; If a side has castled, check pawn shield at the 3 squares directly
+    ; in front of the king (rank 2 for white, rank 7 for black). Penalize
+    ; -60 cp per missing shield pawn. Captures the "open file near king"
+    ; danger pattern observed in earlier disaster matches.
+    ;
+    ; Gating:
+    ;   - Only fires when CASTLED_FLAGS bit is set for that side
+    ;   - Only fires when king is on its back rank (rank 1 / rank 8)
+    ;   - The $88 mask catches file-boundary overflow (file=-1 or 8)
+    ;
+    ; Cost note: ~80 instructions per color per leaf. Combined with the
+    ; walked-king penalty and N2/N3 hanging-piece check, the per-leaf
+    ; eval overhead is noticeable in opening positions (high branching
+    ; factor), causing some d=3-d=4 IDS completions where d=5 was
+    ; expected. The 2026-05-22 winning match showed the engine adapted
+    ; (building a manual king fortress when castling wasn't reached at
+    ; low depth), so the architecture is functional despite the cost.
+    ; Future work: move shield logic to $7B00 overflow page, or cache.
+    ; ==================================================================
+
+    ; --- White shield ---
+    RLDI 10, CASTLED_FLAGS
+    LDN 10
+    ANI $01
+    LBZ EVAL_PS_BLACK       ; white not castled, skip
+
+    RLDI 10, GAME_STATE + STATE_W_KING_SQ
+    LDN 10                  ; D = king square (0x88)
+    PLO 8                   ; save in R8.0
+    ANI $70                 ; mask rank bits
+    LBNZ EVAL_PS_BLACK      ; king not on rank 1, skip
+    GLO 8                   ; reload king sq
+    ANI $07                 ; D = king file (0-7)
+    PLO 7                   ; R7.0 = king file
+
+    ; Shield square: king_file - 1, rank 2
+    GLO 7
+    SMI 1                   ; file - 1 (will overflow to $FF if file=0)
+    ORI $10                 ; combine with rank 2
+    PLO 10
+    ANI $88                 ; off-board check
+    LBNZ EVAL_PS_W_CENTER
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI W_PAWN
+    LBZ EVAL_PS_W_CENTER    ; own pawn here, no penalty
+    GLO 9
+    SMI 60
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+
+EVAL_PS_W_CENTER:
+    ; Shield square: king_file, rank 2
+    GLO 7
+    ORI $10                 ; rank 2 + king file
+    PLO 10
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI W_PAWN
+    LBZ EVAL_PS_W_RIGHT
+    GLO 9
+    SMI 60
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+
+EVAL_PS_W_RIGHT:
+    ; Shield square: king_file + 1, rank 2
+    GLO 7
+    ADI 1
+    ORI $10
+    PLO 10
+    ANI $88                 ; off-board check
+    LBNZ EVAL_PS_BLACK
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI W_PAWN
+    LBZ EVAL_PS_BLACK
+    GLO 9
+    SMI 60
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+
+EVAL_PS_BLACK:
+    ; --- Black shield (mirror) ---
+    RLDI 10, CASTLED_FLAGS
+    LDN 10
+    ANI $10                 ; black castled bit
+    LBZ EVAL_PS_DONE
+
+    RLDI 10, GAME_STATE + STATE_B_KING_SQ
+    LDN 10
+    PLO 8
+    ANI $70
+    XRI $70                 ; rank 8 == $70
+    LBNZ EVAL_PS_DONE       ; king not on rank 8, skip
+    GLO 8
+    ANI $07
+    PLO 7
+
+    ; Shield: king_file - 1, rank 7
+    GLO 7
+    SMI 1
+    ORI $60                 ; rank 7
+    PLO 10
+    ANI $88
+    LBNZ EVAL_PS_B_CENTER
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI B_PAWN
+    LBZ EVAL_PS_B_CENTER
+    GLO 9
+    ADI 60
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+
+EVAL_PS_B_CENTER:
+    ; Shield: king_file, rank 7
+    GLO 7
+    ORI $60
+    PLO 10
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI B_PAWN
+    LBZ EVAL_PS_B_RIGHT
+    GLO 9
+    ADI 60
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+
+EVAL_PS_B_RIGHT:
+    ; Shield: king_file + 1, rank 7
+    GLO 7
+    ADI 1
+    ORI $60
+    PLO 10
+    ANI $88
+    LBNZ EVAL_PS_DONE
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI B_PAWN
+    LBZ EVAL_PS_DONE
+    GLO 9
+    ADI 60
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
+
+EVAL_PS_DONE:
 
     ; ==================================================================
     ; Doubled Pawn Penalty: -15cp per extra pawn on same file

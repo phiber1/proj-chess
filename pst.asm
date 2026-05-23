@@ -122,7 +122,11 @@ PST_QUEEN:
 ; ------------------------------------------------------------------------------
 PST_KING:
     ; Rank 1 - castled king is safest (b1/g1 kingside, c1 queenside)
-    DB  20, 60, 40,-20,-20, 10, 60, 20
+    ; 2026-05-22: f1 lowered +10 → -20. f1 is only reachable via manual
+    ; king-walk (castling lands king on g1 or c1, never f1). The previous
+    ; +10 rewarded walking king from e1 to f1, defeating the castling-
+    ; rights incentive. Now f1 = e1 = -20 (no PST gain from walking).
+    DB  20, 60, 40,-20,-20,-20, 60, 20
     ; Rank 2 - behind pawn shelter OK
     DB  20, 20,-10,-30,-30,-10, 20, 20
     ; Rank 3

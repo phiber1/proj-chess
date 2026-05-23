@@ -287,6 +287,12 @@ NODE_IN_CHECK   EQU $6742   ; 8 bytes - per-ply "is this node in check" snapshot
 EVAL_PREEG      EQU $64EF   ; 2 bytes ($64EF-$64F0)
 N2_ATK_COUNT    EQU $64F1   ; 1 byte - N2/N3 hanging-piece attacker count
                             ; (scratch, reset per piece checked in N2_HANGING_PAWN)
+CASTLED_FLAGS   EQU $64F2   ; 1 byte - per-side castled-status flags (Phase 2 audit)
+                            ; bit 0: white has castled (kingside or queenside)
+                            ; bit 4: black has castled
+                            ; Set in MAKE_MOVE on castle, cleared in UNMAKE_MOVE.
+                            ; In workspace-clear range — auto-reset to 0 per new game.
+                            ; Used by EVALUATE to distinguish castled king from walked king.
 ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
 ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
 UNDO_CAP_SQ     EQU $64FF   ; 1 byte - square where captured piece was (EP: computed, normal: to)
