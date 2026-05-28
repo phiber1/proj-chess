@@ -881,15 +881,15 @@ NEGAMAX_RESET_DONE:
 
     ; -----------------------------------------------
     ; Apply killer move ordering (search killers first)
-    ; Apply at plies 0-5: with d=6 search enabled 2026-05-27, plies 3-5 are
-    ; non-leaves with rich subtrees where alpha-beta cutoffs from a
-    ; well-ordered list save exponentially more work. Skip only at ply >= 6
-    ; (where remaining depth is too shallow for ordering to pay off).
+    ; Apply at plies 0-4: with d=5 cap restored 2026-05-27 (exhibition
+    ; watchability), plies 3-4 remain non-leaves with rich subtrees where
+    ; alpha-beta cutoffs from a well-ordered list save exponentially more
+    ; work. Skip at ply >= 5 (leaf level under d=5 cap).
     ; -----------------------------------------------
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    SMI 6               ; Check if ply >= 6
-    LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 6
+    SMI 5               ; Check if ply >= 5
+    LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 5
 
     INC 2               ; Point to move count on stack
     LDN 2               ; D = move count (peek, don't pop)
@@ -899,12 +899,12 @@ NEGAMAX_RESET_DONE:
 NEGAMAX_SKIP_KILLER:
     ; -----------------------------------------------
     ; Order captures first (MVV-LVA preparation)
-    ; Apply at plies 0-5 (same rationale as killers above).
+    ; Apply at plies 0-4 (same rationale as killers above).
     ; -----------------------------------------------
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    SMI 6               ; Check if ply >= 6
-    LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 6
+    SMI 5               ; Check if ply >= 5
+    LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 5
 
     INC 2               ; Point to move count on stack
     LDN 2               ; D = move count (peek, don't pop)
@@ -4208,13 +4208,15 @@ ITER_NO_SOVF:
 
     ; Rule 2: current >= 6?  (was 5; 2026-05-27 raised hard cap to enable d=6)
     ; The iter-time predictor below decides whether to actually attempt the
-    ; next iteration; this is just the safety ceiling. d=6 search is feasible
-    ; in late endgame (simple positions) and may also fit in opening if the
-    ; predictor judges remaining budget sufficient.
+    ; next iteration; this is just the safety ceiling. Cap restored to d=5
+    ; 2026-05-27 (was d=6 since 2026-05-27 AM): d=6 was nearly doubling match
+    ; length (3+ hour matches) without measurable quality gain — eval is the
+    ; current bottleneck, not search depth. Restore d=6 only after QSEARCH
+    ; recursion lands and middlegame eval discrimination improves.
     RLDI 10, CURRENT_MAX_DEPTH
     LDN 10
-    SMI 6
-    LBDF ITER_DONE              ; current >= 6 — hard safety cap
+    SMI 5
+    LBDF ITER_DONE              ; current >= 5 — hard safety cap
 
     ; Rule 3: iteration-time gate. Apply only at depth >= 3.
     RLDI 10, CURRENT_MAX_DEPTH
