@@ -1,0 +1,38 @@
+# Promotion-survival test (2026-05-28)
+#
+# Position: 2026-05-27 overnight match, captured at TX [141:57.361].
+# 148 plies played. White-to-move, late in the game. Engine is
+# materially down (sustained scores in the -300 to -500 range
+# during this phase) and has white pawns including the b-pawn
+# on b6 (rank 6, two squares from promotion) reached via b2-b4-b5-b6
+# earlier.
+#
+# Pre-fix (binary 124fb68 with Item-B clamping endgame bonuses):
+#   - d=5 score cp -615 (eval at this stage of the search)
+#   - bestmove g3g2 (king/piece shuffle move, no pawn push)
+#   - Engine is materially down and Item-B clamps the endgame
+#     ADV_PAWN_W bonus to zero (R9 = min(R9, preeg) wipes any
+#     gain from advanced-pawn evaluation). All move options
+#     therefore evaluate the same at preeg level (~-400 to -500)
+#     and engine picks by move ordering, not by promotion gradient.
+#
+# Post-fix expected (Item-B promotion-survival, +ADV_PAWN_W/2
+# applied AFTER the clamp):
+#   - Engine sees a recovery signal proportional to advanced-pawn
+#     presence. Two r6-class pawns contribute roughly +120 cp
+#     (half of full r6 bonus 120 × 2 = 240).
+#   - d=5 score should read LESS negative than -615 (the
+#     promotion-survival bonus adds a constant to all moves but
+#     the r6→r7 push specifically gains +40 cp via the gradient).
+#   - Bestmove should ideally show a pawn-push move (e.g., b6b7
+#     if available, or another rank-6 → rank-7 push).
+#   - At minimum, bestmove should NOT be a king shuffle if a
+#     promotable pawn push is legal.
+#
+# Caveat: the bonus is half-weight by design. If the noise floor
+# (move-ordering bonuses, structural eval drift) is higher than
+# the +40 cp gradient at this position, engine may still pick a
+# non-push move. In that case we'd tune to 3/4 or full weight.
+
+position startpos moves e2e4 c7c6 d2d4 d7d5 e4e5 d8b6 g1f3 c8f5 b1c3 f5g4 h2h3 g4f5 g2g4 f5e6 f3g5 e6c8 c3a4 b6d8 d1f3 g8h6 f1d3 g7g6 e1d2 b7b6 a4c3 f8g7 h1e1 a7a6 a1b1 a6a5 f3f4 a8a7 g5h7 h8h7 f4g5 e8f8 g5f4 f8e8 f4g5 g7f8 d3f1 h6g8 a2a4 f8h6 g5h6 h7h6 d2e2 e7e6 c1h6 g8h6 e2e3 f7f5 f1e2 a7f7 f2f4 f7h7 e2d3 b8d7 b1d1 d7b8 e1g1 h6f7 g1g3 h7h6 g4g5 h6h8 e3f2 c8b7 f2g2 d8c8 d1e1 b7a8 e1d1 c8d8 g3e3 a8b7 e3e1 d8c7 g2h2 b7c8 h2g2 h8h5 d3e2 h5h4 e1f1 c7d8 g2g3 h4h8 g3g2 d8e7 f1e1 e7c7 e2f3 c6c5 d4c5 b6c5 c3b5 c7b7 b5d6 f7d6 e5d6 b7b6 d1d5 b6a7 c2c4 h8g8 e1e5 c8d7 d5c5 e8f8 g2h2 g8g7 h2g2 g7f7 c5a5 a7b6 a5a8 f8g8 e5e2 f7f8 e2d2 g8f7 b2b4 d7c6 a8b8 f8b8 f3c6 b6c6 g2f2 e6e5 f4e5 f7e6 d2d4 b8a8 f2g3 f5f4 d4f4 a8h8 b4b5 c6e8 f4e4 e8f8 b5b6 f8f5 e4e1 h8h3
+go depth 5

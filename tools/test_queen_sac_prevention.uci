@@ -1,0 +1,33 @@
+# Queen-sac prevention test (2026-05-28)
+#
+# Position: 2026-05-27 overnight match, captured at TX [45:02.015].
+# 43 plies played. White-to-move with queen on g5 just attacked by
+# black's bishop on h6 (the prior black move was f8h6).
+#
+# Pre-fix (binary 124fb68 with QSEARCH disabled):
+#   - bestmove g5h6 (Qxh6) — engine voluntarily traded queen for
+#     bishop because at the leaf after Qxh6, with QSEARCH disabled,
+#     leaf-eval saw "queen on h6" and didn't search the obvious
+#     recapture h7h6. Engine evaluated this trade as -520 (already
+#     bad) but ALL alternatives evaluated even worse due to horizon
+#     effects.
+#   - The h7h6 recapture nets white -600 cp (queen 900 - bishop 300).
+#
+# Post-fix expected (QSEARCH-A captor<=victim re-enabled):
+#   - Qxh6 = Q(900) takes B(300) → captor > victim → filter SKIPS
+#     this capture in QSEARCH. Engine no longer sees the inflated
+#     "I still have my queen" leaf eval.
+#   - Bestmove should NOT be g5h6. Expected: queen retreat to a
+#     safe square like e3, f3, or similar.
+#   - d=5 score may still be negative (position is genuinely bad)
+#     but should be LESS bad than the -520 of Qxh6.
+#
+# Caveat: even with QSEARCH-A, if all queen-retreat options have
+# their OWN horizon-effect phantom badness in the engine's eval
+# (which is possible — this is a tense position), the engine may
+# still pick the queen sac as "least bad". In that case we know
+# QSEARCH-A alone isn't enough and we need to look at Phase 4 #1
+# or other queen-safety eval terms.
+
+position startpos moves e2e4 c7c6 d2d4 d7d5 e4e5 d8b6 g1f3 c8f5 b1c3 f5g4 h2h3 g4f5 g2g4 f5e6 f3g5 e6c8 c3a4 b6d8 d1f3 g8h6 f1d3 g7g6 e1d2 b7b6 a4c3 f8g7 h1e1 a7a6 a1b1 a6a5 f3f4 a8a7 g5h7 h8h7 f4g5 e8f8 g5f4 f8e8 f4g5 g7f8 d3f1 h6g8 a2a4 f8h6
+go depth 5

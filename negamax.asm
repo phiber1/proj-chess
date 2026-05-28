@@ -2704,44 +2704,37 @@ QS_BETA_DIFF_SIGN:
 
 QS_NO_BETA_CUTOFF:
     ; ==================================================================
-    ; QSEARCH captures disabled (2026-05-22). Stand-pat only.
+    ; QSEARCH captures disabled (b66f5df 2026-05-22; re-enable
+    ; attempted+reverted 2026-05-28). Stand-pat only.
     ; ------------------------------------------------------------------
-    ; QSEARCH lacks recursion by design (see comment at line ~3004):
-    ; each capture is evaluated via CALL EVALUATE on the post-capture
-    ; position, never via CALL QUIESCENCE_SEARCH. The recursion-free
-    ; design causes phantom material gains when our captor would be
-    ; recaptured but the recapture isn't searched.
+    ; QSEARCH lacks recursion by design: each capture is evaluated via
+    ; CALL EVALUATE on the post-capture position, never via CALL
+    ; QUIESCENCE_SEARCH. The recursion-free design causes phantom
+    ; material gains when our captor would be recaptured but the
+    ; recapture isn't searched.
     ;
-    ; The defender pre-filter (line ~3001) catches one specific case
-    ; only: captor_value > victim_value AND target defended (i.e., the
-    ; "obviously losing" trade where we lose more than we gain). All
-    ; other capture mis-evaluations slip through, including multi-step
-    ; exchanges and captures whose post-capture position is positionally
-    ; mis-rated.
+    ; 2026-05-28 re-enable attempt with captor<=victim filter (skip
+    ; captor>victim captures): hardware test of test_eval_inflation_472
+    ; showed +233 cp inflation (still wrong, was -194 with disable).
+    ; The captor<victim AND defended class still phantom-inflates and
+    ; the simple filter can't catch it. Reverted to LBR QS_RETURN.
     ;
-    ; Bug class isolated via tools/test_eval_inflation_472.uci on the
-    ; 2026-05-22 aborted match's move-17 position. With QSEARCH active,
-    ; d=4 reported +472 cp for a position objectively ~-170 cp. With
-    ; the LBR below in place, d=4 returns -194 (correct, tracks material).
-    ;
-    ; This disable also restored classical-ish opening development in
-    ; the follow-on 2026-05-22 PM match: passive Be2 + rook shuffles
-    ; (which had emerged after N3 ship) gave way to Bb5+, queen sortie,
-    ; etc. The QSEARCH inflation was systematically biasing the engine
-    ; toward positions where no captures were available from the leaf
-    ; (i.e., passive piece placement).
+    ; The captor<=victim filter ALSO showed downstream poison in
+    ; deep-leaf searches: in late-game positions, phantom captures
+    ; against the losing side compound at d=5, making losing positions
+    ; appear WORSE than they actually are.
     ;
     ; TODO: implement recursive QSEARCH properly (CALL QUIESCENCE_SEARCH
     ; instead of CALL EVALUATE in the capture loop). Requires ~60-80 B
     ; of state management: save/restore QS_BEST and alpha/beta, toggle
-    ; R12 to opponent's color, negate result. Plus careful capture-limit
-    ; tuning to bound cycle cost. See discussion in
-    ; [[eval-audit-plan]] / Phase 4 work.
+    ; R12 to opponent's color, negate result. See [[qsearch-recursion-todo]].
     ;
     ; Until recursive QSEARCH ships, the engine loses some tactical
-    ; sight at leaf nodes (real winning captures it could have found
-    ; via QSEARCH are missed). Trade-off chosen: prefer eval that
-    ; tracks reality over hallucinated tactical perception.
+    ; sight at leaf nodes. The 2026-05-28 queen-sac problem (Qxh6)
+    ; turned out NOT to be a QSEARCH-fixable issue — the recapture
+    ; was searched in main negamax at d=2/d=3, but queen-retreat
+    ; alternatives evaluated worse due to other eval/horizon issues.
+    ; Investigate Phase 4 #1 magnitude as the queen-sac fix instead.
     ; ==================================================================
     LBR QS_RETURN
     ; -----------------------------------------------
@@ -3046,6 +3039,10 @@ QS_DELTA_NO_PRUNE:
     ; by enemy, skip this capture entirely. Single-level defender
     ; check; doesn't see exchange chains, but catches the dominant
     ; bug class (e.g., Bxg6 when h7-pawn defends).
+    ;
+    ; NOTE 2026-05-28: this filter is dead code while QSEARCH captures
+    ; are disabled via the LBR QS_RETURN above. Kept in place so that
+    ; future re-enable attempts can reuse it.
     ;
     ; Empirical motivation (2026-05-07): post-Kxf7 d=1 returned +220cp
     ; bestmove d3g6 (Bxg6) despite h7 pawn obviously recapturing —

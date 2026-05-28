@@ -2121,7 +2121,8 @@ HM_AMP_DONE:
 
 BKS_DONE:
     ; ==================================================================
-    ; Item-B material-deficit gate (2026-05-19)
+    ; Item-B material-deficit gate (2026-05-19) + promotion-survival
+    ; bonus (2026-05-28)
     ; ------------------------------------------------------------------
     ; EVAL_PREEG = core score (material+PST+structure+king-safety),
     ; captured before the endgame block. If a side is materially lost
@@ -2134,6 +2135,17 @@ BKS_DONE:
     ; 300 = $012C.  delta = R9 - preeg via COMPARE_TEMP (eval scores are
     ; well within signed-16 range here; mate scores never reach the
     ; piece-count-gated endgame block).
+    ;
+    ; PROMOTION-SURVIVAL (2026-05-28): after the clamp on the losing
+    ; side, restore HALF of the side's ADV_PAWN total. The full ADV_PAWN
+    ; bonus was applied in the endgame block above but gets wiped out
+    ; by the min/max clamp. Half-weight preserves the r4->r5->r6->r7
+    ; gradient (so engine sees promotion as recoverable path) at a
+    ; magnitude that doesn't undo Item-B's protective purpose.
+    ; Triggered by 2026-05-28 match where engine had two r6 pawns
+    ; (b6, d6), was at preeg -400, and would not push them because
+    ; Item-B clamped pawn-push gain to zero.
+    ;
     ; FOLLOW-UP (see MEMORY TODO): replace the hard step gate with a
     ; graduated ramp to remove the threshold cliff.
     ; ==================================================================
@@ -2159,21 +2171,59 @@ BKS_DONE:
     SMBI $01
     ANI $80
     LBNZ GATE_DONE      ; B negative -> preeg < +300 -> neither lost
+
     ; black lost: R9 = max(R9, preeg) -> if R9 < preeg, R9 = preeg
     CALL GATE_DELTA_SIGN    ; D bit7 = sign of (R9 - preeg)
     ANI $80
-    LBZ GATE_DONE       ; R9 - preeg >= 0 -> R9 >= preeg -> keep (max)
-    LBR GATE_SETPE      ; R9 < preeg -> clamp up
+    LBZ GATE_BLOST_BONUS    ; R9 >= preeg already, skip clamp, do bonus
+    ; clamp up to preeg
+    GHI 7
+    PHI 9
+    GLO 7
+    PLO 9
+GATE_BLOST_BONUS:
+    ; black is materially lost: subtract ADV_PAWN_B/2 from R9 (white pov)
+    ; — half weight preserves r4->r7 gradient while keeping most of
+    ; Item-B's protective intent against false-positive eval in losing
+    ; positions. Magnitude tested 1/2 vs 3/4 vs full on 2026-05-28:
+    ; bestmove choice in the test position is invariant to weight
+    ; (engine sees that position as genuinely locked re: pushes),
+    ; so the conservative half-weight is shipped.
+    RLDI 10, ADV_PAWN_B
+    LDN 10
+    SHR                 ; D = ADV_PAWN_B / 2
+    STR 2
+    GLO 9
+    SM                  ; R9.lo -= bonus
+    PLO 9
+    GHI 9
+    SMBI 0              ; R9.hi -= borrow
+    PHI 9
+    LBR GATE_DONE
+
 GATE_WLOST:
     ; white lost: R9 = min(R9, preeg) -> if R9 > preeg, R9 = preeg
     CALL GATE_DELTA_SIGN
     ANI $80
-    LBNZ GATE_DONE      ; R9 - preeg < 0 -> R9 < preeg -> keep (min)
-GATE_SETPE:
+    LBNZ GATE_WLOST_BONUS   ; R9 < preeg already, skip clamp, do bonus
+    ; clamp down to preeg
     GHI 7
     PHI 9
     GLO 7
-    PLO 9               ; R9 = preeg
+    PLO 9
+GATE_WLOST_BONUS:
+    ; white is materially lost: add ADV_PAWN_W/2 to R9
+    ; — half weight (see GATE_BLOST_BONUS above for rationale).
+    RLDI 10, ADV_PAWN_W
+    LDN 10
+    SHR                 ; D = ADV_PAWN_W / 2
+    STR 2
+    GLO 9
+    ADD                 ; R9.lo += bonus
+    PLO 9
+    GHI 9
+    ADCI 0              ; R9.hi += carry
+    PHI 9
 GATE_DONE:
     RETN
 
