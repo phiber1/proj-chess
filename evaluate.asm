@@ -2025,55 +2025,50 @@ FIX_B_NEG:
 FIX_B_DONE:
 
     ; ==================================================================
-    ; Hopeless-material amplifier (2026-05-19 PM-late; broadened 2026-05-27)
+    ; Hopeless-material amplifier (2026-05-19; broadened-then-asymmetric
+    ; 2026-05-27 / 28)
     ; ------------------------------------------------------------------
     ; Push eval past cutechess's -1500 cp / 10-move resign-adjudication
     ; threshold in terminal-loss positions so matches end via the GUI's
     ; adjudication instead of 50+ moves of shuffle.
     ;
-    ; Trigger: EG_PIECE_COUNT <= 6 AND |preeg| >= 300
-    ; Action:  losing side gets -2000; winning side gets +2000
+    ; ASYMMETRIC TRIGGER (2026-05-28 fix after volatility-induced
+    ; conversion failure in PM match):
+    ;   LOSING side (preeg <= -300):  pc <= 6  -> R9 -= 2000
+    ;   WINNING side (preeg >= +300): pc <= 2 AND W_Q=1 AND B_Q=0
+    ;                                          -> R9 += 2000
     ;
-    ; Broadening rationale (2026-05-27 killed match): the prior trigger
-    ; (pc<=2 AND exactly one side has Q) was too narrow. Today's match
-    ; reached 208 moves of queenless losing endgame that didn't qualify.
+    ; Why asymmetric: the 2026-05-27 broadening (symmetric pc<=6 AND
+    ; |preeg|>=300) caused phantom winning eval at search leaves where
+    ; trade sequences reduced pc to 6. Engine pursued those phantom-
+    ; amped leaves but real play didn't deliver pc<=6 conditions,
+    ; producing -2300 cp eval volatility between adjacent search depths
+    ; (e.g., d=2 +3195, d=3 +905 in same position). Result: 2026-05-28
+    ; PM match crashed from +2865 cp winning eval to a 95-move shuffle
+    ; draw because engine couldn't get stable signal on its winning plan.
     ;
-    ; Threshold rationale (2026-05-27 tighten from -500 to -300): hardware
-    ; test on the killed-match position with -500 threshold showed amp
-    ; firing at d=2 (score -2100) but engine dodging at d=3-5 via horizon-
-    ; effect lines whose leaves had preeg between -300 and -500. -300
-    ; matches Item-B's "materially lost" threshold; at pc<=6 a 3-pawn
-    ; deficit is essentially never recoverable, denying the dodge route.
+    ; Losing-side broadening stays: catches queenless lost endgames
+    ; (5/27 killed-match diagnosis) without volatility risk because
+    ; the engine's job in lost endgames is just to minimize loss, not
+    ; to find a winning conversion line.
     ;
-    ; New gate is symmetric and queen-agnostic. The two old branches
-    ; (W_Q xor B_Q) collapse into preeg-sign branching because in K+Q vs K
-    ; family positions preeg already encodes the material asymmetry
-    ; (e.g., K+Q vs K has preeg ~+900, K vs K+Q has preeg ~-900). The
-    ; broadened trigger ALSO catches K+R vs K, K+R+P vs K+B, etc.
-    ;
-    ; Cases caught (NEW vs OLD):
-    ;   K+R vs K           pc=1, preeg~+500  NEW
-    ;   K+B+B vs K         pc=2, preeg~+650  NEW
-    ;   K+B vs K+R+P       pc=3, preeg~-600  NEW
-    ;   K+Q vs K           pc=1, preeg~+900  OLD also caught
-    ;   K+Q vs K+N         pc=2, preeg~+600  OLD also caught
-    ;
-    ; Cases NOT caught (intentional):
-    ;   |preeg| < 300   - genuine middle endgame with comp possible
-    ;   pc > 6          - still too many pieces; conversion uncertainty
+    ; Winning-side narrowed back to original 54411b4 trigger: only
+    ; fires in K+Q vs K family where conversion is essentially trivial
+    ; and the amp is a "tell cutechess to adjudicate" hint, not a
+    ; search-shaping signal.
     ;
     ; Inside endgame block: opening-path LBDF BKS_DONE near line 1134
     ; skips this code. After Fix B but before Item-B clamp; the +-2000
-    ; survives the min/max clamp in both winning and losing branches
-    ; because the clamp targets preeg (which is only material+PST+king-
-    ; safety, well within +-1000), so the amplifier's magnitude dominates.
+    ; survives the min/max clamp because the clamp targets preeg (which
+    ; is only material+PST+king-safety, well within +-1000), so the
+    ; amplifier's magnitude dominates.
     ; ==================================================================
     RLDI 10, EG_PIECE_COUNT
     LDN 10
     SMI 7                       ; D = pc - 7, DF=1 if pc >= 7
-    LBDF HM_AMP_DONE            ; pc > 6, skip
+    LBDF HM_AMP_DONE            ; pc > 6, skip both amps
 
-    ; pc <= 6 — load preeg and check |preeg| >= 300 ($012C)
+    ; pc <= 6 — load preeg
     RLDI 10, EVAL_PREEG
     LDA 10
     PHI 7                       ; R7.1 = preeg hi
@@ -2081,14 +2076,13 @@ FIX_B_DONE:
     PLO 7                       ; R7.0 = preeg lo
 
     ; A = preeg + 299 ; preeg <= -300 iff A < 0 (sign bit set)
-    ; (preeg=-300 -> A=-1 set; preeg=-299 -> A=0 clear) single check.
     GLO 7
     ADI $2B                     ; LOW(299)
     PLO 8
     GHI 7
     ADCI $01                    ; HIGH(299)
     ANI $80
-    LBNZ HM_AMP_W_LOST          ; A negative -> white lost (preeg<=-300)
+    LBNZ HM_AMP_W_LOST          ; preeg <= -300 -> losing amp (broadened)
 
     ; B = preeg - 300 ; preeg >= +300 iff B >= 0 (sign clear)
     GLO 7
@@ -2097,9 +2091,24 @@ FIX_B_DONE:
     GHI 7
     SMBI $01                    ; HIGH(300)
     ANI $80
-    LBNZ HM_AMP_DONE            ; B negative -> neither lost, skip
+    LBNZ HM_AMP_DONE            ; preeg < +300 -> neither, skip
 
-    ; Black is lost (preeg >= +300) -> winning amp: R9 += 2000 ($07D0)
+    ; preeg >= +300 — winning amp NARROW trigger:
+    ; pc <= 2 (we know pc <= 6 already; refine), AND W_Q=1, AND B_Q=0
+    RLDI 10, EG_PIECE_COUNT
+    LDN 10
+    SMI 3                       ; D = pc - 3, DF=1 if pc >= 3
+    LBDF HM_AMP_DONE            ; pc > 2 — too many pieces, no winning amp
+
+    ; pc <= 2 — check queen asymmetry
+    RLDI 10, W_QUEEN_CNT
+    LDN 10
+    LBZ HM_AMP_DONE             ; W has no queen — no amp (not K+Q-vs-K class)
+    RLDI 10, B_QUEEN_CNT
+    LDN 10
+    LBNZ HM_AMP_DONE            ; B has queen too — likely drawn, no amp
+
+    ; All conditions met: K+Q-vs-K-class. R9 += 2000 ($07D0)
     GLO 9
     ADI $D0                     ; LOW(2000)
     PLO 9
@@ -2109,7 +2118,7 @@ FIX_B_DONE:
     LBR HM_AMP_DONE
 
 HM_AMP_W_LOST:
-    ; White is lost (preeg <= -300) -> losing amp: R9 -= 2000
+    ; White is lost (pc<=6 AND preeg<=-300) -> losing amp: R9 -= 2000
     GLO 9
     SMI $D0                     ; LOW(2000)
     PLO 9
@@ -2175,7 +2184,9 @@ BKS_DONE:
     ; black lost: R9 = max(R9, preeg) -> if R9 < preeg, R9 = preeg
     CALL GATE_DELTA_SIGN    ; D bit7 = sign of (R9 - preeg)
     ANI $80
-    LBZ GATE_BLOST_BONUS    ; R9 >= preeg already, skip clamp, do bonus
+    LBZ GATE_DONE           ; R9 >= preeg already, no clamp, no bonus
+                            ; (would double-count ADV_PAWN_B if applied
+                            ; — endgame block already subtracted it once)
     ; clamp up to preeg
     GHI 7
     PHI 9
@@ -2205,7 +2216,9 @@ GATE_WLOST:
     ; white lost: R9 = min(R9, preeg) -> if R9 > preeg, R9 = preeg
     CALL GATE_DELTA_SIGN
     ANI $80
-    LBNZ GATE_WLOST_BONUS   ; R9 < preeg already, skip clamp, do bonus
+    LBNZ GATE_DONE          ; R9 < preeg already, no clamp, no bonus
+                            ; (would double-count ADV_PAWN_W if applied
+                            ; — endgame block already added it once)
     ; clamp down to preeg
     GHI 7
     PHI 9
