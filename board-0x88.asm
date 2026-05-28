@@ -57,8 +57,13 @@ MOVE_HIST   EQU $6090   ; Move history for undo (256 bytes) ($6090-$618F)
 ; plies) to support adaptive IDS extension to depth 5. Stack working area
 ; correspondingly shrunk from $7800-$7FFF (2KB) to $7B00-$7FFF (1.25KB) — still
 ; ~4× peak observed usage. See CHECK_STACK_OVERFLOW guard update in stack.asm.
-MOVE_LIST   EQU $7800   ; Ply-indexed move lists (640 bytes) ($7800-$7A7F)
-                        ; Each ply gets 128 bytes (64 moves max): ply×128 + $6200
+;
+; Extended 2026-05-27 to 768 bytes (6 plies) to support d=6 search. The
+; previously-unused $7A80-$7AFF region now hosts ply-5 move list. All other
+; ply-indexed structures already had MAX_PLY=8 capacity.
+MOVE_LIST   EQU $7800   ; Ply-indexed move lists (768 bytes) ($7800-$7AFF)
+                        ; Each ply gets 128 bytes (64 moves max): ply×128 + $7800
+                        ; Supports up to 6 plies (ply 0 at $7800 ... ply 5 at $7A80)
 QS_MOVE_LIST EQU $6780  ; Quiescence moves (128 bytes) ($6780-$67FF) - 64 captures max
 
 ; ------------------------------------------------------------------------------

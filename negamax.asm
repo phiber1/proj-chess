@@ -881,15 +881,15 @@ NEGAMAX_RESET_DONE:
 
     ; -----------------------------------------------
     ; Apply killer move ordering (search killers first)
-    ; Apply at plies 0-4: with d=5 search now active, plies 3 and 4 are
+    ; Apply at plies 0-5: with d=6 search enabled 2026-05-27, plies 3-5 are
     ; non-leaves with rich subtrees where alpha-beta cutoffs from a
-    ; well-ordered list save exponentially more work. Skip only at ply >= 5
+    ; well-ordered list save exponentially more work. Skip only at ply >= 6
     ; (where remaining depth is too shallow for ordering to pay off).
     ; -----------------------------------------------
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    SMI 5               ; Check if ply >= 5
-    LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 5
+    SMI 6               ; Check if ply >= 6
+    LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 6
 
     INC 2               ; Point to move count on stack
     LDN 2               ; D = move count (peek, don't pop)
@@ -899,12 +899,12 @@ NEGAMAX_RESET_DONE:
 NEGAMAX_SKIP_KILLER:
     ; -----------------------------------------------
     ; Order captures first (MVV-LVA preparation)
-    ; Apply at plies 0-4 (same rationale as killers above).
+    ; Apply at plies 0-5 (same rationale as killers above).
     ; -----------------------------------------------
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply
-    SMI 5               ; Check if ply >= 5
-    LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 5
+    SMI 6               ; Check if ply >= 6
+    LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 6
 
     INC 2               ; Point to move count on stack
     LDN 2               ; D = move count (peek, don't pop)
@@ -4206,11 +4206,15 @@ ITER_NO_SOVF:
     LBNF ITER_DONE              ; target < current — defensive (shouldn't happen)
     LBZ ITER_DONE               ; target == current — UCI cap reached
 
-    ; Rule 2: current >= 5?
+    ; Rule 2: current >= 6?  (was 5; 2026-05-27 raised hard cap to enable d=6)
+    ; The iter-time predictor below decides whether to actually attempt the
+    ; next iteration; this is just the safety ceiling. d=6 search is feasible
+    ; in late endgame (simple positions) and may also fit in opening if the
+    ; predictor judges remaining budget sufficient.
     RLDI 10, CURRENT_MAX_DEPTH
     LDN 10
-    SMI 5
-    LBDF ITER_DONE              ; current >= 5 — hard safety cap
+    SMI 6
+    LBDF ITER_DONE              ; current >= 6 — hard safety cap
 
     ; Rule 3: iteration-time gate. Apply only at depth >= 3.
     RLDI 10, CURRENT_MAX_DEPTH
@@ -4227,16 +4231,20 @@ ITER_NO_SOVF:
     SM                          ; D = elapsed - iter_start = last_iter
     PLO 13                      ; R13.0 = last_iter
 
-    ; Fast path: last_iter > 60 → 3*last_iter overflows AND exceeds remaining
-    SMI 61
-    LBDF ITER_DONE              ; last_iter >= 61 — stop
+    ; Fast path: last_iter >= 120 → 1.5*last_iter >= 180 (whole budget)
+    ; Retuned 2x → 1.5x (2026-05-27, second iteration).
+    SMI 120
+    LBDF ITER_DONE              ; last_iter >= 120 — stop
 
-    ; predicted = 3 * last_iter (no overflow: last_iter <= 60, so 3x <= 180)
+    ; predicted = 1.5 * last_iter (was 3x → 2x → 1.5x, 2026-05-27)
+    ; Initial 3x was very conservative. 2x recovered some depth but still
+    ; cut d=4→d=5 transitions at 70-80s remaining when d=4 was 40-50s.
+    ; 1.5x recovers that range. If d=N takes T seconds, d=N+1 typically
+    ; takes 1.5×T with our move ordering (TT-first + killer + MVV-LVA).
     GLO 13                      ; D = last_iter
-    SHL                         ; D = 2 * last_iter
-    STR 2                       ; M(R2) = 2 * last_iter
-    GLO 13                      ; D = last_iter
-    ADD                         ; D = 3 * last_iter
+    STR 2                       ; M(R2) = last_iter (save for ADD)
+    SHR                         ; D = last_iter / 2
+    ADD                         ; D = last_iter + last_iter/2 = 1.5*last_iter
     PLO 13                      ; R13.0 = predicted
 
     ; remaining = 180 - SEARCH_ELAPSED

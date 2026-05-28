@@ -347,16 +347,16 @@ EVAL_SCAN:
     LDN 2
     XRI $30
     LBNZ EVAL_NOT_ADV_PAWN
-    LDI 25              ; rank 4
+    LDI 25              ; rank 4 (unchanged)
     LBR EVAL_WP_ADD
 EVAL_WP_R5:
-    LDI 50              ; rank 5
+    LDI 60              ; rank 5  (Fix B 2026-05-27: 50→60)
     LBR EVAL_WP_ADD
 EVAL_WP_R7:
-    LDI 90              ; rank 7  (was 150, Fix A 2026-05-19)
+    LDI 200             ; rank 7  (Fix B 2026-05-27: 90→200, one-from-promotion)
     LBR EVAL_WP_ADD
 EVAL_WP_R6:
-    LDI 70              ; rank 6  (was 100, Fix A 2026-05-19)
+    LDI 120             ; rank 6  (Fix B 2026-05-27: 70→120, two-from-promotion)
 EVAL_WP_ADD:
     STR 2
     RLDI 11, ADV_PAWN_W
@@ -381,16 +381,16 @@ EVAL_BP_ADV:
     LDN 2
     XRI $40
     LBNZ EVAL_NOT_ADV_PAWN
-    LDI 25              ; rank 5
+    LDI 25              ; rank 5 (unchanged, mirror of W r4)
     LBR EVAL_BP_ADD
 EVAL_BP_R4:
-    LDI 50              ; rank 4
+    LDI 60              ; rank 4  (Fix B 2026-05-27: 50→60, mirror of W r5)
     LBR EVAL_BP_ADD
 EVAL_BP_R2:
-    LDI 90              ; rank 2  (was 150, Fix A 2026-05-19)
+    LDI 200             ; rank 2  (Fix B 2026-05-27: 90→200, mirror of W r7)
     LBR EVAL_BP_ADD
 EVAL_BP_R3:
-    LDI 70              ; rank 3  (was 100, Fix A 2026-05-19)
+    LDI 120             ; rank 3  (Fix B 2026-05-27: 70→120, mirror of W r6)
 EVAL_BP_ADD:
     STR 2
     RLDI 11, ADV_PAWN_B
@@ -1371,6 +1371,42 @@ EVAL_BR_DONE:
     GLO 9
     STR 10
 
+    ; ==================================================================
+    ; Middlegame enemy-pawn-advance penalty (Fix 2026-05-27, revised)
+    ; ------------------------------------------------------------------
+    ; Initial Fix applied BOTH white and black ADV_PAWN at half-weight in
+    ; middlegame. Caused over-pushing of own pawns (engine pushed pawns
+    ; while own queen was attacked, 2026-05-27 match).
+    ;
+    ; Revised: asymmetric — apply ONLY the black ADV_PAWN penalty (from
+    ; white's perspective) in middlegame. This signals enemy pawn marches
+    ; without rewarding own pawn advances (which would compete with
+    ; development in opening/middlegame).
+    ;
+    ; White's pawn-push reward STILL fires in endgame block at full
+    ; weight (when EG_PIECE_COUNT < 12). Both sides get full ADV_PAWN
+    ; treatment in endgame as before.
+    ; ==================================================================
+    RLDI 11, EG_PIECE_COUNT
+    LDN 11
+    SMI 12
+    LBNF SKIP_MID_ADV   ; count < 12 (endgame) — let endgame block handle
+
+    ; --- Black ADV_PAWN penalty only (enemy threat awareness) ---
+    ; Half weight so black-pawn advance signals are present but moderate.
+    RLDI 10, ADV_PAWN_B
+    LDN 10
+    SHR                 ; half
+    STR 2
+    GLO 9
+    SM
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+
+SKIP_MID_ADV:
+
     RLDI 11, EG_PIECE_COUNT
     LDN 11              ; D = piece count
     SMI 12              ; compare: count - 12
@@ -1875,7 +1911,18 @@ EG_EDGE_DONE:
     ; Score is white-relative, so white-in-check → R9 -= CHECK_BONUS;
     ; black-in-check → R9 += CHECK_BONUS.
     ; IS_IN_CHECK preserves R11/R12; we save R9 ourselves.
+    ;
+    ; Phase gate (Fix A 2026-05-27): skip check bonus in endgame.
+    ; In endgame, checks are usually meaningless tempo wastes (king has many
+    ; escape squares, no follow-up). The 2026-05-27 match showed engine
+    ; making pointless rook check moves over pawn pushes because +40 cp
+    ; check bonus outweighed the ~25-50 cp pawn-push reward.
     ; ==================================================================
+    RLDI 10, EG_PIECE_COUNT
+    LDN 10
+    SMI 12
+    LBNF CHECK_BONUS_DONE   ; count < 12 (endgame) — skip check bonus entirely
+
     GLO 9
     STXD
     GHI 9
