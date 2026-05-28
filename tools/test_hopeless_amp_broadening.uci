@@ -1,0 +1,33 @@
+# Hopeless-amp broadening test (2026-05-27)
+#
+# Position: state at the 2026-05-27 killed-match stop point. White-to-move,
+# 208 moves in, queenless losing endgame, engine reported scores around
+# -385 to -460 cp during the killed iteration. No cutechess resign
+# adjudication because eval was below the -1500 threshold AND old
+# hopeless-amp didn't fire (no queens on board).
+#
+# Purpose: validate the new hopeless-amp trigger conditions:
+#   pc <= 6 AND preeg <= -500  → R9 -= 2000 (losing amp)
+#
+# Expected behavior with new amp:
+#   - If preeg in this position is <= -500 cp: amp fires, score reads
+#     approximately -2415 cp → past cutechess -1500 resign threshold
+#   - If preeg is between -300 and -500: amp does NOT fire (we need to
+#     tighten the threshold to -300 in a follow-up)
+#   - If preeg is > -300: amp does NOT fire (genuine middlegame, not
+#     hopeless; current behavior correct)
+#
+# Pre-fix (no amp at all without queens):
+#   - bestmove emitted with cp around -415 (engine still seeing position
+#     as merely "bad" rather than "resign-class lost")
+#
+# Post-fix expected emit:
+#   - bestmove with cp around -2415 (-415 - 2000)
+#   - cutechess should adjudicate as resign within 10 moves of this score
+#
+# Piece-count verification: count remaining pieces from the move list or
+# from elph-debug.log info strings to confirm we're in pc<=6 territory.
+# If pc > 6, the gate needs widening (pc<=8 or pc<=10).
+
+position startpos moves e2e4 c7c6 d2d4 d7d6 b1c3 b8d7 c1g5 b7b5 a2a3 h7h6 g5e3 e7e6 d1h5 d6d5 e1c1 g8f6 e3g5 f6h5 g5d8 e8d8 f1e2 h5f4 e2f3 f8e7 d1e1 a8b8 c1b1 b8b6 b1a2 c8a6 h2h3 e7h4 g2g3 h4f6 e4e5 f4g6 e5f6 d7f6 g3g4 f6e8 e1d1 e8f6 d1c1 g6f4 g1e2 f4g6 e2g3 h8f8 h1e1 f8g8 c1d1 a6c8 e1g1 c8d7 c3e2 f6e8 g3f1 g6h4 f3h1 h4g6 d1d3 g6e7 f1e3 e7g6 h1f3 e8d6 d3d1 g6h4 f3h1 g7g6 g4g5 d6f5 g5h6 f5h6 e2g3 d8c7 d1e1 g8c8 e1e2 a7a6 g1e1 c7d6 e1g1 c8g8 g1e1 g8f8 e1g1 h6g8 g1d1 b6b7 d1g1 b7c7 g1d1 c7c8 d1g1 c8a8 g1d1 a8a7 d1g1 f8a8 g1d1 a6a5 d1e1 d6c7 b2b3 c7b6 c2c4 b6b7 c4b5 c6b5 e2c2 a8c8 c2c8 b7c8 e1c1 c8b8 e3d5 e6d5 h1d5 g8e7 d5f7 d7c6 a3a4 a7b7 a4b5 c6b5 c1c5 h4f3 d4d5 a5a4 c5b5 b7b5 d5d6 a4b3 f7b3 b5a5 a2b2 e7c6 b3d1 f3d4 d6d7 c6d8 b2c3 a5d5 d1g4 d5d6 f2f4 b8c7 c3c4 d8e6 g3e4 d6a6 e4c5 a6b6 h3h4 b6c6 c4d3 c6c5 d3e3 c5c6 e3f2 e6d8 f2g3 c6c5 g3h2 d8c6 h2h3 c5d5 h3g2 d4b3 g4e6 d5b5 e6c4 b5b7 c4f7 b3a1 f7g6 c7d8 g6e8 c6d4 g2g3 b7c7 g3h3 a1c2 h4h5 c2e3 h3h4 e3f5 h4g5 c7c1 g5g4 c1g1 g4h3 g1g7 e8g6 g7g8 h3h2 g8h8 g6e8 f5e7 h2h3 d4f3 h3g2 f3e1 g2h3 e1c2 h3h2 c2d4
+go depth 5
