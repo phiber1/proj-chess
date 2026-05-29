@@ -806,9 +806,19 @@ UM_CASTLE_QS:
 UM_CASTLE_FLAG_CLEAR:
     ; ====== State-conditional eval foundation (Phase 2 audit 2026-05-22) ======
     ; Clear CASTLED_FLAGS bit for the side whose castle we're undoing.
-    ; R10.0 still holds the moving piece (the king); read color from it.
-    GLO 10
-    ANI COLOR_MASK
+    ; FIX 2026-05-28: original code read R10.0 as the moving-piece color, but
+    ; HASH_XOR_PIECE_SQ in the rook-hash steps above clobbers R10 (per its
+    ; own header comment). R10.0 here is whatever Zobrist-table low byte the
+    ; last call left, giving a ~50% mis-clear of CASTLED_FLAGS for either
+    ; side on castling undo — silent eval drift after any castle-search.
+    ;
+    ; Reliable source: SIDE memory still holds the toggled-by-MAKE value
+    ; (the SIDE-untoggle in UM_NOT_KING runs AFTER us). Flipping it back
+    ; gives the castling-king's color.
+    RLDI 10, SIDE
+    LDN 10
+    XRI $08                 ; flip toggled side -> king's color
+    ANI COLOR_MASK          ; defensive: isolate color bit
     LBNZ UM_CFL_BLACK
     LDI $FE                 ; mask: clear bit 0 (white)
     LBR UM_CFL_AND
