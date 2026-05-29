@@ -34,6 +34,11 @@ LINE_DELAY = 0.030      # 30ms after line ending
 LONG_CMD_THRESHOLD = 80 # Commands longer than this get extra delay
 LONG_CMD_BASE_DELAY = 0.050   # 50ms base extra delay
 LONG_CMD_PER_MOVE = 0.025     # 25ms per move in position command (for MAKE_MOVE processing)
+# ucinewgame triggers WORKSPACE_CLEAR + TT_CLEAR + INIT_BOARD + HASH_INIT inside
+# the engine (~50-100ms of busy work). BIOS serial RX drops bytes during this
+# window. Hold the bridge before sending the next command to avoid losing the
+# first bytes of "position startpos ..." (the documented PARTIAL_ECHO issue).
+UCINEWGAME_DELAY = 0.500      # 500ms post-ucinewgame quiet period
 
 def filter_go_command(line):
     """Strip unsupported parameters from 'go' command."""
@@ -140,6 +145,11 @@ def main():
                         while ser.in_waiting:
                             recv_buffer.extend(ser.read(ser.in_waiting))
                     ser.flush()
+
+                    # Post-ucinewgame quiet period (engine is busy clearing RAM)
+                    if line.strip().lower() == 'ucinewgame':
+                        time.sleep(UCINEWGAME_DELAY)
+                        log_write(log, f"  (ucinewgame delay: {UCINEWGAME_DELAY*1000:.0f}ms)\n")
 
                     # Extra delay after long commands
                     if len(line) > LONG_CMD_THRESHOLD:
