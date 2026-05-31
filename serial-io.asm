@@ -48,167 +48,22 @@ F_UINTOUT  EQU $FF60       ; Convert R13 (16-bit unsigned) to ASCII at R15, R15 
 #endif
 
 ; ==============================================================================
-; SERIAL_READ_LINE - Read line with echo into buffer
-; Input: R8 = pointer to buffer, R9.0 = max length (including null)
-; Output: Buffer filled with null-terminated string
-; Handles: Echo, Backspace (08H or 7FH), Enter (0DH)
+; Removed 2026-05-29 (~128 B reclaim for TT generation-stamp work):
+;   SERIAL_READ_LINE  — never called; UCI reads via direct SERIAL_READ_CHAR.
+;   SERIAL_PRINT_HEX  — never called; remaining hex-print needs use BIOS F_MSG.
+;   SERIAL_PRINT_NIBBLE — only callee was SERIAL_PRINT_HEX, also dead.
+; The only remaining serial entry points in BIOS mode are the thin
+; SERIAL_PRINT_STRING / SERIAL_READ_CHAR / SERIAL_WRITE_CHAR wrappers
+; below the next #ifdef BIOS block.
 ; ==============================================================================
-SERIAL_READ_LINE:
-    ; Copy R8 to R7 (preserve R8 for caller)
-    GHI 8
-    PHI 7
-    GLO 8
-    PLO 7
-
-    GLO 9               ; Get max length
-    SMI 1               ; Reserve space for null terminator
-    PLO 9               ; R9.0 = max chars we can store
-    LDI 0
-    PHI 9               ; R9.1 = current count
-
-SRL_READ_NEXT:
-    SEP 4
-    DW SERIAL_READ_CHAR ; Read character into D
-
-    ; Check for Enter (CR = 0DH)
-    SMI 0DH
-    BZ SRL_DONE
-
-    ; Check for LF (0AH) - also treat as Enter (for GUI compatibility)
-    ADI 0DH             ; Restore D
-    SMI 0AH
-    BZ SRL_DONE
-
-    ; Check for Backspace (08H)
-    ADI 0AH             ; Restore D
-    SMI 08H
-    BZ SRL_BACKSPACE
-
-    ; Check for DEL (7FH) - also treat as backspace
-    ADI 08H             ; Restore D
-    SMI 7FH
-    BZ SRL_BACKSPACE
-
-    ; Regular character - check if buffer full
-    ADI 7FH             ; Restore D
-    PLO 10              ; Save char in R10.0 temporarily
-
-    GHI 9               ; Get current count
-    STR 2               ; Store on stack
-    GLO 9               ; Get max
-    SM                  ; max - count
-    BZ SRL_READ_NEXT    ; Buffer full, ignore character
-
-    ; Store character and echo it
-    GLO 10              ; Get character back
-    STR 7               ; Store in buffer
-    INC 7               ; Advance buffer pointer
-    GHI 9               ; Increment count
-    ADI 1
-    PHI 9
-
-    GLO 10              ; Echo the character
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-
-    BR SRL_READ_NEXT
-
-SRL_BACKSPACE:
-    ; Check if anything to delete
-    GHI 9               ; Get current count
-    BZ SRL_READ_NEXT    ; Nothing to delete
-
-    ; Decrement count and pointer
-    SMI 1
-    PHI 9
-    DEC 7
-
-    ; Echo: backspace, space, backspace (erase character on terminal)
-    LDI 08H
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-    LDI ' '
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-    LDI 08H
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-
-    BR SRL_READ_NEXT
-
-SRL_DONE:
-    ; Null-terminate the buffer
-    LDI 0
-    STR 7
-
-    ; Echo CR+LF
-    LDI 0DH
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-    LDI 0AH
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-
-    SEP 5               ; Return
-
-; ==============================================================================
-; SERIAL_PRINT_HEX - Print byte as two hex digits
-; Input: D = byte to print
-; Uses: Stack (1 byte)
-; NOTE: Cannot use R14.0 - F_TYPE clobbers it during first nibble print!
-; ==============================================================================
-SERIAL_PRINT_HEX:
-    STXD                ; Save byte on stack
-
-    ; Print high nibble
-    SHR
-    SHR
-    SHR
-    SHR
-    SEP 4
-    DW SERIAL_PRINT_NIBBLE
-
-    ; Print low nibble
-    IRX
-    LDX                 ; Pop original byte from stack
-    ANI 0FH             ; Mask low nibble
-    SEP 4
-    DW SERIAL_PRINT_NIBBLE
-
-    SEP 5               ; Return
-
-; ==============================================================================
-; SERIAL_PRINT_NIBBLE - Print single hex digit (0-F)
-; Input: D = value 0-15
-; ==============================================================================
-SERIAL_PRINT_NIBBLE:
-    SMI 10              ; Is it >= 10?
-    BDF SPN_AF          ; Yes, it's A-F
-    ADI 10+'0'          ; Restore and add '0'
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-    SEP 5
-
-SPN_AF:
-    ADI 'A'             ; Add 'A' (already subtracted 10)
-    SEP 4
-    DW SERIAL_WRITE_CHAR
-    SEP 5
 
 #ifdef BIOS
 ; ==============================================================================
 ; BIOS MODE - Thin wrappers around BIOS entry points
 ; ==============================================================================
 
-; ==============================================================================
-; SERIAL_PRINT_STRING - Print null-terminated string
-; Input: R15 = pointer to null-terminated string (F_MSG uses R15 directly)
-; NOTE: Caller must load R15 directly - R8 is NOT used!
-; ==============================================================================
-SERIAL_PRINT_STRING:
-    SEP 4
-    DW F_MSG            ; Call BIOS string output (uses R15)
-    SEP 5               ; Return
+; SERIAL_PRINT_STRING removed 2026-05-29 — dead wrapper over F_MSG. All live
+; callers use `SEP 4 / DW F_MSG` directly with R15 = string pointer (5 bytes).
 
 ; ==============================================================================
 ; SERIAL_READ_CHAR - Read character from console
