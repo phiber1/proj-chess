@@ -970,6 +970,9 @@ NEGAMAX_TT_ORDER_CALL:
     ; this position. Net: safe at 16-bit verification.
     ; Watch for queen-sac patterns in match play that do NOT reproduce
     ; with ordering off — if any, disable again pending 32-bit hash widening.
+    ; (2026-05-29 A/B EXONERATED ORDER_TT_MOVE: disabled, the freeze-class
+    ; hang still reproduced. Root cause was the LMR re-search LMR_MOVE_INDEX
+    ; clobber, fixed elsewhere. Re-enabled.)
     CALL ORDER_TT_MOVE
 
 NEGAMAX_SKIP_TT_ORDER:
@@ -1887,6 +1890,20 @@ LMR_DO_RESEARCH:
     RLDI 10, CHECK_EXT_FLAG
     STR 10              ; CHECK_EXT_FLAG = fresh "in check?" result
 
+    ; --- BUGFIX 2026-05-29: preserve LMR_MOVE_INDEX across the re-search ---
+    ; The first (reduced) CALL NEGAMAX saves/restores LMR_MOVE_INDEX (push at
+    ; ~1679, pop at ~1704). This second, full-depth re-search call did NOT —
+    ; so the re-searched child reset+incremented LMR_MOVE_INDEX and never
+    ; restored this node's value, corrupting the per-node move counter. That
+    ; drives LMP/LMR off the rails and, via the LMR_REDUCED-gated SEARCH_DEPTH
+    ; decrement (~line 1521), can underflow depth past 0 to $FFFF → a near-
+    ; infinite child search = the freeze-class hang caught by the move-loop
+    ; watchdog (LMR_MOVE_INDEX=100 while R9 showed only ~39 real iterations).
+    ; Push before / restore after, exactly like the first call.
+    RLDI 10, LMR_MOVE_INDEX
+    LDN 10
+    STXD                ; push LMR_MOVE_INDEX
+
     ; Increment ply for recursive call
     RLDI 10, CURRENT_PLY
     LDN 10
@@ -1895,6 +1912,14 @@ LMR_DO_RESEARCH:
 
     ; Call NEGAMAX again (full depth this time)
     CALL NEGAMAX
+
+    ; Restore LMR_MOVE_INDEX (the re-searched child clobbered it)
+    IRX
+    LDX                 ; D = saved LMR_MOVE_INDEX
+    PLO 7               ; temp (R7.0 dead here — R9 holds the score)
+    RLDI 10, LMR_MOVE_INDEX
+    GLO 7
+    STR 10              ; LMR_MOVE_INDEX restored to this node's value
 
     ; Decrement ply
     RLDI 10, CURRENT_PLY
