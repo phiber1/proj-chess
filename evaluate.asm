@@ -644,7 +644,17 @@ QC_B_DONE:
     ; For each side that has a queen, bonus = lookup[chebyshev_distance]
     ; from queen to enemy king. Encourages attacking play in endgame
     ; (paired with queen-cap which removed the redundant-promotion bias).
+    ;
+    ; PHASE GATE (2026-06-01): this is an ENDGAME mate-chasing aid but was
+    ; applied in ALL phases, bribing premature queen sorties — e.g. in the
+    ; French (1.e4 e6 2.d4 d5 3.e5 c6) Qh5 gets +40 (queen->Ke8 Chebyshev 3),
+    ; which alone exceeded the +28 margin the engine preferred Qh5 by at d4.
+    ; Gate to endgame (EG_PIECE_COUNT < 12, matching the bonus's intent).
     ; ==================================================================
+    RLDI 8, EG_PIECE_COUNT
+    LDN 8
+    SMI 12
+    LBDF QP_B_DONE          ; >= 12 non-king pieces (not endgame) -> skip prox
 
     ; --- White queen → black king proximity ---
     RLDI 8, W_QUEEN_SQ
