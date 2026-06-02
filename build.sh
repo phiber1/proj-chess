@@ -114,8 +114,8 @@ cat support.asm >> "$OUTPUT"
 echo "  - stack.asm"
 cat stack.asm >> "$OUTPUT"
 
-echo "  - board-0x88.asm (0x88 board representation)"
-cat board-0x88.asm >> "$OUTPUT"
+echo "  - board.asm (0x88 board representation, constants, memory map)"
+cat board.asm >> "$OUTPUT"
 
 echo "  - check.asm"
 cat check.asm >> "$OUTPUT"
@@ -123,8 +123,8 @@ cat check.asm >> "$OUTPUT"
 echo "  - movegen-helpers.asm"
 cat movegen-helpers.asm >> "$OUTPUT"
 
-echo "  - movegen-fixed.asm (integrated version)"
-cat movegen-fixed.asm >> "$OUTPUT"
+echo "  - movegen.asm (move generation)"
+cat movegen.asm >> "$OUTPUT"
 
 echo "  - makemove-helpers.asm"
 cat makemove-helpers.asm >> "$OUTPUT"

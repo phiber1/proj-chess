@@ -2674,6 +2674,18 @@ QUIESCENCE_SEARCH:
     PHI 9
 
 QS_SAVE_STANDPAT:
+    ; SEE gate, INLINE (no CALL on the ~99% of leaves that are quiet or
+    ; middlegame — the SCRT call/return alone, x100Ks of leaves, costs a whole
+    ; depth). Only endgame capture leaves invoke SEE.
+    RLDI 10, UNDO_CAPTURED
+    LDN 10
+    LBZ QS_AFTER_SEE            ; quiet leaf -> no recapture to resolve
+    RLDI 10, EG_PIECE_COUNT
+    LDN 10
+    SMI SEE_ENDGAME_PIECES
+    LBDF QS_AFTER_SEE          ; >= threshold -> middlegame -> skip SEE
+    CALL SEE_CORRECT_STANDPAT  ; endgame capture leaf -> resolve the exchange
+QS_AFTER_SEE:
     ; Save stand-pat score to QS_BEST_HI/LO
     RLDI 10, QS_BEST_HI
     GHI 9               ; high byte → QS_BEST_HI (lower address)
@@ -2762,622 +2774,557 @@ QS_NO_BETA_CUTOFF:
     ; Investigate Phase 4 #1 magnitude as the queen-sac fix instead.
     ; ==================================================================
     LBR QS_RETURN
-    ; -----------------------------------------------
-    ; Alpha update: if stand-pat > alpha, alpha = stand-pat
-    ; (Tightens window, makes beta cutoffs more likely)
-    ; -----------------------------------------------
-    ; Load alpha (R9 still has stand-pat)
-    RLDI 10, ALPHA_HI
-    LDA 10              ; alpha high
-    PHI 7
-    LDN 10              ; alpha low
-    PLO 7               ; R7 = alpha
 
-    ; Compare: stand-pat (R9) > alpha (R7)?
-    RLDI 10, COMPARE_TEMP
-    SEX 10
-    GHI 9
-    STR 10
-    GHI 7
-    XOR
-    ANI $80
+; ==============================================================================
+; STATIC EXCHANGE EVALUATION (SEE) - phantom-material fix
+; (branch see-exchange-eval; replaces the dead QSEARCH capture loop, b66f5df)
+; ==============================================================================
+; At a QS leaf the naive stand-pat counts a just-captured piece but never
+; searches the recapture (horizon phantom -> shuffle losses). SEE_CORRECT_
+; STANDPAT statically resolves the FULL exchange on UNDO_TO and adds the
+; side-to-move's net recapture recovery (>=0) to R9.
+;
+; On entry R9 is SIDE-TO-MOVE relative (negated for black already). The side
+; to move (R12) is the recapturer; R = cp it wins back on UNDO_TO; R9 += R.
+;
+; Swap algorithm, no recursion, x-ray-aware (USED squares are transparent to
+; slider scans). Values are /4-scaled bytes (P25 N80 B82 R125 Q225 K250):
+;   V[0] = value of piece now on target (the just-moved captor)
+;   build V[1..n] = alternating least-valuable-attacker values
+;   fold: g=0; for j=n-1..0: g = max(0, V[j]-g);  R = g*4
+; ------------------------------------------------------------------------------
+SEE_CORRECT_STANDPAT:
     SEX 2
-    LBNZ QS_ALPHA_DIFF_SIGN
-
-    ; Same sign - R9 > R7 means R9 - R7 > 0 (positive, no borrow, not zero)
-    SEX 10
-    GLO 7
-    STR 10
-    GLO 9
-    SM                  ; D = stand-pat_lo - alpha_lo
-    PHI 8               ; Save low result
-    GHI 7
-    STR 10
-    GHI 9
-    SMB                 ; D = stand-pat_hi - alpha_hi - borrow
-    SEX 2
-    LBNF QS_NO_ALPHA_UPDATE  ; Borrow = stand-pat <= alpha
-    LBNZ QS_UPDATE_ALPHA     ; High diff non-zero and positive
-    GHI 8                    ; Check low diff
-    LBZ QS_NO_ALPHA_UPDATE   ; Both zero = equal, don't update
-    LBR QS_UPDATE_ALPHA
-
-QS_ALPHA_DIFF_SIGN:
-    ; Different signs: positive > negative
-    GHI 9
-    ANI $80
-    LBNZ QS_NO_ALPHA_UPDATE  ; stand-pat negative, alpha positive
-    ; stand-pat positive, alpha negative -> update
-
-QS_UPDATE_ALPHA:
-    ; alpha = stand-pat
-    RLDI 10, ALPHA_HI
+    ; save incoming side-to-move R9 (big-endian)
+    RLDI 10, SEE_SAVE_R9_HI
     GHI 9
     STR 10
     INC 10
     GLO 9
     STR 10
-
-QS_NO_ALPHA_UPDATE:
-    ; -----------------------------------------------
-    ; Delta pruning: if stand-pat + QUEEN_VALUE < alpha, return alpha
-    ; (Even capturing a queen can't raise alpha - futile to search)
-    ; -----------------------------------------------
-    ; Load alpha from memory (big-endian: HI at lower address)
-    RLDI 10, ALPHA_HI
-    LDA 10              ; alpha high
-    PHI 7
-    LDN 10              ; alpha low
-    PLO 7               ; R7 = alpha
-
-    ; Calculate stand-pat + QUEEN_VALUE (900 = $0384)
-    ; R9 = stand-pat, add 900
-    GLO 9
-    ADI LOW(900)        ; Add low byte of 900 ($84)
-    PLO 8
-    GHI 9
-    ADCI HIGH(900)      ; Add high byte of 900 ($03) + carry
-    PHI 8               ; R8 = stand-pat + 900
-
-    ; Compare: (stand-pat + 900) < alpha?
-    ; If R8 < R7, then delta prune
-    RLDI 10, COMPARE_TEMP
-    SEX 10
-    GHI 8               ; (stand-pat + 900) high
-    STR 10
-    GHI 7               ; alpha high
-    XOR
-    ANI $80             ; Check if different signs
-    SEX 2
-    LBNZ QS_DELTA_DIFF_SIGN
-
-    ; Same sign - compare: R8 < R7 means R8 - R7 has borrow
-    SEX 10
-    GLO 7               ; alpha low
-    STR 10
-    GLO 8               ; (stand-pat + 900) low
-    SM                  ; D = (sp+900)_lo - alpha_lo
-    GHI 7               ; alpha high
-    STR 10
-    GHI 8               ; (stand-pat + 900) high
-    SMB                 ; D = (sp+900)_hi - alpha_hi - borrow
-    SEX 2
-    LBNF QS_DELTA_PRUNE ; Borrow = (stand-pat + 900) < alpha, prune!
-    LBR QS_NO_DELTA_PRUNE
-
-QS_DELTA_DIFF_SIGN:
-    ; Different signs: negative < positive always
-    ; (stand-pat + 900) negative means it's < alpha (if alpha positive)
-    GHI 8
-    ANI $80
-    LBZ QS_NO_DELTA_PRUNE ; (stand-pat + 900) positive -> no prune
-
-QS_DELTA_PRUNE:
-    ; Return alpha (in R7) - we're too far behind
-    GHI 7
-    PHI 9
-    GLO 7
-    PLO 9               ; R9 = alpha
-    RETN
-
-QS_NO_DELTA_PRUNE:
-    ; Generate all moves (use QS_MOVE_LIST to avoid clobbering parent's move list!)
-    RLDI 9, QS_MOVE_LIST
-    CALL GENERATE_MOVES
-    ; D = move count
-
-    ; Save move count to temp (must clear R15.1 to avoid DEC underflow!)
-    PLO 15              ; R15.0 = move count (temp)
-    LDI 0
-    PHI 15              ; R15.1 = 0 (prevents underflow when DEC 15)
-
-    ; Save move list start pointer (big-endian: high byte first)
-    RLDI 10, QS_MOVE_PTR_HI
-    LDI HIGH(QS_MOVE_LIST)
-    STR 10
-    INC 10
-    LDI LOW(QS_MOVE_LIST)
-    STR 10
-
-    ; Initialize capture limit counter
-    LDI 8                   ; QS_CAPTURE_LIMIT = 8 captures max
-    PHI 11                  ; R11.1 = captures remaining
-
-QS_LOOP:
-    ; Check if any moves left
-    GLO 15
-    LBZ QS_RETURN
-
-    ; Load move list pointer (big-endian: high byte first)
-    RLDI 10, QS_MOVE_PTR_HI
-    LDA 10              ; High byte
-    PHI 9
-    LDN 10              ; Low byte
-    PLO 9               ; R9 = move pointer
-
-    ; Load encoded move (big-endian: high byte first)
-    LDA 9
-    PHI 8
-    LDA 9
-    PLO 8               ; R8 = encoded move
-
-    ; Save updated pointer (big-endian: high byte first)
-    RLDI 10, QS_MOVE_PTR_HI
-    GHI 9
-    STR 10
-    INC 10
-    GLO 9
-    STR 10
-
-    ; Decrement move count
-    DEC 15
-
-    ; Decode move to get from/to squares
-    CALL DECODE_MOVE_16BIT
-    ; R13.1 = from, R13.0 = to (R14.0 = flags - but we don't use it)
-
-    ; Check if this is a capture: target square must have enemy piece
-    LDI HIGH(BOARD)
-    PHI 10
-    GLO 13              ; to square
-    PLO 10
-    LDN 10              ; piece at target
-    LBZ QS_LOOP         ; Empty = not a capture, skip
-
-    ; Has piece - check if enemy color
-    ANI COLOR_MASK      ; D = target piece color (0 or 8)
-    ; Use COMPARE_TEMP for XOR scratch (NEVER use STR 2!)
-    RLDI 10, COMPARE_TEMP
-    SEX 10
-    STR 10              ; Store target color to COMPARE_TEMP
-    GLO 12              ; D = our color (0 or 8, per COLOR_MASK)
-    ANI COLOR_MASK      ; D = our color masked (0 or 8)
-    XOR                 ; D = our_color XOR target_color
-    SEX 2
-    LBZ QS_LOOP         ; Same color (result 0) = own piece, skip
-
-    ; -------------------------------------------------
-    ; Per-capture delta pruning:
-    ; If stand_pat + victim_value < alpha, skip capture
-    ; (Even capturing this piece won't raise score above alpha)
-    ; -------------------------------------------------
-    ; Reload victim piece and extract type
-    LDI HIGH(BOARD)
-    PHI 10
-    GLO 13              ; to square (preserved in R13.0)
-    PLO 10
-    LDN 10              ; piece at target
-    ANI $07             ; D = piece type (1-6)
-
-    ; Look up value: PIECE_VALUES + type*2
-    SHL                 ; D = type * 2
-    ADI LOW(PIECE_VALUES)
-    PLO 10
-    LDI HIGH(PIECE_VALUES)
-    ADCI 0
-    PHI 10              ; R10 = &PIECE_VALUES[type]
-
-    LDA 10              ; victim value high
-    PHI 8
-    LDN 10              ; victim value low
-    PLO 8               ; R8 = victim_value
-
-    ; Load stand_pat from QS_BEST
-    RLDI 10, QS_BEST_HI
-    LDA 10
-    PHI 7
+    ; Caller (QS) has already gated on capture + endgame; the UNDO_CAPTURED
+    ; check below is a cheap defensive guard (also keeps SEE_DONE referenced).
+    RLDI 10, UNDO_CAPTURED
     LDN 10
-    PLO 7               ; R7 = stand_pat
-
-    ; R7 = stand_pat + victim_value
-    GLO 8
-    STR 2               ; Use stack top as temp
-    GLO 7
-    ADD
-    PLO 7
-    GHI 8
-    STR 2
-    GHI 7
-    ADC
-    PHI 7               ; R7 = stand_pat + victim_value
-
-    ; Load alpha
-    RLDI 10, ALPHA_HI
-    LDA 10
-    PHI 8
+    LBZ SEE_DONE
+    ; target square = UNDO_TO -> R11.0 (kept throughout)
+    RLDI 10, UNDO_TO
     LDN 10
-    PLO 8               ; R8 = alpha
-
-    ; Compare: (stand_pat + victim) < alpha?
-    ; If R7 < R8, skip this capture
-    RLDI 10, COMPARE_TEMP
-    SEX 10
-    GHI 7               ; (stand_pat + victim) high
-    STR 10
-    GHI 8               ; alpha high
-    XOR
-    ANI $80             ; Check if different signs
-    SEX 2
-    LBNZ QS_DELTA_DIFF_SIGN2
-
-    ; Same sign: R7 < R8 means R7 - R8 has borrow
-    SEX 10
-    GLO 8               ; alpha low
-    STR 10
-    GLO 7               ; (stand_pat + victim) low
-    SM                  ; D = (sp+v)_lo - alpha_lo
-    GHI 8               ; alpha high
-    STR 10
-    GHI 7               ; (stand_pat + victim) high
-    SMB                 ; D = (sp+v)_hi - alpha_hi - borrow
-    SEX 2
-    LBNF QS_LOOP        ; Borrow = (stand_pat + victim) < alpha, skip!
-    LBR QS_DELTA_NO_PRUNE
-
-QS_DELTA_DIFF_SIGN2:
-    ; Different signs: negative < positive always
-    ; (stand_pat + victim) negative means it's < alpha (if alpha positive)
-    GHI 7
-    ANI $80
-    LBNZ QS_LOOP        ; (stand_pat + victim) negative -> skip capture
-
-QS_DELTA_NO_PRUNE:
-    ; -------------------------------------------------
-    ; End per-capture delta pruning
-    ; -------------------------------------------------
-
-    ; It's a capture! Process it.
-    ; Save move count to stack (BOTH bytes! IS_IN_CHECK clobbers R15.1)
-    GHI 15
-    STXD
-    GLO 15
-    STXD
-
-    ; ===============================================================
-    ; QSEARCH defender-check pre-filter (added 2026-05-07)
-    ; ===============================================================
-    ; QSEARCH lacks recursion: each capture is evaluated as if its
-    ; recapture won't happen. This causes phantom material wins when
-    ; we capture a defended piece with a more valuable attacker.
-    ;
-    ; Filter: if captor_value > victim_value AND target is defended
-    ; by enemy, skip this capture entirely. Single-level defender
-    ; check; doesn't see exchange chains, but catches the dominant
-    ; bug class (e.g., Bxg6 when h7-pawn defends).
-    ;
-    ; NOTE 2026-05-28: this filter is dead code while QSEARCH captures
-    ; are disabled via the LBR QS_RETURN above. Kept in place so that
-    ; future re-enable attempts can reuse it.
-    ;
-    ; Empirical motivation (2026-05-07): post-Kxf7 d=1 returned +220cp
-    ; bestmove d3g6 (Bxg6) despite h7 pawn obviously recapturing —
-    ; QSEARCH saw bishop "win" but not the recapture.
-    ; ===============================================================
-
-    ; Load victim_value from board[to_square]
-    LDI HIGH(BOARD)
-    PHI 10
-    GLO 13                          ; to square
-    PLO 10
-    LDN 10
-    ANI $07                         ; victim piece type 1-6
-    SHL                             ; * 2 for 16-bit table
-    ADI LOW(PIECE_VALUES)
-    PLO 10
-    LDI HIGH(PIECE_VALUES)
-    ADCI 0
-    PHI 10
-    LDA 10                          ; victim_value hi
-    PHI 8
-    LDN 10                          ; victim_value lo
-    PLO 8                           ; R8 = victim_value
-
-    ; Load captor_value from board[from_square]
-    LDI HIGH(BOARD)
-    PHI 10
-    GHI 13                          ; from square
-    PLO 10
-    LDN 10
-    ANI $07                         ; captor piece type 1-6
-    SHL
-    ADI LOW(PIECE_VALUES)
-    PLO 10
-    LDI HIGH(PIECE_VALUES)
-    ADCI 0
-    PHI 10
-    LDA 10                          ; captor_value hi
-    PHI 7
-    LDN 10                          ; captor_value lo
-    PLO 7                           ; R7 = captor_value
-
-    ; Compare: victim - captor (16-bit signed). DF=1 if victim >= captor.
-    GLO 7
-    STR 2                           ; M(R2) = captor_lo
-    GLO 8
-    SM                              ; D = victim_lo - captor_lo
-    GHI 7
-    STR 2                           ; M(R2) = captor_hi
-    GHI 8
-    SMB                             ; D = victim_hi - captor_hi - borrow
-    LBDF QS_DEF_OK                  ; victim >= captor: no filter
-
-    ; Captor > victim. Check if target square is defended by enemy.
-    ; Save R11.1 (capture limit) and R13 (from/to) — IS_SQUARE_ATTACKED
-    ; restores R11.0 and R12.0 but clobbers everything else including
-    ; R13 and R15.0.
-    GHI 11
-    STXD                            ; push capture limit
-    GHI 13
-    STXD                            ; push from
-    GLO 13
-    STXD                            ; push to
-
-    ; Set R11.0 = target square, R12.0 already = our color
-    GLO 13
     PLO 11
-    CALL IS_SQUARE_ATTACKED
-    PLO 7                           ; R7.0 = result (0=safe, 1=attacked)
-    SEX 2                           ; Defensive: ensure X=2 for following pop
-
-    ; Restore saved state
-    IRX
-    LDXA                            ; pop to → R13.0
-    PLO 13
-    LDXA                            ; pop from → R13.1
-    PHI 13
-    LDX                             ; pop capture limit → R11.1
-    PHI 11
-
-    GLO 7
-    LBNZ QS_DEF_SKIP                ; defended: filter fires, skip capture
-
-QS_DEF_OK:
-    ; ===============================================================
-    ; End QSEARCH defender-check pre-filter
-    ; ===============================================================
-
-    ; Store from/to for MAKE_MOVE
-    RLDI 10, MOVE_FROM
-    GHI 13              ; from
-    STR 10
-    INC 10
-    GLO 13              ; to
-    STR 10
-
-    ; Set UNDO_PROMOTION based on move flags (capture-promotions)
-    RLDI 10, UNDO_PROMOTION
-    RLDI 13, DECODED_FLAGS
-    LDN 13              ; D = flags
-    XRI MOVE_PROMOTION  ; == $03?
-    LBNZ QS_NOT_PROMO
-    LDI QUEEN_TYPE      ; Promote to queen ($05)
-    LBR QS_SET_PROMO
-QS_NOT_PROMO:
-    LDI 0               ; Not a promotion
-QS_SET_PROMO:
-    STR 10              ; UNDO_PROMOTION = QUEEN_TYPE or 0
-
-    ; Make move
-    CALL MAKE_MOVE
-
-    ; -----------------------------------------------
-    ; LEGALITY CHECK: Does this capture leave our king in check?
-    ; MAKE_MOVE does NOT toggle R12 - only SIDE in memory.
-    ; R12 still contains our color (the side that just moved).
-    ; -----------------------------------------------
-    CALL IS_IN_CHECK
-    ; D = 1 if our king is in check (illegal), 0 if safe
-
-    LBZ QS_CAPTURE_LEGAL  ; D=0 means not in check, capture is legal
-
-    ; ILLEGAL CAPTURE: Unmake and skip to next capture
-    CALL UNMAKE_MOVE
-
-    ; R12 stays as our color (UNMAKE_MOVE doesn't toggle R12)
-
-    ; Restore move count from stack and continue loop (both bytes)
-    IRX
-    LDXA
-    PLO 15              ; R15.0 = move count low
-    LDX
-    PHI 15              ; R15.1 = move count high (0)
-    LBR QS_LOOP         ; Skip this illegal capture, try next
-
-QS_DEF_SKIP:
-    ; Defender-check filter fired: skip capture WITHOUT make/unmake.
-    ; Pop R15 (saved before our filter ran) and continue.
-    IRX
-    LDXA
-    PLO 15              ; R15.0 = move count low
-    LDX
-    PHI 15              ; R15.1 = move count high (0)
-    LBR QS_LOOP
-
-QS_CAPTURE_LEGAL:
-    ; Check capture limit - decrement and bail if exhausted
-    GHI 11                  ; D = captures remaining
-    LBZ QS_CAPTURE_LIMIT_HIT ; Already at 0, don't process more
-    SMI 1
-    PHI 11                  ; R11.1 = captures remaining - 1
-
-    ; Evaluate position after capture
-    CALL EVALUATE
-    ; Score in R9 (from white's perspective)
-
-    ; Negate R9 if black to move (white-perspective → side-to-move)
+    ; SEE_SIDE = side-to-move COLOR bit ($00 white / $08 black) — board uses $08
     GLO 12
-    ANI $08
-    LBZ QS_NO_NEG
-    GLO 9               ; low byte
-    SDI 0               ; negate low
-    PLO 9
-    GHI 9               ; high byte
-    SDBI 0              ; negate high with borrow
-    PHI 9
-QS_NO_NEG:
-    ; Save score (R9) before UNMAKE_MOVE clobbers it
-    GHI 9
-    STXD
-    GLO 9
-    STXD
-
-    ; Unmake move
-    CALL UNMAKE_MOVE
-
-    ; Restore score (R9)
-    IRX
-    LDXA
-    PLO 9
-    LDX
-    PHI 9
-
-    ; Restore move count (both bytes)
-    IRX
-    LDXA
-    PLO 15              ; R15.0 = move count low
-    LDX
-    PHI 15              ; R15.1 = move count high (0)
-
-    ; Compare: if score (R9) > best (QS_BEST), update best
-    ; Load QS_BEST into R7 for comparison (big-endian: HI first)
-    RLDI 10, QS_BEST_HI
-    LDA 10              ; High byte
-    PHI 7
-    LDN 10              ; Low byte
-    PLO 7               ; R7 = QS_BEST
-
-    ; Signed comparison: R9 > R7?
-    ; Use COMPARE_TEMP for scratch (NEVER use STR 2!)
-    RLDI 10, COMPARE_TEMP
-    SEX 10
-    GHI 9
+    ANI COLOR_MASK          ; $08
+    RLDI 10, SEE_SIDE
     STR 10
-    GHI 7
-    XOR
-    ANI $80
-    SEX 2
-    LBNZ QS_DIFF_SIGN
-
-    ; Same sign - compare normally
-    SEX 10
-    GHI 7
+    ; USED_CNT = 0 ; DEPTH = 0
+    LDI 0
+    RLDI 10, SEE_USED_CNT
     STR 10
-    GHI 9
-    SD
-    SEX 2
-    LBNZ QS_HI_DIFF
-    ; High bytes equal, compare low
-    SEX 10
+    LDI 0
+    RLDI 10, SEE_DEPTH
+    STR 10
+    ; V[0] = value(piece on target)/4
+    LDI $60
+    PHI 10
+    GLO 11
+    PLO 10
+    LDN 10
+    ANI PIECE_MASK          ; $07 — type only (board color bit is $08)
+    CALL SEE_PVAL
+    RLDI 10, SEE_VLIST
+    STR 10
+SEE_BUILD_LOOP:
+    CALL SEE_FIND_LVA
+    RLDI 10, SEE_FOUND
+    LDN 10
+    LBZ SEE_FOLD
+    ; DEPTH++  (R7.0 = new depth = write index)
+    RLDI 10, SEE_DEPTH
+    LDN 10
+    ADI 1
+    STR 10
+    PLO 7
+    ; cap at 15 to stay inside VLIST/USED buffers
+    SMI 15
+    LBDF SEE_FOLD
+    ; VLIST[depth] = SEE_LVA_VAL
     GLO 7
+    ADI LOW(SEE_VLIST)
+    PLO 10
+    LDI HIGH(SEE_VLIST)
+    PHI 10
+    RLDI 13, SEE_LVA_VAL
+    LDN 13
     STR 10
-    GLO 9
-    SD
-    SEX 2
-    LBZ QS_LOOP         ; Equal, don't update
-    LBNF QS_UPDATE      ; Score > best
-    LBR QS_LOOP         ; Score < best
-
-QS_HI_DIFF:
-    LBNF QS_UPDATE      ; Score > best
-    LBR QS_LOOP         ; Score < best
-
-QS_DIFF_SIGN:
-    ; Different signs - positive is greater
-    GHI 9
-    ANI $80
-    LBNZ QS_LOOP        ; Score negative, best positive - don't update
-    ; Score positive, best negative - update
-
-QS_UPDATE:
-    ; Update best = score (big-endian: HI first)
-    RLDI 10, QS_BEST_HI
-    GHI 9               ; High byte first
+    ; USED[USED_CNT++] = SEE_LVA_SQ
+    RLDI 10, SEE_USED_CNT
+    LDN 10
+    PLO 7
+    ADI 1
     STR 10
-    INC 10
-    GLO 9               ; Low byte second
-    STR 10
-
-    ; -----------------------------------------------
-    ; Beta cutoff check: if best >= beta, return beta
-    ; -----------------------------------------------
-    ; Load beta (big-endian: HI first)
-    RLDI 10, BETA_HI
-    LDA 10              ; beta high
-    PHI 7
-    LDN 10              ; beta low
-    PLO 7               ; R7 = beta
-
-    ; Compare: best (R9) >= beta (R7)?
-    RLDI 10, COMPARE_TEMP
-    SEX 10
-    GHI 9               ; best high
-    STR 10
-    GHI 7               ; beta high
-    XOR
-    ANI $80
-    SEX 2
-    LBNZ QS_BETA_CUT_DIFF
-
-    ; Same sign: best >= beta means best - beta >= 0 (no borrow)
-    SEX 10
-    GLO 7               ; beta low
-    STR 10
-    GLO 9               ; best low
-    SM
-    GHI 7               ; beta high
-    STR 10
-    GHI 9               ; best high
-    SMB
-    SEX 2
-    LBDF QS_BETA_CUTOFF ; No borrow = best >= beta, cutoff!
-    LBR QS_LOOP
-
-QS_BETA_CUT_DIFF:
-    ; Different signs: positive >= negative
-    GHI 9               ; best high
-    ANI $80
-    LBZ QS_BETA_CUTOFF  ; best positive, beta negative -> cutoff
-    LBR QS_LOOP
-
-QS_BETA_CUTOFF:
-    ; Return beta (fail-high)
-    GHI 7
-    PHI 9
     GLO 7
-    PLO 9               ; R9 = beta
+    ADI LOW(SEE_USED)
+    PLO 10
+    LDI HIGH(SEE_USED)
+    PHI 10
+    RLDI 13, SEE_LVA_SQ
+    LDN 13
+    STR 10
+    ; flip side color bit
+    RLDI 10, SEE_SIDE
+    LDN 10
+    XRI COLOR_MASK          ; $08
+    STR 10
+    LBR SEE_BUILD_LOOP
+SEE_FOLD:
+    ; g=0; if DEPTH==0 -> R=0
+    LDI 0
+    PHI 7
+    RLDI 10, SEE_DEPTH
+    LDN 10
+    LBZ SEE_APPLY
+    PLO 7                   ; R7.0 = remaining count (starts at DEPTH)
+SEE_FOLD_LOOP:
+    GLO 7
+    SMI 1
+    PLO 8                   ; R8.0 = j = count-1
+    GHI 7
+    STR 2                   ; M[R2] = g
+    GLO 8
+    ADI LOW(SEE_VLIST)
+    PLO 10
+    LDI HIGH(SEE_VLIST)
+    PHI 10
+    LDN 10                  ; D = VLIST[j]
+    SEX 2
+    SM                      ; D = VLIST[j] - g
+    LBDF SEE_FOLD_KEEP      ; no borrow -> >=0
+    LDI 0
+SEE_FOLD_KEEP:
+    PHI 7                   ; g = max(0, VLIST[j]-g)
+    GLO 7
+    SMI 1
+    PLO 7
+    LBNZ SEE_FOLD_LOOP
+SEE_APPLY:
+    ; R8 = g*4 (16-bit, <=900)
+    GHI 7
+    PLO 8
+    LDI 0
+    PHI 8
+    GLO 8
+    SHL
+    PLO 8
+    GHI 8
+    SHLC
+    PHI 8
+    GLO 8
+    SHL
+    PLO 8
+    GHI 8
+    SHLC
+    PHI 8
+    ; R9 = saved stand-pat + R8
+    RLDI 10, SEE_SAVE_R9_HI
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9
+    SEX 2
+    GLO 9
+    STR 2
+    GLO 8
+    ADD
+    PLO 9
+    GHI 9
+    STR 2
+    GHI 8
+    ADC
+    PHI 9
+    RETN
+SEE_DONE:
+    ; restore R9 unchanged
+    RLDI 10, SEE_SAVE_R9_HI
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9
     RETN
 
-QS_CAPTURE_LIMIT_HIT:
-    ; Hit capture limit - unmake the move and return best so far
-    CALL UNMAKE_MOVE
-    ; Restore move count from stack (was pushed at capture processing start)
+; ------------------------------------------------------------------------------
+; SEE_PVAL - piece type (D=0..6) -> /4 value in D (page-safe table read)
+; ------------------------------------------------------------------------------
+SEE_PVAL:
+    PLO 7
+    RLDI 10, SEE_PVAL_TBL
+    GLO 10
+    STR 2
+    GLO 7
+    SEX 2
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10
+    RETN
+SEE_PVAL_TBL:
+    DB 0        ; 0 empty
+    DB 25       ; 1 pawn
+    DB 80       ; 2 knight
+    DB 82       ; 3 bishop
+    DB 125      ; 4 rook
+    DB 225      ; 5 queen
+    DB 250      ; 6 king (effectively unusable as recapturer when defended)
+
+; ------------------------------------------------------------------------------
+; SEE_IS_USED - D=square -> D=1 if square in SEE_USED[0..USED_CNT-1] else 0
+; Uses R7,R10 only (preserves R8,R11,R13,R15)
+; ------------------------------------------------------------------------------
+SEE_IS_USED:
+    PLO 7                   ; R7.0 = square to test
+    RLDI 10, SEE_USED_CNT
+    LDN 10
+    LBZ SEE_USED_NO
+    PHI 7                   ; R7.1 = count
+    RLDI 10, SEE_USED
+SEE_USED_LOOP:
+    LDA 10
+    STR 2
+    GLO 7
+    SEX 2
+    XOR
+    LBZ SEE_USED_YES
+    GHI 7
+    SMI 1
+    PHI 7
+    LBNZ SEE_USED_LOOP
+SEE_USED_NO:
+    LDI 0
+    RETN
+SEE_USED_YES:
+    LDI 1
+    RETN
+
+; ------------------------------------------------------------------------------
+; SEE_CHK_LEAPER - candidate R15.0, wanted piece R8.0
+;   D=1 if on-board & not-used & board[cand]==wanted (sets SEE_LVA_SQ), else 0
+; ------------------------------------------------------------------------------
+SEE_CHK_LEAPER:
+    GLO 15
+    ANI $88
+    LBNZ SEE_CHK_NO
+    GLO 15
+    CALL SEE_IS_USED
+    LBNZ SEE_CHK_NO
+    LDI $60
+    PHI 10
+    GLO 15
+    PLO 10
+    LDN 10
+    STR 2
+    GLO 8
+    SEX 2
+    XOR
+    LBNZ SEE_CHK_NO
+    GLO 15
+    RLDI 10, SEE_LVA_SQ
+    STR 10
+    LDI 1
+    RETN
+SEE_CHK_NO:
+    LDI 0
+    RETN
+
+; ------------------------------------------------------------------------------
+; SEE_SLIDE - target R11.0, dir R13.0 -> D=first real piece (0=none),
+;             R15.0=its square.  USED squares are transparent (x-ray reveal).
+; ------------------------------------------------------------------------------
+SEE_SLIDE:
+    GLO 11
+    PLO 15
+SEE_SLIDE_STEP:
+    GLO 15
+    STR 2
+    GLO 13
+    SEX 2
+    ADD
+    PLO 15
+    ANI $88
+    LBNZ SEE_SLIDE_OFF
+    LDI $60
+    PHI 10
+    GLO 15
+    PLO 10
+    LDN 10
+    LBZ SEE_SLIDE_STEP
+    GLO 15
+    CALL SEE_IS_USED
+    LBNZ SEE_SLIDE_STEP
+    LDI $60
+    PHI 10
+    GLO 15
+    PLO 10
+    LDN 10
+    RETN
+SEE_SLIDE_OFF:
+    LDI 0
+    RETN
+
+; ------------------------------------------------------------------------------
+; SEE_FIND_LVA - least-valuable attacker of SEE_SIDE on target R11.0
+;   out: SEE_FOUND (1/0), SEE_LVA_SQ, SEE_LVA_VAL.  Preserves R11,R12.
+; ------------------------------------------------------------------------------
+SEE_FIND_LVA:
+    SEX 2
+    ; ----- PAWN -----
+    RLDI 10, SEE_SIDE
+    LDN 10
+    LBNZ SEE_LVA_PB
+    ; white pawn (color $00) attacks target from NW and NE; wanted = $01
+    ; (a white pawn on T+NW / T+NE captures forward onto T; cf. check.asm)
+    GLO 11
+    ADI DIR_NW
+    PLO 15
+    LDI W_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    GLO 11
+    ADI DIR_NE
+    PLO 15
+    LDI W_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    LBR SEE_LVA_KNIGHT
+SEE_LVA_PB:
+    ; black pawn (color $08) attacks target from SE and SW; wanted = B_PAWN ($09)
+    GLO 11
+    ADI DIR_SE
+    PLO 15
+    LDI B_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    GLO 11
+    ADI DIR_SW
+    PLO 15
+    LDI B_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    LBR SEE_LVA_KNIGHT
+SEE_LVA_PAWN_HIT:
+    LDI 25
+    LBR SEE_LVA_RETURN_VAL
+; ----- KNIGHT -----
+SEE_LVA_KNIGHT:
+    RLDI 10, SEE_SIDE
+    LDN 10
+    ORI $02
+    PLO 8
+    RLDI 13, KNIGHT_OFFSETS
+    LDI 8
+    STXD
+SEE_LVA_KN_LOOP:
+    GLO 13
+    STXD
+    GHI 13
+    STXD
+    LDN 13
+    STR 2
+    GLO 11
+    SEX 2
+    ADD
+    PLO 15
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_KN_HIT
     IRX
     LDXA
-    PLO 15              ; R15.0 = move count low
+    PHI 13
     LDX
-    PHI 15              ; R15.1 = move count high (0)
-    ; Fall through to QS_RETURN
-
+    PLO 13
+    INC 13
+    IRX
+    LDN 2
+    SMI 1
+    STR 2
+    DEC 2
+    LBNZ SEE_LVA_KN_LOOP
+    IRX
+    LBR SEE_LVA_SLIDERS
+SEE_LVA_KN_HIT:
+    IRX
+    IRX
+    IRX
+    LDI 80
+    LBR SEE_LVA_RETURN_VAL
+; ----- SLIDERS (bishop/rook/queen): min-value attacker over 8 dirs -----
+SEE_LVA_SLIDERS:
+    LDI 255
+    RLDI 10, SEE_BEST_VAL
+    STR 10
+    LDI 0
+    RLDI 10, SEE_IDX
+    STR 10
+SEE_SL_LOOP:
+    RLDI 10, SEE_IDX
+    LDN 10
+    SMI 8
+    LBZ SEE_LVA_SL_DONE
+    ; dir = SEE_SLIDE_DIRS[idx]  (page-safe)
+    RLDI 13, SEE_SLIDE_DIRS
+    RLDI 10, SEE_IDX
+    LDN 10
+    STR 2
+    GLO 13
+    SEX 2
+    ADD
+    PLO 13
+    GHI 13
+    ADCI 0
+    PHI 13
+    LDN 13
+    PLO 13                  ; R13.0 = dir
+    CALL SEE_SLIDE
+    LBZ SEE_SL_NEXT
+    PLO 8                   ; R8.0 = piece
+    ANI COLOR_MASK          ; $08 — piece color bit
+    STR 2
+    RLDI 10, SEE_SIDE
+    LDN 10
+    SEX 2
+    XOR
+    LBNZ SEE_SL_NEXT        ; different side
+    GLO 8
+    ANI PIECE_MASK          ; $07 — type only
+    PLO 8                   ; R8.0 = type
+    RLDI 10, SEE_IDX
+    LDN 10
+    SMI 4
+    LBDF SEE_SL_ORTH        ; idx>=4 -> orthogonal dir
+    ; diagonal: bishop(3) or queen(5)
+    GLO 8
+    SMI 3
+    LBZ SEE_SL_BISHOP
+    GLO 8
+    SMI 5
+    LBZ SEE_SL_QUEEN
+    LBR SEE_SL_NEXT
+SEE_SL_ORTH:
+    GLO 8
+    SMI 4
+    LBZ SEE_SL_ROOK
+    GLO 8
+    SMI 5
+    LBZ SEE_SL_QUEEN
+    LBR SEE_SL_NEXT
+SEE_SL_BISHOP:
+    LDI 82
+    LBR SEE_SL_CONSIDER
+SEE_SL_ROOK:
+    LDI 125
+    LBR SEE_SL_CONSIDER
+SEE_SL_QUEEN:
+    LDI 225
+SEE_SL_CONSIDER:
+    PLO 8                   ; candidate value
+    RLDI 10, SEE_BEST_VAL
+    LDN 10
+    STR 2                   ; M[R2] = best
+    GLO 8
+    SEX 2
+    SM                      ; D = candidate - best
+    LBDF SEE_SL_NEXT        ; candidate >= best -> not strictly smaller
+    GLO 8
+    RLDI 10, SEE_BEST_VAL
+    STR 10
+    GLO 15
+    RLDI 10, SEE_BEST_SQ
+    STR 10
+SEE_SL_NEXT:
+    RLDI 10, SEE_IDX
+    LDN 10
+    ADI 1
+    STR 10
+    LBR SEE_SL_LOOP
+SEE_LVA_SL_DONE:
+    RLDI 10, SEE_BEST_VAL
+    LDN 10
+    SMI 255
+    LBZ SEE_LVA_KING        ; no slider attacker found
+    RLDI 10, SEE_BEST_SQ
+    LDN 10
+    RLDI 13, SEE_LVA_SQ
+    STR 13
+    RLDI 10, SEE_BEST_VAL
+    LDN 10
+    LBR SEE_LVA_RETURN_VAL
+; ----- KING -----
+SEE_LVA_KING:
+    RLDI 10, SEE_SIDE
+    LDN 10
+    ORI $06
+    PLO 8
+    RLDI 13, KING_OFFSETS
+    LDI 8
+    STXD
+SEE_LVA_KG_LOOP:
+    GLO 13
+    STXD
+    GHI 13
+    STXD
+    LDN 13
+    STR 2
+    GLO 11
+    SEX 2
+    ADD
+    PLO 15
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_KG_HIT
+    IRX
+    LDXA
+    PHI 13
+    LDX
+    PLO 13
+    INC 13
+    IRX
+    LDN 2
+    SMI 1
+    STR 2
+    DEC 2
+    LBNZ SEE_LVA_KG_LOOP
+    IRX
+    ; no attacker of any kind
+    LDI 0
+    RLDI 10, SEE_FOUND
+    STR 10
+    RETN
+SEE_LVA_KG_HIT:
+    IRX
+    IRX
+    IRX
+    LDI 250
+    LBR SEE_LVA_RETURN_VAL
+; ----- common return: D = LVA value -----
+SEE_LVA_RETURN_VAL:
+    RLDI 10, SEE_LVA_VAL
+    STR 10
+    LDI 1
+    RLDI 10, SEE_FOUND
+    STR 10
+    RETN
+SEE_SLIDE_DIRS:
+    DB DIR_NE       ; 0 diagonal
+    DB DIR_NW       ; 1 diagonal
+    DB DIR_SE       ; 2 diagonal
+    DB DIR_SW       ; 3 diagonal
+    DB DIR_N        ; 4 orthogonal
+    DB DIR_S        ; 5 orthogonal
+    DB DIR_E        ; 6 orthogonal
+    DB DIR_W        ; 7 orthogonal
+; ============================ end SEE ========================================
 QS_RETURN:
     ; Return best score in R9 (big-endian: HI first)
     RLDI 10, QS_BEST_HI

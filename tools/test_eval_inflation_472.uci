@@ -1,0 +1,25 @@
+# Eval inflation regression — 2026-05-22 aborted match
+#
+# Position right before white's move 9 (b2c3 recapture).
+# Move sequence: 16 plies (e2e4 e7e6 ... e5f6 b4c3)
+# Black just played b4xc3 (bishop captures white knight).
+# White to move; correct response is b2c3 (pawn recaptures bishop).
+#
+# Bug: engine reports d=5 cp +472 for this position, but reality is white
+# is at ~-170 cp (will lose rook to Qxb1 within 2-3 plies of recapture).
+# The IDS jump from d=3 (-9) to d=4 (+472) is the smoking gun:
+#
+#   d=1: cp -100  (correct)
+#   d=2: cp +40
+#   d=3: cp -9    (still sane)
+#   d=4: cp +472  ← +481 cp jump in 1 ply
+#   d=5: cp +472  (persists)
+#
+# Possible causes to investigate:
+#   - TT collision at d=4 returning phantom positive score
+#   - An eval term mis-firing for this material configuration
+#   - Item-B clamp / Fix B keep-queen / hopeless amp firing wrongly
+#   - PST issue with white queen position or other middlegame factor
+
+position startpos moves e2e4 e7e6 d2d4 d7d6 b1c3 c7c6 f1e2 d8b6 h2h3 d6d5 a1b1 g8f6 e4e5 f8b4 e5f6 b4c3
+go depth 5

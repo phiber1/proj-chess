@@ -147,8 +147,8 @@ Workspace area `$6200-$67FF` is zeroed at every `ucinewgame` to prevent stale st
 ### Board & Moves
 | File | Purpose |
 |------|---------|
-| `board-0x88.asm` | Board representation, constants, memory layout |
-| `movegen-fixed.asm` | Complete move generation (all pieces) |
+| `board.asm` | Board representation, constants, memory layout |
+| `movegen.asm` | Complete move generation (all pieces) |
 | `movegen-helpers.asm` | Move generation support routines |
 | `makemove.asm` | Move execution with full undo support |
 | `makemove-helpers.asm` | Castling, en passant, promotion handling |

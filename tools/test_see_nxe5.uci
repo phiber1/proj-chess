@@ -1,0 +1,16 @@
+# SEE single-square phantom test (branch see-exchange-eval) — OUT OF BOOK.
+# 1.e4 e5 2.Nf3 Nc6 then waiting moves a3 a6 h3 h6 (non-theory). White to move.
+# White's Nxe5 (f3e5) wins the e5 pawn but Nc6 recaptures -> net -220.
+#
+# *** NOTE: SEE is now PHASE-GATED to the endgame (EG_PIECE_COUNT < 12). ***
+# This is a full-material OPENING position, so SEE is OFF here BY DESIGN.
+# Therefore the expected bestmove is f3e5 (the phantom) — that is NOT a
+# regression, it confirms SEE correctly adds zero cost/effect in the opening.
+# (Historic note: with SEE forcibly enabled here it correctly picked f1c4/+63,
+#  proving the swap computation works — see docs/QSEARCH_DECISION_LOG.md.)
+#
+# Use this position only as a no-regression/timing check vs a pre-SEE build
+# (identical nodes/scores expected). To validate SEE *firing*, use an endgame
+# position (<12 non-king pieces) or a live match.
+position startpos moves e2e4 e7e5 g1f3 b8c6 a2a3 a7a6 h2h3 h7h6
+go depth 1
