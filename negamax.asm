@@ -1775,6 +1775,17 @@ LMR_DO_RESEARCH:
     RLDI 10, CHECK_EXT_FLAG
     STR 10              ; CHECK_EXT_FLAG = fresh "in check?" result
 
+    ; --- BUGFIX (carried from 09ccdcf, origin 2e3333a 2026-01-27): preserve
+    ; LMR_MOVE_INDEX across the re-search. The first (reduced) CALL NEGAMAX
+    ; saves/restores it; this full-depth re-search call did NOT, so the child
+    ; reset+incremented it and never restored this node's value -> corrupts
+    ; LMP/LMR state and, via the LMR_REDUCED-gated SEARCH_DEPTH decrement, can
+    ; underflow depth -> near-infinite child search = the freeze-class hang.
+    ; Latent in 7b3a53d (bug predates it). Push before / restore after.
+    RLDI 10, LMR_MOVE_INDEX
+    LDN 10
+    STXD                ; push LMR_MOVE_INDEX
+
     ; Increment ply for recursive call
     RLDI 10, CURRENT_PLY
     LDN 10
@@ -1783,6 +1794,14 @@ LMR_DO_RESEARCH:
 
     ; Call NEGAMAX again (full depth this time)
     CALL NEGAMAX
+
+    ; Restore LMR_MOVE_INDEX (the re-searched child clobbered it)
+    IRX
+    LDX                 ; D = saved LMR_MOVE_INDEX
+    PLO 7               ; temp (R7.0 dead here — R9 holds the score)
+    RLDI 10, LMR_MOVE_INDEX
+    GLO 7
+    STR 10              ; LMR_MOVE_INDEX restored to this node's value
 
     ; Decrement ply
     RLDI 10, CURRENT_PLY
