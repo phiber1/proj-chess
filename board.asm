@@ -281,6 +281,31 @@ NODE_IN_CHECK   EQU $6742   ; 8 bytes - per-ply "is this node in check" snapshot
                             ; CHECK_EXT_FLAG (set by parent's checking move).
                             ; Used by LMP to avoid pruning legal escape moves
                             ; when in check (parent was a checking move).
+
+; ------------------------------------------------------------------------------
+; Static Exchange Evaluation (SEE) scratch: $674A-$6775 (free gap between
+; NODE_IN_CHECK $6742-$6749 and QS_MOVE_LIST $6780). Live only during a SEE
+; call at a QS leaf; never overlaps live search state. Values /4-scaled bytes
+; (P25 N80 B82 R125 Q225 K250). See SEE_CORRECT_STANDPAT in negamax.asm.
+; ------------------------------------------------------------------------------
+SEE_SAVE_R9_HI  EQU $674A   ; 1 byte - incoming side-to-move stand-pat (HI)
+SEE_SAVE_R9_LO  EQU $674B   ; 1 byte -                              (LO)
+SEE_SIDE        EQU $674C   ; 1 byte - current side's COLOR bit ($00 white / $08 black)
+SEE_DEPTH       EQU $674D   ; 1 byte - swap depth n (recapturers found so far)
+SEE_LVA_SQ      EQU $674E   ; 1 byte - found least-valuable-attacker square
+SEE_LVA_VAL     EQU $674F   ; 1 byte - found LVA value (/4)
+SEE_FOUND       EQU $6750   ; 1 byte - 1 if FIND_LVA found an attacker, else 0
+SEE_USED_CNT    EQU $6751   ; 1 byte - number of consumed attacker squares
+SEE_BEST_VAL    EQU $6752   ; 1 byte - slider scan: min attacker value so far
+SEE_BEST_SQ     EQU $6753   ; 1 byte - slider scan: square of min attacker
+SEE_IDX         EQU $6754   ; 1 byte - slider scan direction index (0-7)
+SEE_USED        EQU $6755   ; 16 bytes - consumed attacker squares ($6755-$6764)
+SEE_VLIST       EQU $6766   ; 16 bytes - swaplist /4 values ($6766-$6775)
+; Phase gate: SEE runs ONLY when EG_PIECE_COUNT < SEE_ENDGAME_PIECES. Counts
+; ALL non-king pieces (30 at start). 28 = fires once ~3 pieces traded (out of
+; the opening, EARLY MIDDLEGAME onward) — the leaf-accuracy test zone. One-byte
+; tunable: raise toward 30 for more middlegame, lower toward 12 for endgame-only.
+SEE_ENDGAME_PIECES EQU 28   ; non-king piece count; run SEE below this
 ADV_PAWN_W      EQU $64FD   ; 1 byte - accumulated white advanced pawn bonus
 ADV_PAWN_B      EQU $64FE   ; 1 byte - accumulated black advanced pawn bonus
 UNDO_CAP_SQ     EQU $64FF   ; 1 byte - square where captured piece was (EP: computed, normal: to)

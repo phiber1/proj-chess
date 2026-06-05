@@ -2509,6 +2509,21 @@ QUIESCENCE_SEARCH:
     PHI 9
 
 QS_SAVE_STANDPAT:
+    ; SEE phantom-material correction (gated). If the move INTO this QS leaf was
+    ; a capture and we're past the opening (EG_PIECE_COUNT < SEE_ENDGAME_PIECES),
+    ; statically resolve the recapture exchange on UNDO_TO and fold the
+    ; side-to-move recovery into the stand-pat (R9). Register-safe here: SEE
+    ; preserves R12 (side) and only R9 (intended) survives to the capture loop,
+    ; which re-inits R7/R8/R10/R11/R13/R15 via GENERATE_MOVES below.
+    RLDI 10, UNDO_CAPTURED
+    LDN 10
+    LBZ QS_AFTER_SEE            ; quiet leaf -> nothing to resolve
+    RLDI 10, EG_PIECE_COUNT
+    LDN 10
+    SMI SEE_ENDGAME_PIECES
+    LBDF QS_AFTER_SEE          ; >= gate (opening) -> skip SEE
+    CALL SEE_CORRECT_STANDPAT  ; corrects R9 for the recapture exchange
+QS_AFTER_SEE:
     ; Save stand-pat score to QS_BEST_HI/LO
     RLDI 10, QS_BEST_HI
     GHI 9               ; high byte → QS_BEST_HI (lower address)
@@ -3183,6 +3198,553 @@ QS_RETURN:
     LDN 10              ; Low byte
     PLO 9
     RETN
+
+; searches the recapture (horizon phantom -> shuffle losses). SEE_CORRECT_
+; STANDPAT statically resolves the FULL exchange on UNDO_TO and adds the
+; side-to-move's net recapture recovery (>=0) to R9.
+;
+; On entry R9 is SIDE-TO-MOVE relative (negated for black already). The side
+; to move (R12) is the recapturer; R = cp it wins back on UNDO_TO; R9 += R.
+;
+; Swap algorithm, no recursion, x-ray-aware (USED squares are transparent to
+; slider scans). Values are /4-scaled bytes (P25 N80 B82 R125 Q225 K250):
+;   V[0] = value of piece now on target (the just-moved captor)
+;   build V[1..n] = alternating least-valuable-attacker values
+;   fold: g=0; for j=n-1..0: g = max(0, V[j]-g);  R = g*4
+; ------------------------------------------------------------------------------
+SEE_CORRECT_STANDPAT:
+    SEX 2
+    ; save incoming side-to-move R9 (big-endian)
+    RLDI 10, SEE_SAVE_R9_HI
+    GHI 9
+    STR 10
+    INC 10
+    GLO 9
+    STR 10
+    ; Caller (QS) has already gated on capture + endgame; the UNDO_CAPTURED
+    ; check below is a cheap defensive guard (also keeps SEE_DONE referenced).
+    RLDI 10, UNDO_CAPTURED
+    LDN 10
+    LBZ SEE_DONE
+    ; target square = UNDO_TO -> R11.0 (kept throughout)
+    RLDI 10, UNDO_TO
+    LDN 10
+    PLO 11
+    ; SEE_SIDE = side-to-move COLOR bit ($00 white / $08 black) — board uses $08
+    GLO 12
+    ANI COLOR_MASK          ; $08
+    RLDI 10, SEE_SIDE
+    STR 10
+    ; USED_CNT = 0 ; DEPTH = 0
+    LDI 0
+    RLDI 10, SEE_USED_CNT
+    STR 10
+    LDI 0
+    RLDI 10, SEE_DEPTH
+    STR 10
+    ; V[0] = value(piece on target)/4
+    LDI $60
+    PHI 10
+    GLO 11
+    PLO 10
+    LDN 10
+    ANI PIECE_MASK          ; $07 — type only (board color bit is $08)
+    CALL SEE_PVAL
+    RLDI 10, SEE_VLIST
+    STR 10
+SEE_BUILD_LOOP:
+    CALL SEE_FIND_LVA
+    RLDI 10, SEE_FOUND
+    LDN 10
+    LBZ SEE_FOLD
+    ; DEPTH++  (R7.0 = new depth = write index)
+    RLDI 10, SEE_DEPTH
+    LDN 10
+    ADI 1
+    STR 10
+    PLO 7
+    ; cap at 15 to stay inside VLIST/USED buffers
+    SMI 15
+    LBDF SEE_FOLD
+    ; VLIST[depth] = SEE_LVA_VAL
+    GLO 7
+    ADI LOW(SEE_VLIST)
+    PLO 10
+    LDI HIGH(SEE_VLIST)
+    PHI 10
+    RLDI 13, SEE_LVA_VAL
+    LDN 13
+    STR 10
+    ; USED[USED_CNT++] = SEE_LVA_SQ
+    RLDI 10, SEE_USED_CNT
+    LDN 10
+    PLO 7
+    ADI 1
+    STR 10
+    GLO 7
+    ADI LOW(SEE_USED)
+    PLO 10
+    LDI HIGH(SEE_USED)
+    PHI 10
+    RLDI 13, SEE_LVA_SQ
+    LDN 13
+    STR 10
+    ; flip side color bit
+    RLDI 10, SEE_SIDE
+    LDN 10
+    XRI COLOR_MASK          ; $08
+    STR 10
+    LBR SEE_BUILD_LOOP
+SEE_FOLD:
+    ; g=0; if DEPTH==0 -> R=0
+    LDI 0
+    PHI 7
+    RLDI 10, SEE_DEPTH
+    LDN 10
+    LBZ SEE_APPLY
+    PLO 7                   ; R7.0 = remaining count (starts at DEPTH)
+SEE_FOLD_LOOP:
+    GLO 7
+    SMI 1
+    PLO 8                   ; R8.0 = j = count-1
+    GHI 7
+    STR 2                   ; M[R2] = g
+    GLO 8
+    ADI LOW(SEE_VLIST)
+    PLO 10
+    LDI HIGH(SEE_VLIST)
+    PHI 10
+    LDN 10                  ; D = VLIST[j]
+    SEX 2
+    SM                      ; D = VLIST[j] - g
+    LBDF SEE_FOLD_KEEP      ; no borrow -> >=0
+    LDI 0
+SEE_FOLD_KEEP:
+    PHI 7                   ; g = max(0, VLIST[j]-g)
+    GLO 7
+    SMI 1
+    PLO 7
+    LBNZ SEE_FOLD_LOOP
+SEE_APPLY:
+    ; R8 = g*4 (16-bit, <=900)
+    GHI 7
+    PLO 8
+    LDI 0
+    PHI 8
+    GLO 8
+    SHL
+    PLO 8
+    GHI 8
+    SHLC
+    PHI 8
+    GLO 8
+    SHL
+    PLO 8
+    GHI 8
+    SHLC
+    PHI 8
+    ; R9 = saved stand-pat + R8
+    RLDI 10, SEE_SAVE_R9_HI
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9
+    SEX 2
+    GLO 9
+    STR 2
+    GLO 8
+    ADD
+    PLO 9
+    GHI 9
+    STR 2
+    GHI 8
+    ADC
+    PHI 9
+    RETN
+SEE_DONE:
+    ; restore R9 unchanged
+    RLDI 10, SEE_SAVE_R9_HI
+    LDA 10
+    PHI 9
+    LDN 10
+    PLO 9
+    RETN
+
+; ------------------------------------------------------------------------------
+; SEE_PVAL - piece type (D=0..6) -> /4 value in D (page-safe table read)
+; ------------------------------------------------------------------------------
+SEE_PVAL:
+    PLO 7
+    RLDI 10, SEE_PVAL_TBL
+    GLO 10
+    STR 2
+    GLO 7
+    SEX 2
+    ADD
+    PLO 10
+    GHI 10
+    ADCI 0
+    PHI 10
+    LDN 10
+    RETN
+SEE_PVAL_TBL:
+    DB 0        ; 0 empty
+    DB 25       ; 1 pawn
+    DB 80       ; 2 knight
+    DB 82       ; 3 bishop
+    DB 125      ; 4 rook
+    DB 225      ; 5 queen
+    DB 250      ; 6 king (effectively unusable as recapturer when defended)
+
+; ------------------------------------------------------------------------------
+; SEE_IS_USED - D=square -> D=1 if square in SEE_USED[0..USED_CNT-1] else 0
+; Uses R7,R10 only (preserves R8,R11,R13,R15)
+; ------------------------------------------------------------------------------
+SEE_IS_USED:
+    PLO 7                   ; R7.0 = square to test
+    RLDI 10, SEE_USED_CNT
+    LDN 10
+    LBZ SEE_USED_NO
+    PHI 7                   ; R7.1 = count
+    RLDI 10, SEE_USED
+SEE_USED_LOOP:
+    LDA 10
+    STR 2
+    GLO 7
+    SEX 2
+    XOR
+    LBZ SEE_USED_YES
+    GHI 7
+    SMI 1
+    PHI 7
+    LBNZ SEE_USED_LOOP
+SEE_USED_NO:
+    LDI 0
+    RETN
+SEE_USED_YES:
+    LDI 1
+    RETN
+
+; ------------------------------------------------------------------------------
+; SEE_CHK_LEAPER - candidate R15.0, wanted piece R8.0
+;   D=1 if on-board & not-used & board[cand]==wanted (sets SEE_LVA_SQ), else 0
+; ------------------------------------------------------------------------------
+SEE_CHK_LEAPER:
+    GLO 15
+    ANI $88
+    LBNZ SEE_CHK_NO
+    GLO 15
+    CALL SEE_IS_USED
+    LBNZ SEE_CHK_NO
+    LDI $60
+    PHI 10
+    GLO 15
+    PLO 10
+    LDN 10
+    STR 2
+    GLO 8
+    SEX 2
+    XOR
+    LBNZ SEE_CHK_NO
+    GLO 15
+    RLDI 10, SEE_LVA_SQ
+    STR 10
+    LDI 1
+    RETN
+SEE_CHK_NO:
+    LDI 0
+    RETN
+
+; ------------------------------------------------------------------------------
+; SEE_SLIDE - target R11.0, dir R13.0 -> D=first real piece (0=none),
+;             R15.0=its square.  USED squares are transparent (x-ray reveal).
+; ------------------------------------------------------------------------------
+SEE_SLIDE:
+    GLO 11
+    PLO 15
+SEE_SLIDE_STEP:
+    GLO 15
+    STR 2
+    GLO 13
+    SEX 2
+    ADD
+    PLO 15
+    ANI $88
+    LBNZ SEE_SLIDE_OFF
+    LDI $60
+    PHI 10
+    GLO 15
+    PLO 10
+    LDN 10
+    LBZ SEE_SLIDE_STEP
+    GLO 15
+    CALL SEE_IS_USED
+    LBNZ SEE_SLIDE_STEP
+    LDI $60
+    PHI 10
+    GLO 15
+    PLO 10
+    LDN 10
+    RETN
+SEE_SLIDE_OFF:
+    LDI 0
+    RETN
+
+; ------------------------------------------------------------------------------
+; SEE_FIND_LVA - least-valuable attacker of SEE_SIDE on target R11.0
+;   out: SEE_FOUND (1/0), SEE_LVA_SQ, SEE_LVA_VAL.  Preserves R11,R12.
+; ------------------------------------------------------------------------------
+SEE_FIND_LVA:
+    SEX 2
+    ; ----- PAWN -----
+    RLDI 10, SEE_SIDE
+    LDN 10
+    LBNZ SEE_LVA_PB
+    ; white pawn (color $00) attacks target from NW and NE; wanted = $01
+    ; (a white pawn on T+NW / T+NE captures forward onto T; cf. check.asm)
+    GLO 11
+    ADI DIR_NW
+    PLO 15
+    LDI W_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    GLO 11
+    ADI DIR_NE
+    PLO 15
+    LDI W_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    LBR SEE_LVA_KNIGHT
+SEE_LVA_PB:
+    ; black pawn (color $08) attacks target from SE and SW; wanted = B_PAWN ($09)
+    GLO 11
+    ADI DIR_SE
+    PLO 15
+    LDI B_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    GLO 11
+    ADI DIR_SW
+    PLO 15
+    LDI B_PAWN
+    PLO 8
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_PAWN_HIT
+    LBR SEE_LVA_KNIGHT
+SEE_LVA_PAWN_HIT:
+    LDI 25
+    LBR SEE_LVA_RETURN_VAL
+; ----- KNIGHT -----
+SEE_LVA_KNIGHT:
+    RLDI 10, SEE_SIDE
+    LDN 10
+    ORI $02
+    PLO 8
+    RLDI 13, KNIGHT_OFFSETS
+    LDI 8
+    STXD
+SEE_LVA_KN_LOOP:
+    GLO 13
+    STXD
+    GHI 13
+    STXD
+    LDN 13
+    STR 2
+    GLO 11
+    SEX 2
+    ADD
+    PLO 15
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_KN_HIT
+    IRX
+    LDXA
+    PHI 13
+    LDX
+    PLO 13
+    INC 13
+    IRX
+    LDN 2
+    SMI 1
+    STR 2
+    DEC 2
+    LBNZ SEE_LVA_KN_LOOP
+    IRX
+    LBR SEE_LVA_SLIDERS
+SEE_LVA_KN_HIT:
+    IRX
+    IRX
+    IRX
+    LDI 80
+    LBR SEE_LVA_RETURN_VAL
+; ----- SLIDERS (bishop/rook/queen): min-value attacker over 8 dirs -----
+SEE_LVA_SLIDERS:
+    LDI 255
+    RLDI 10, SEE_BEST_VAL
+    STR 10
+    LDI 0
+    RLDI 10, SEE_IDX
+    STR 10
+SEE_SL_LOOP:
+    RLDI 10, SEE_IDX
+    LDN 10
+    SMI 8
+    LBZ SEE_LVA_SL_DONE
+    ; dir = SEE_SLIDE_DIRS[idx]  (page-safe)
+    RLDI 13, SEE_SLIDE_DIRS
+    RLDI 10, SEE_IDX
+    LDN 10
+    STR 2
+    GLO 13
+    SEX 2
+    ADD
+    PLO 13
+    GHI 13
+    ADCI 0
+    PHI 13
+    LDN 13
+    PLO 13                  ; R13.0 = dir
+    CALL SEE_SLIDE
+    LBZ SEE_SL_NEXT
+    PLO 8                   ; R8.0 = piece
+    ANI COLOR_MASK          ; $08 — piece color bit
+    STR 2
+    RLDI 10, SEE_SIDE
+    LDN 10
+    SEX 2
+    XOR
+    LBNZ SEE_SL_NEXT        ; different side
+    GLO 8
+    ANI PIECE_MASK          ; $07 — type only
+    PLO 8                   ; R8.0 = type
+    RLDI 10, SEE_IDX
+    LDN 10
+    SMI 4
+    LBDF SEE_SL_ORTH        ; idx>=4 -> orthogonal dir
+    ; diagonal: bishop(3) or queen(5)
+    GLO 8
+    SMI 3
+    LBZ SEE_SL_BISHOP
+    GLO 8
+    SMI 5
+    LBZ SEE_SL_QUEEN
+    LBR SEE_SL_NEXT
+SEE_SL_ORTH:
+    GLO 8
+    SMI 4
+    LBZ SEE_SL_ROOK
+    GLO 8
+    SMI 5
+    LBZ SEE_SL_QUEEN
+    LBR SEE_SL_NEXT
+SEE_SL_BISHOP:
+    LDI 82
+    LBR SEE_SL_CONSIDER
+SEE_SL_ROOK:
+    LDI 125
+    LBR SEE_SL_CONSIDER
+SEE_SL_QUEEN:
+    LDI 225
+SEE_SL_CONSIDER:
+    PLO 8                   ; candidate value
+    RLDI 10, SEE_BEST_VAL
+    LDN 10
+    STR 2                   ; M[R2] = best
+    GLO 8
+    SEX 2
+    SM                      ; D = candidate - best
+    LBDF SEE_SL_NEXT        ; candidate >= best -> not strictly smaller
+    GLO 8
+    RLDI 10, SEE_BEST_VAL
+    STR 10
+    GLO 15
+    RLDI 10, SEE_BEST_SQ
+    STR 10
+SEE_SL_NEXT:
+    RLDI 10, SEE_IDX
+    LDN 10
+    ADI 1
+    STR 10
+    LBR SEE_SL_LOOP
+SEE_LVA_SL_DONE:
+    RLDI 10, SEE_BEST_VAL
+    LDN 10
+    SMI 255
+    LBZ SEE_LVA_KING        ; no slider attacker found
+    RLDI 10, SEE_BEST_SQ
+    LDN 10
+    RLDI 13, SEE_LVA_SQ
+    STR 13
+    RLDI 10, SEE_BEST_VAL
+    LDN 10
+    LBR SEE_LVA_RETURN_VAL
+; ----- KING -----
+SEE_LVA_KING:
+    RLDI 10, SEE_SIDE
+    LDN 10
+    ORI $06
+    PLO 8
+    RLDI 13, KING_OFFSETS
+    LDI 8
+    STXD
+SEE_LVA_KG_LOOP:
+    GLO 13
+    STXD
+    GHI 13
+    STXD
+    LDN 13
+    STR 2
+    GLO 11
+    SEX 2
+    ADD
+    PLO 15
+    CALL SEE_CHK_LEAPER
+    LBNZ SEE_LVA_KG_HIT
+    IRX
+    LDXA
+    PHI 13
+    LDX
+    PLO 13
+    INC 13
+    IRX
+    LDN 2
+    SMI 1
+    STR 2
+    DEC 2
+    LBNZ SEE_LVA_KG_LOOP
+    IRX
+    ; no attacker of any kind
+    LDI 0
+    RLDI 10, SEE_FOUND
+    STR 10
+    RETN
+SEE_LVA_KG_HIT:
+    IRX
+    IRX
+    IRX
+    LDI 250
+    LBR SEE_LVA_RETURN_VAL
+; ----- common return: D = LVA value -----
+SEE_LVA_RETURN_VAL:
+    RLDI 10, SEE_LVA_VAL
+    STR 10
+    LDI 1
+    RLDI 10, SEE_FOUND
+    STR 10
+    RETN
+SEE_SLIDE_DIRS:
+    DB DIR_NE       ; 0 diagonal
+    DB DIR_NW       ; 1 diagonal
+    DB DIR_SE       ; 2 diagonal
+    DB DIR_SW       ; 3 diagonal
+    DB DIR_N        ; 4 orthogonal
+    DB DIR_S        ; 5 orthogonal
+    DB DIR_E        ; 6 orthogonal
+    DB DIR_W        ; 7 orthogonal
+; ============================ end SEE ========================================
+
 
 ; ------------------------------------------------------------------------------
 ; Helper Functions - STUBS REMOVED (functions now in other modules)
