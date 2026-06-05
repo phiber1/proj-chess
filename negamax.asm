@@ -2509,21 +2509,8 @@ QUIESCENCE_SEARCH:
     PHI 9
 
 QS_SAVE_STANDPAT:
-    ; SEE phantom-material correction (gated). If the move INTO this QS leaf was
-    ; a capture and we're past the opening (EG_PIECE_COUNT < SEE_ENDGAME_PIECES),
-    ; statically resolve the recapture exchange on UNDO_TO and fold the
-    ; side-to-move recovery into the stand-pat (R9). Register-safe here: SEE
-    ; preserves R12 (side) and only R9 (intended) survives to the capture loop,
-    ; which re-inits R7/R8/R10/R11/R13/R15 via GENERATE_MOVES below.
-    RLDI 10, UNDO_CAPTURED
-    LDN 10
-    LBZ QS_AFTER_SEE            ; quiet leaf -> nothing to resolve
-    RLDI 10, EG_PIECE_COUNT
-    LDN 10
-    SMI SEE_ENDGAME_PIECES
-    LBDF QS_AFTER_SEE          ; >= gate (opening) -> skip SEE
-    CALL SEE_CORRECT_STANDPAT  ; corrects R9 for the recapture exchange
-QS_AFTER_SEE:
+    ; (SEE moved from here to the QS capture leaf at QS_NO_NEG — the entry-hook
+    ; stand-pat correction proved too weak; the live capture loop overrode it.)
     ; Save stand-pat score to QS_BEST_HI/LO
     RLDI 10, QS_BEST_HI
     GHI 9               ; high byte → QS_BEST_HI (lower address)
@@ -3047,6 +3034,19 @@ QS_CAPTURE_LEGAL:
     SDBI 0              ; negate high with borrow
     PHI 9
 QS_NO_NEG:
+    ; SEE: correct THIS capture's leaf eval for the recapture on UNDO_TO, gated
+    ; to early-middlegame onward (EG_PIECE_COUNT < SEE_ENDGAME_PIECES). The move
+    ; is still made here (UNMAKE_MOVE below), so UNDO_TO/board are valid and the
+    ; QS only reaches here on captures (UNDO_CAPTURED != 0). De-values phantom
+    ; captures the QS searches. Register-safe: SEE preserves R11.1 (capture
+    ; limit) and R12 (side); R15 (move count) is stack-saved and restored after
+    ; UNMAKE; R9 is the intended correction (saved to stack just below).
+    RLDI 10, EG_PIECE_COUNT
+    LDN 10
+    SMI SEE_ENDGAME_PIECES
+    LBDF QS_NO_SEE_LEAF        ; >= gate (opening) -> skip SEE
+    CALL SEE_CORRECT_STANDPAT  ; corrects R9 for this capture's recapture
+QS_NO_SEE_LEAF:
     ; Save score (R9) before UNMAKE_MOVE clobbers it
     GHI 9
     STXD
