@@ -6,9 +6,9 @@
 ; ==============================================================================
 
 ; ------------------------------------------------------------------------------
-; UCI Command Buffer - defined in board-0x88.asm
+; UCI Command Buffer - defined in board.asm
 ; ------------------------------------------------------------------------------
-; UCI_BUFFER ($7000, 2048 bytes) and UCI_STATE ($64B8) defined in board-0x88.asm
+; UCI_BUFFER ($7000, 2048 bytes) and UCI_STATE ($64B8) defined in board.asm
 UCI_BUFFER_LEN  EQU 2047    ; Max chars (16-bit counter, 2048-byte buffer)
 UCI_READY       EQU 1       ; Ready state
 

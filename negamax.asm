@@ -27,7 +27,7 @@
 ; NOTE: Search depth stored in memory at SEARCH_DEPTH (not in a register)
 ; ------------------------------------------------------------------------------
 
-; Memory locations for search state - defined in board-0x88.asm:
+; Memory locations for search state - defined in board.asm:
 ;   BEST_MOVE, NODES_SEARCHED, SEARCH_DEPTH, QS_*, EVAL_SQ_INDEX, KILLER_MOVES
 ;   ALPHA_HI/LO, BETA_HI/LO, SCORE_HI/LO (big-endian: high byte at lower address)
 ; All engine variables consolidated at $6400+ region

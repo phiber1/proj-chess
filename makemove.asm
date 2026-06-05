@@ -3,7 +3,7 @@
 ; ==============================================================================
 
 ; ------------------------------------------------------------------------------
-; Undo information - defined in board-0x88.asm as EQUs in RAM ($6408-$640D)
+; Undo information - defined in board.asm as EQUs in RAM ($6408-$640D)
 ; UNDO_CAPTURED, UNDO_FROM, UNDO_TO, UNDO_CASTLING, UNDO_EP, UNDO_HALFMOVE
 ; These MUST be in RAM (not ROM) for read/write access!
 ; ------------------------------------------------------------------------------

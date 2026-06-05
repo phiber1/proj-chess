@@ -59,7 +59,7 @@ CHECK_TARGET_INVALID:
     LDI 0               ; D = 0, DF unchanged
     RETN
 
-; MOVE_FLAGS_TEMP defined in board-0x88.asm ($6406)
+; MOVE_FLAGS_TEMP defined in board.asm ($6406)
 ; All engine variables consolidated at $6400+ region
 
 ; ------------------------------------------------------------------------------
@@ -123,7 +123,7 @@ ENCODE_FLAG_1:
 ENCODE_HI_DONE:
     RETN
 
-; DECODED_FLAGS defined in board-0x88.asm ($6405)
+; DECODED_FLAGS defined in board.asm ($6405)
 ; All engine variables consolidated at $6400+ region
 
 ; ------------------------------------------------------------------------------
