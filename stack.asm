@@ -33,13 +33,8 @@
 ; Call this once at program startup
 ; Sets 2 to $7FFF (top of 32KB RAM)
 ; ------------------------------------------------------------------------------
-INIT_STACK:
-    LDI $7F
-    PHI 2              ; 2.1 = $7F
-    LDI $FF
-    PLO 2              ; 2.0 = $FF (2 = $7FFF)
-    SEX 2              ; Set 2 as index register for stack ops
-    RETN
+; INIT_STACK - REMOVED 2026-06-04: zero call-sites (BIOS/main sets R2 stack
+;   top); reclaimed for SEE.
 
 ; ------------------------------------------------------------------------------
 ; PUSH16 - Push 16-bit value onto stack
@@ -298,41 +293,9 @@ RESTORE_PLY_STATE:
 ; Stack Utilities
 ; ------------------------------------------------------------------------------
 
-; PUSH_BYTE - Push single byte to stack
-PUSH_BYTE:
-    ; Input: D = byte to push
-    STXD
-    RETN
-
-; POP_BYTE - Pop single byte from stack
-POP_BYTE:
-    ; Output: D = popped byte
-    IRX
-    LDXA
-    RETN
-
-; GET_STACK_DEPTH - Get current stack usage
-; Output: R9 = bytes used (stack depth) - NOT R6! R6 is SCRT linkage!
-GET_STACK_DEPTH:
-    LDI $7F
-    PHI 9
-    LDI $FF
-    PLO 9              ; R9 = $7FFF (initial stack)
-
-    ; Subtract current stack pointer
-    GLO 2
-    STR 2
-    GLO 9
-    SM
-    PLO 9
-
-    GHI 2
-    STR 2
-    GHI 9
-    SMB
-    PHI 9
-    ; R9 now contains bytes used
-    RETN
+; PUSH_BYTE / POP_BYTE / GET_STACK_DEPTH - REMOVED 2026-06-04: zero call-sites;
+;   reclaimed for SEE. (Byte push/pop is inlined via STXD/IRX-LDXA at use sites;
+;   stack depth was a dev-only diagnostic.)
 
 ; ------------------------------------------------------------------------------
 ; DEBUG: Stack overflow check (optional, for development)

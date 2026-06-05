@@ -108,9 +108,6 @@ fi
 echo "  - support.asm"
 cat support.asm >> "$OUTPUT"
 
-echo "  - math.asm"
-cat math.asm >> "$OUTPUT"
-
 echo "  - stack.asm"
 cat stack.asm >> "$OUTPUT"
 
@@ -125,9 +122,6 @@ cat movegen-helpers.asm >> "$OUTPUT"
 
 echo "  - movegen.asm (integrated version)"
 cat movegen.asm >> "$OUTPUT"
-
-echo "  - makemove-helpers.asm"
-cat makemove-helpers.asm >> "$OUTPUT"
 
 echo "  - makemove.asm"
 cat makemove.asm >> "$OUTPUT"

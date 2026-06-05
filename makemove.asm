@@ -176,7 +176,7 @@ MM_NOT_PROMOTION:
     ; Check color of king (R10.0 has full piece)
     GLO 10
     ANI COLOR_MASK      ; Get color (0=white, 8=black)
-    BNZ MM_BLACK_KING
+    LBNZ MM_BLACK_KING  ; long branch: reclaim shift pushed target across a page
 
 MM_WHITE_KING:
     ; Update STATE_W_KING_SQ with MOVE_TO
