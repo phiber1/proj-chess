@@ -1550,6 +1550,58 @@ PP_B_NEXT:
     ; Scaled 2x via SHL for effective range 0-120cp
     ; ==================================================================
 
+    ; --- King-king proximity (the missing mating ingredient): Chebyshev
+    ; distance between the two kings (R15.0=white index, R15.1=black index,
+    ; both 0-63), look up KING_PROX_BONUS[dist], stash in EVAL_TEMP1. Added for
+    ; the winning side below so its king is pulled toward the enemy king. Mirrors
+    ; the queen-prox distance pattern. Preserves R9/R15. ---
+    GLO 15              ; white king 0-63 index
+    SHR
+    SHR
+    SHR                 ; D = white rank (0-7)
+    PLO 13              ; R13.0 = w_rank
+    GHI 15              ; black king index
+    SHR
+    SHR
+    SHR                 ; D = black rank
+    STR 2
+    GLO 13
+    SD                  ; D = b_rank - w_rank
+    LBDF KP_RANK_OK
+    SDI 0               ; |rank diff|
+KP_RANK_OK:
+    PHI 13              ; R13.1 = |rank diff|
+    GLO 15
+    ANI $07             ; D = w_file
+    PLO 13              ; R13.0 = w_file
+    GHI 15
+    ANI $07             ; D = b_file
+    STR 2
+    GLO 13
+    SD                  ; D = b_file - w_file
+    LBDF KP_FILE_OK
+    SDI 0               ; |file diff|
+KP_FILE_OK:
+    PLO 13              ; R13.0 = |file diff|
+    GHI 13              ; |rank diff|
+    STR 2
+    GLO 13              ; |file diff|
+    SD                  ; D = |rank| - |file|
+    LBDF KP_USE_RANK    ; rank >= file -> max = rank
+    GLO 13              ; max = file
+    LBR KP_HAVE_DIST
+KP_USE_RANK:
+    GHI 13              ; max = rank
+KP_HAVE_DIST:
+    ADI LOW(KING_PROX_BONUS)
+    PLO 11
+    LDI 0
+    ADCI HIGH(KING_PROX_BONUS)
+    PHI 11
+    LDN 11              ; D = KING_PROX_BONUS[chebyshev dist]
+    RLDI 10, EVAL_TEMP1
+    STR 10              ; EVAL_TEMP1 = king-king proximity bonus
+
     ; Check if white is winning significantly (score > 200)
     GHI 9
     ANI $80             ; sign bit
@@ -1581,6 +1633,16 @@ EG_DRIVE_BLACK:
     GHI 9
     ADCI 0
     PHI 9               ; R9 += edge bonus (always positive, no sign extend)
+    ; + king-king proximity: white king closer to black king = better for white
+    RLDI 10, EVAL_TEMP1
+    LDN 10
+    STR 2
+    GLO 9
+    ADD
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
     LBR EG_EDGE_DONE
 
 EG_CHECK_BLACK:
@@ -1614,6 +1676,16 @@ EG_DRIVE_WHITE:
     GHI 9
     SMBI 0
     PHI 9               ; R9 -= edge penalty
+    ; - king-king proximity: black king closer to white king = better for black
+    RLDI 10, EVAL_TEMP1
+    LDN 10
+    STR 2
+    GLO 9
+    SM
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
 
 EG_EDGE_DONE:
 

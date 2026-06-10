@@ -54,6 +54,16 @@ KING_EDGE_TABLE:
     ; Rank 1
     DB  60, 50, 40, 30, 30, 40, 50, 60
 
+; ------------------------------------------------------------------------------
+; KING_PROX_BONUS - friendly-king-to-enemy-king proximity, indexed by Chebyshev
+; distance (0-7). The missing mating ingredient: edging the enemy king alone
+; never mates — the winning side's king must march up to support. Small-distance
+; = high bonus gives the shallow search a downhill gradient to walk the king in.
+; Kings can never be adjacent (dist<2 illegal), so 2 = closest = max pull.
+; ------------------------------------------------------------------------------
+KING_PROX_BONUS:
+    DB   0,  0, 40, 32, 24, 16,  8,  0   ; dist 0..7 (~8cp/step gradient)
+
 ; ==============================================================================
 ; EVAL_ENDGAME - Add endgame-specific bonuses
 ; ==============================================================================
