@@ -1189,6 +1189,42 @@ EVAL_BR_DONE:
     SMI 12              ; compare: count - 12
     LBDF BKS_DONE       ; DF=1 means count >= 12, not endgame, skip
 
+    ; ==================================================================
+    ; Hopeless-material amplifier (re-added 2026-06-10, LOSING-side only).
+    ; Goal: end clearly-lost endgames via cutechess's -1500/10-move resign
+    ; adjudication instead of 100-move shuffles (which were averaging 2h/match
+    ; and choking the hang hunt). At this point R9 = material+PST+minor
+    ; positional, BEFORE the advanced/passed-pawn bonuses (applied below at
+    ; ADV_PAWN_W/B ~1271/1297) -- so R9 here is a stable preeg-like signal that
+    ; ignores the pawn-promotion inflation that lets ELPH misread lost K+P-vs-
+    ; K+B+P as ~0. Trigger: pc<=6 AND R9 <= -300 (down ~a minor in a sparse
+    ; endgame = lost) -> R9 -= 2000. Losing-side ONLY (winning-side amp caused
+    ; search volatility, see 5966070); never fires when winning or in the
+    ; opening (pc>=12 already skipped to BKS_DONE). Inert vs the hang (endgame
+    ; only). Only amps genuinely-lost leaves, so a saving line (R9 > -300) is
+    ; never over-resigned.
+    ; ==================================================================
+    RLDI 11, EG_PIECE_COUNT
+    LDN 11
+    SMI 7               ; pc - 7; DF=1 if pc >= 7
+    LBDF HM_AMP_DONE    ; pc > 6, skip amp
+    GHI 9
+    ANI $80
+    LBZ HM_AMP_DONE     ; R9 >= 0 (not losing), skip
+    GLO 9
+    ADI LOW(250)        ; R9 + 250 (DF = carry); -250 margin so down-a-clean-minor fires
+    GHI 9
+    ADCI HIGH(250)      ; D = (R9 + 250) high byte
+    ANI $80
+    LBZ HM_AMP_DONE     ; (R9 + 250) >= 0 -> R9 >= -250, not hopeless, skip
+    GLO 9               ; hopeless: R9 -= 2000
+    SMI LOW(2000)
+    PLO 9
+    GHI 9
+    SMBI HIGH(2000)
+    PHI 9
+HM_AMP_DONE:
+
     ; === White king centralization ===
     RLDI 10, GAME_STATE + STATE_W_KING_SQ
     LDN 10              ; D = white king 0x88 square
@@ -1457,15 +1493,36 @@ PP_W_R7:
     LDI 250
 PP_W_ADD:
     STR 2
-    ; Asymmetric scaling (mirror of ADV_PAWN_W): scale 1/4 only in
-    ; conversion phase (W has queen, B doesn't).
+    ; Scale this passed-pawn bonus to 1/4 in EITHER case:
+    ;  (A) conversion phase: W has queen, B doesn't (just convert, don't
+    ;      over-credit pawns), OR
+    ;  (B) OUTGUNNED (2026-06-12): B has rook/queen AND W has none. White's
+    ;      passers are unsupported and the enemy heavy piece stops them, so
+    ;      they don't compensate for being down material (the +515 endgame
+    ;      mis-score: 6 pawns scored ~= R+B).
     RLDI 8, W_QUEEN_CNT
     LDN 8
-    LBZ PP_W_ADD_GO     ; we don't have queen — full bonus
+    LBZ PP_W_OUTGUN     ; W has no queen -> not conversion; check outgunned
     RLDI 8, B_QUEEN_CNT
     LDN 8
-    LBNZ PP_W_ADD_GO    ; both have queens — full bonus
-    LDN 2               ; conversion phase: scale to 1/4
+    LBZ PP_W_SCALE      ; W queen, B no queen -> conversion -> scale 1/4
+    LBR PP_W_ADD_GO     ; both have queens -> full bonus
+PP_W_OUTGUN:
+    ; W has no queen. Outgunned iff B has a rook or queen AND W has no rook.
+    RLDI 8, B_QUEEN_CNT
+    LDN 8
+    LBNZ PP_W_OG_WROOK  ; B has queen -> B is heavy
+    RLDI 8, EVAL_B_ROOK_F1
+    LDN 8
+    XRI $FF
+    LBZ PP_W_ADD_GO     ; B has no rook & no queen -> not outgunned -> full
+PP_W_OG_WROOK:
+    RLDI 8, EVAL_W_ROOK_F1
+    LDN 8
+    XRI $FF
+    LBNZ PP_W_ADD_GO    ; W has a rook to support -> not outgunned -> full
+PP_W_SCALE:
+    LDN 2               ; scale passed bonus to 1/4
     SHR
     SHR
     STR 2
@@ -1476,6 +1533,50 @@ PP_W_ADD_GO:
     GHI 9
     ADCI 0
     PHI 9               ; R9 += passed pawn bonus
+
+    ; --- Racing-passer bonus (2026-06-13): an ADVANCED white passer (rank 5+) with a
+    ; clear front, when white has a rook/queen to shepherd it, is a promotion threat
+    ; the d5 search can't see -> add an escalating (toward-queen) bonus so white
+    ; PUSHES it instead of ignoring it. Gated not-outgunned (W has R/Q) so it doesn't
+    ; re-open the +515 over-valuation of trivially-stopped pawns. R10.0 = pawn square.
+    GLO 10
+    ANI $70
+    SMI $40
+    LBNF PP_W_NEXT          ; rank index < 4 (rank < 5) -> not advanced
+    PHI 7                   ; R7.1 = (rank<<4)-$40  ($00=r5,$10=r6,$20=r7)
+    ; (front-blockade gate removed 2026-06-13: it killed the bonus when the pawn
+    ; advanced into a square fronted by our OWN clearable piece — e.g. the rook on
+    ; c7 ahead of the c-pawn — so white wouldn't push. The escalating rank bonus
+    ; drives advancing; the search handles genuine enemy blockades.)
+    RLDI 8, W_QUEEN_CNT
+    LDN 8
+    LBNZ PP_W_RUN_OK        ; white has a queen
+    RLDI 8, EVAL_W_ROOK_F1
+    LDN 8
+    XRI $FF
+    LBZ PP_W_NEXT           ; no white rook & no queen -> outgunned -> skip
+PP_W_RUN_OK:
+    GHI 7
+    SHR
+    SHR
+    SHR                     ; D = DW offset (0,2,4)
+    ADI LOW(RUNNER_BONUS)
+    PLO 8
+    LDI HIGH(RUNNER_BONUS)
+    ADCI 0
+    PHI 8
+    LDA 8                   ; bonus hi (big-endian DW)
+    PHI 7
+    LDN 8                   ; bonus lo
+    STR 2
+    GLO 9
+    ADD                     ; R9.lo += bonus lo
+    PLO 9
+    GHI 7                   ; bonus hi
+    STR 2
+    GHI 9
+    ADC                     ; R9.hi += bonus hi + carry
+    PHI 9
 
 PP_W_NEXT:
     INC 11              ; next W_PAWN_FILE_CT entry
@@ -1504,26 +1605,9 @@ PP_B_LOOP:
     LDN 10
     LBNZ PP_B_NEXT      ; white pawn on same file, not passed
 
-    ; Check W_PAWN_FILE_CT[file-1] (skip if file == 0)
-    GLO 13
-    LBZ PP_B_LEFT_OK
-    DEC 10
-    LDN 10
-    INC 10
-    LBNZ PP_B_NEXT
-PP_B_LEFT_OK:
-
-    ; Check W_PAWN_FILE_CT[file+1] (skip if file == 7)
-    GLO 13
-    XRI 7
-    LBZ PP_B_RIGHT_OK
-    INC 10
-    LDN 10
-    DEC 10
-    LBNZ PP_B_NEXT
-PP_B_RIGHT_OK:
-
-    ; Passed! Scan ranks 2-7 for the most advanced black pawn
+    ; (Adjacent-file passed test is now RANK-AWARE — done at PP_B_SUB once the
+    ; pawn's rank is known. The old file-count test wrongly cancelled "passed" for
+    ; any adjacent white pawn regardless of rank.) Scan ranks for the black pawn:
     LDI HIGH(BOARD)
     PHI 10
 
@@ -1592,9 +1676,44 @@ PP_B_R3:
 PP_B_R2:
     LDI 250
 PP_B_SUB:
-    STR 2
-    ; No conversion-phase scaling on opponent pawns: we want full sensitivity
-    ; to enemy promotion threats even when we've lost our queen.
+    STR 2               ; M(R2) = passed bonus
+    ; --- rank-aware passed (2026-06-13): truly passed only if NO white pawn is
+    ; AHEAD on an adjacent file. The old file-count test cancelled "passed" for any
+    ; adjacent white pawn regardless of rank -> black f3 mis-scored as not-passed
+    ; (white g3 is level, can't stop it), so the f-pawn earned ZERO penalty and
+    ; white queened into a loss. Walk toward rank 1; check both adjacent files each
+    ; rank. R10.0 = black pawn square (from the rank scan above).
+    GLO 10
+    PLO 7               ; R7.0 = scan square
+PP_B_RA_LOOP:
+    GLO 7
+    SMI $10             ; one rank toward black's promotion (rank 1)
+    PLO 7
+    ANI $80
+    LBNZ PP_B_APPLY     ; walked past rank 1 with no blocker -> PASSED
+    GLO 7
+    SMI 1
+    PLO 10              ; left adjacent-file square
+    ANI $88
+    LBNZ PP_B_RA_RIGHT  ; off board -> skip left
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI W_PAWN
+    LBZ PP_B_NEXT       ; white pawn ahead on left adjacent file -> NOT passed
+PP_B_RA_RIGHT:
+    GLO 7
+    ADI 1
+    PLO 10              ; right adjacent-file square
+    ANI $88
+    LBNZ PP_B_RA_LOOP   ; off board -> skip right, next rank
+    LDI HIGH(BOARD)
+    PHI 10
+    LDN 10
+    XRI W_PAWN
+    LBZ PP_B_NEXT       ; white pawn ahead on right adjacent file -> NOT passed
+    LBR PP_B_RA_LOOP    ; neither -> check next rank ahead
+PP_B_APPLY:
     GLO 9
     SM                  ; D = R9.0 - bonus
     PLO 9
