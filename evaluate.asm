@@ -35,6 +35,24 @@ QUEEN_PROX_BONUS:
     DB 10   ; distance 6
     DB 0    ; distance 7 (far — no bonus)
 
+; King-safety tables (2026-06-11). SHIELD_PEN indexed by shield_missing (0-3);
+; STORM_PEN indexed by (3 - chebyshev_dist) so dist1->idx2, dist2->idx1. Penalties
+; are positive magnitudes; max SHIELD(100)+STORM(150)=250 fits one byte.
+SHIELD_PEN:
+    DB 0, 25, 60, 100       ; missing 0,1,2,3 shield pawns
+STORM_PEN:
+    DB 0, 80, 150           ; idx 0 (dist3, unused), 1 (dist2), 2 (dist1)
+; v2 defense credit: OUR queen near OUR endangered king cancels storm (indexed by
+; our-queen-to-our-king Chebyshev dist). Makes bringing the queen home beat
+; abandoning it. net_storm = max(0, STORM_PEN - DEFENSE_CREDIT).
+DEFENSE_CREDIT:
+    DB 0, 80, 60, 40, 20, 0, 0, 0   ; dist 0..7
+; Racing-passer bonus (2026-06-13): EXTRA value for an advanced white passer with a
+; clear front, ramping toward queen value so white pushes it (the d5 search can't
+; see the promotion). Indexed by rank-5/6/7. 16-bit (big-endian DW) — > one byte.
+RUNNER_BONUS:
+    DW 150, 350, 600       ; rank 5, rank 6, rank 7
+
 ; Piece value table (indexed by piece type 0-6)
 PIECE_VALUES:
     DW 0            ; Empty (type 0)
@@ -799,6 +817,54 @@ QP_B_HAVE_DIST:
     SMBI 0
     PHI 9
 QP_B_DONE:
+
+    ; ==================================================================
+    ; King safety (2026-06-11): pawn-shield + enemy-queen "storm".
+    ; The base had NO king safety (only the +20 castling-RIGHTS bonus), which
+    ; let ELPH get mated while up a queen (queen on a6, king g1 stripped bare).
+    ; KING_SAFETY(R7.0=king sq, R7.1=enemy queen sq, R8.0=friendly pawn code,
+    ; R8.1=shield "ahead" offset) -> D = penalty (0-250). Shield-aware: a fully
+    ; shielded king scores 0 (queen near a fortress is fine); penalty grows with
+    ; missing shield pawns and an enemy queen within Chebyshev 2. Always-on
+    ; (naturally ~0 in endgames: no enemy queen / king active).
+    ; ==================================================================
+    RLDI 8, GAME_STATE + STATE_W_KING_SQ
+    LDN 8
+    PLO 7               ; R7.0 = white king sq
+    RLDI 8, B_QUEEN_SQ
+    LDN 8
+    PHI 7               ; R7.1 = enemy (black) queen sq ($FF if none)
+    LDI W_PAWN
+    PLO 8               ; R8.0 = friendly pawn code ($01)
+    LDI $10
+    PHI 8               ; R8.1 = ahead offset (white: +1 rank)
+    CALL KING_SAFETY
+    STR 2
+    GLO 9
+    SM                  ; R9 -= white king danger
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9
+
+    RLDI 8, GAME_STATE + STATE_B_KING_SQ
+    LDN 8
+    PLO 7               ; R7.0 = black king sq
+    RLDI 8, W_QUEEN_SQ
+    LDN 8
+    PHI 7               ; R7.1 = enemy (white) queen sq
+    LDI B_PAWN
+    PLO 8               ; R8.0 = friendly pawn code ($09)
+    LDI $F0
+    PHI 8               ; R8.1 = ahead offset (black: -1 rank)
+    CALL KING_SAFETY
+    STR 2
+    GLO 9
+    ADD                 ; R9 += black king danger
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9
 
     ; Add piece-square table bonuses
     CALL EVAL_PST
@@ -1753,6 +1819,211 @@ EVALUATE_MATERIAL:
     ; Alias to main evaluate for now
     ; Later can optimize this path
     LBR EVALUATE
+
+; ------------------------------------------------------------------------------
+; KING_SAFETY - shield + enemy-queen-storm danger for one king (2026-06-11)
+; In:  R7.0 = king sq (0x88); R7.1 = enemy queen sq ($FF if none)
+;      R8.0 = friendly pawn code; R8.1 = shield ahead-offset (+$10 / $F0)
+; Out: D = penalty magnitude (0-250). Preserves R9. Uses R10,R11,R13. X=2.
+; ------------------------------------------------------------------------------
+KING_SAFETY:
+    SEX 2
+    ; No enemy queen -> no king-safety penalty at all. Prevents penalizing an
+    ; actively centralized (shieldless) king in queenless endgames.
+    GHI 7
+    XRI $FF
+    LBZ KS_ZERO
+    ; center shield square = king + ahead-offset
+    GLO 7
+    STR 2
+    GHI 8
+    ADD
+    PLO 13              ; R13.0 = center
+    SMI 1               ; D = center - 1 (first shield square)
+    PLO 10              ; R10.0 = shield square
+    LDI 0
+    PHI 13              ; R13.1 = shield pawn count = 0
+    LDI 3
+    PLO 11              ; loop counter
+KS_SH_LOOP:
+    GLO 10
+    ANI $88
+    LBNZ KS_SH_NEXT     ; off board
+    LDI HIGH(BOARD)
+    PHI 10              ; R10 -> board[sq]
+    LDN 10
+    STR 2
+    GLO 8               ; friendly pawn code
+    XOR
+    LBNZ KS_SH_NEXT     ; not our pawn
+    GHI 13
+    ADI 1
+    PHI 13              ; count++
+KS_SH_NEXT:
+    INC 10              ; next shield square (center-1 -> center -> center+1)
+    DEC 11
+    GLO 11
+    LBNZ KS_SH_LOOP
+    ; missing = 3 - count
+    GHI 13
+    STR 2
+    LDI 3
+    SM                  ; D = 3 - count
+    PLO 13              ; R13.0 = missing (0-3)
+    ADI LOW(SHIELD_PEN)
+    PLO 10
+    LDI HIGH(SHIELD_PEN)
+    ADCI 0
+    PHI 10
+    LDN 10              ; D = SHIELD_PEN[missing]
+    PHI 11              ; R11.1 = penalty
+    ; storm only if shield cracked AND enemy queen within Chebyshev 2
+    GLO 13              ; missing
+    LBZ KS_RET          ; fully shielded -> no penalty
+    GHI 7               ; enemy queen sq
+    XRI $FF
+    LBZ KS_RET          ; no enemy queen
+    ; chebyshev(enemy queen R7.1, our king R7.0)
+    GHI 7
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR                 ; q_rank
+    PLO 13
+    GLO 7
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR                 ; k_rank
+    STR 2
+    GLO 13
+    SD                  ; k_rank - q_rank
+    LBDF KS_RANK_OK
+    SDI 0
+KS_RANK_OK:
+    PHI 13              ; |rank diff|
+    GHI 7
+    ANI $07             ; q_file
+    PLO 13
+    GLO 7
+    ANI $07             ; k_file
+    STR 2
+    GLO 13
+    SD                  ; k_file - q_file
+    LBDF KS_FILE_OK
+    SDI 0
+KS_FILE_OK:
+    PLO 13              ; |file diff|
+    GHI 13              ; |rank diff|
+    STR 2
+    GLO 13              ; |file diff|
+    SD                  ; |rank| - |file|
+    LBDF KS_USE_RANK
+    GLO 13              ; max = file
+    LBR KS_HAVE_DIST
+KS_USE_RANK:
+    GHI 13              ; max = rank
+KS_HAVE_DIST:
+    STR 2               ; M2 = dist
+    LDI 3
+    SM                  ; D = 3 - dist
+    LBZ KS_RET          ; dist == 3 -> no storm
+    PLO 13              ; R13.0 = 3 - dist
+    ANI $80
+    LBNZ KS_RET         ; dist > 3 -> no storm
+    GLO 13
+    ADI LOW(STORM_PEN)
+    PLO 10
+    LDI HIGH(STORM_PEN)
+    ADCI 0
+    PHI 10
+    LDN 10              ; D = STORM_PEN[3-dist]
+    PLO 11              ; R11.0 = storm penalty (R11.1 still = shield)
+    ; --- v2 defense credit: OUR queen near OUR king cancels storm ---
+    ; pick OUR queen square from memory by friendly pawn color (R8.0).
+    ; (Do NOT use R12 — it is the caller's side-to-move color and must survive.)
+    GLO 8
+    XRI W_PAWN
+    LBNZ KS_OURQ_B
+    RLDI 10, W_QUEEN_SQ
+    LBR KS_OURQ_RD
+KS_OURQ_B:
+    RLDI 10, B_QUEEN_SQ
+KS_OURQ_RD:
+    LDN 10              ; D = our queen sq
+    PHI 7               ; R7.1 = our queen sq (enemy queen no longer needed)
+    XRI $FF
+    LBZ KS_STORM_FULL   ; no our queen -> full storm
+    ; chebyshev(our queen R7.1, our king R7.0)
+    GHI 7
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR                 ; our q rank
+    PLO 13
+    GLO 7
+    ANI $70
+    SHR
+    SHR
+    SHR
+    SHR                 ; our k rank
+    STR 2
+    GLO 13
+    SD                  ; k_rank - q_rank
+    LBDF KS_DR_OK
+    SDI 0
+KS_DR_OK:
+    PHI 13              ; |rank diff|
+    GHI 7
+    ANI $07             ; our q file
+    PLO 13
+    GLO 7
+    ANI $07             ; our k file
+    STR 2
+    GLO 13
+    SD                  ; k_file - q_file
+    LBDF KS_DF_OK
+    SDI 0
+KS_DF_OK:
+    PLO 13              ; |file diff|
+    GHI 13
+    STR 2
+    GLO 13
+    SD                  ; |rank| - |file|
+    LBDF KS_DD_RANK
+    GLO 13              ; max = file
+    LBR KS_DD_HAVE
+KS_DD_RANK:
+    GHI 13              ; max = rank
+KS_DD_HAVE:
+    ADI LOW(DEFENSE_CREDIT)
+    PLO 10
+    LDI HIGH(DEFENSE_CREDIT)
+    ADCI 0
+    PHI 10
+    LDN 10              ; D = DEFENSE_CREDIT[dist]
+    STR 2               ; M2 = credit
+    GLO 11              ; storm
+    SM                  ; D = storm - credit
+    LBDF KS_NET_OK      ; storm >= credit -> net = storm - credit
+    LDI 0               ; storm < credit -> clamp net to 0
+KS_NET_OK:
+    PLO 11              ; R11.0 = net storm
+KS_STORM_FULL:
+    GLO 11              ; net (or full) storm
+    STR 2
+    GHI 11              ; shield penalty
+    ADD                 ; total = shield + net storm
+    PHI 11
+KS_RET:
+    GHI 11              ; D = total penalty
+    RETN
+KS_ZERO:
+    LDI 0
+    RETN
 
 ; ==============================================================================
 ; End of Evaluation
