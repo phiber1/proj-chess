@@ -36,23 +36,27 @@ KING_CENTER_TABLE:
 ; King to edge table (bonus for enemy king on edge/corner — drive-to-mate)
 ; Use this when we're winning to drive enemy king to corner.
 ; Higher values at edges/corners, lower in center.
+; Retuned 2026-06-15: steepened ~1.5x toward corners (proven mate-shuffle:
+; R+Q+5P vs lone K dawdled ~22 moves, eval flat — the edge gradient was too
+; shallow to actively squeeze the enemy king to a corner). Max 90, SHL'd to
+; 180cp at the corner (still <256, no byte overflow). Zero new bytes.
 KING_EDGE_TABLE:
     ; Rank 8
-    DB  60, 50, 40, 30, 30, 40, 50, 60
+    DB  90, 75, 60, 45, 45, 60, 75, 90
     ; Rank 7
-    DB  50, 40, 30, 20, 20, 30, 40, 50
+    DB  75, 60, 45, 30, 30, 45, 60, 75
     ; Rank 6
-    DB  40, 30, 20, 10, 10, 20, 30, 40
+    DB  60, 45, 30, 15, 15, 30, 45, 60
     ; Rank 5
-    DB  30, 20, 10,  0,  0, 10, 20, 30
+    DB  45, 30, 15,  0,  0, 15, 30, 45
     ; Rank 4
-    DB  30, 20, 10,  0,  0, 10, 20, 30
+    DB  45, 30, 15,  0,  0, 15, 30, 45
     ; Rank 3
-    DB  40, 30, 20, 10, 10, 20, 30, 40
+    DB  60, 45, 30, 15, 15, 30, 45, 60
     ; Rank 2
-    DB  50, 40, 30, 20, 20, 30, 40, 50
+    DB  75, 60, 45, 30, 30, 45, 60, 75
     ; Rank 1
-    DB  60, 50, 40, 30, 30, 40, 50, 60
+    DB  90, 75, 60, 45, 45, 60, 75, 90
 
 ; ------------------------------------------------------------------------------
 ; KING_PROX_BONUS - friendly-king-to-enemy-king proximity, indexed by Chebyshev
@@ -61,8 +65,15 @@ KING_EDGE_TABLE:
 ; = high bonus gives the shallow search a downhill gradient to walk the king in.
 ; Kings can never be adjacent (dist<2 illegal), so 2 = closest = max pull.
 ; ------------------------------------------------------------------------------
+; Retuned 2026-06-15: ~4x stronger (was 0,0,40,32,24,16,8,0 = 8cp/step).
+; PROVEN bottleneck: in the R+Q+5P vs K mate the winning king refused to march
+; (g1<->h1<->f1 shuffle for ~11 moves) because closing toward the enemy king
+; netted only +8cp — tied with shuffling, so the engine wouldn't commit. The
+; mate appeared the instant the king finally reached the enemy. Now ~30-35cp/
+; step so each marching step clearly beats a wait move. Max 150 < passer/runner
+; bonuses (250-600) so this never pulls the king off a passer in a K+P race.
 KING_PROX_BONUS:
-    DB   0,  0, 40, 32, 24, 16,  8,  0   ; dist 0..7 (~8cp/step gradient)
+    DB   0,  0,150,115, 80, 50, 25,  0   ; dist 0..7 (~30-35cp/step march)
 
 ; ==============================================================================
 ; EVAL_ENDGAME - Add endgame-specific bonuses
