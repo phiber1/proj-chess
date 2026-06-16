@@ -405,6 +405,10 @@ ATTACK_CHECK_SLIDING:
     PLO 7               ; R7.0 = current square (not R14!)
 
 ATTACK_SLIDE_LOOP:
+    BN4  BRK_ATTACK_SLIDE_LOOP      ; /EF4 break trap (DEBUG)
+    MARK
+    SEP  1
+BRK_ATTACK_SLIDE_LOOP:
     ; Move in direction
     GLO 7
     STR 2
@@ -475,32 +479,32 @@ ATTACK_SLIDE_CHECK_DIAG:
     ; Check if direction is diagonal (NE, NW, SE, SW)
     GLO 15
     XRI DIR_NE
-    BZ ATTACK_SLIDE_YES
+    LBZ ATTACK_SLIDE_YES
     GLO 15
     XRI DIR_NW
-    BZ ATTACK_SLIDE_YES
+    LBZ ATTACK_SLIDE_YES
     GLO 15
     XRI DIR_SE
-    BZ ATTACK_SLIDE_YES
+    LBZ ATTACK_SLIDE_YES
     GLO 15
     XRI DIR_SW
-    BZ ATTACK_SLIDE_YES
-    BR ATTACK_SLIDE_NONE
+    LBZ ATTACK_SLIDE_YES
+    LBR ATTACK_SLIDE_NONE
 
 ATTACK_SLIDE_CHECK_ORTH:
     ; Rook - only attacks on orthogonals
     GLO 15
     XRI DIR_N
-    BZ ATTACK_SLIDE_YES
+    LBZ ATTACK_SLIDE_YES
     GLO 15
     XRI DIR_S
-    BZ ATTACK_SLIDE_YES
+    LBZ ATTACK_SLIDE_YES
     GLO 15
     XRI DIR_E
-    BZ ATTACK_SLIDE_YES
+    LBZ ATTACK_SLIDE_YES
     GLO 15
     XRI DIR_W
-    BZ ATTACK_SLIDE_YES
+    LBZ ATTACK_SLIDE_YES
     ; Fall through to none
 
 ATTACK_SLIDE_NONE:

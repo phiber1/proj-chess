@@ -2705,6 +2705,10 @@ QS_NO_DELTA_PRUNE:
     PHI 11                  ; R11.1 = captures remaining
 
 QS_LOOP:
+    BN4  BRK_QS_LOOP      ; /EF4 break trap (DEBUG)
+    MARK
+    SEP  1
+BRK_QS_LOOP:
     ; Check if any moves left
     GLO 15
     LBZ QS_RETURN
