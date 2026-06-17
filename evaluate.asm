@@ -1384,6 +1384,70 @@ EG_NO_B_ADV:
     ; Bonus: rank 2 = +25, rank 3 = +50, rank 4 = +90, rank 5 = +140, rank 6 = +200, rank 7 = +250
     ; ==================================================================
 
+    ; --- White-outgunned flag (2026-06-16) ---
+    ; Outgunned iff black has MORE heavy pieces (rooks+queens) than white. Replaces
+    ; the old binary "white has A rook" test, which read 1-rook-vs-2-rooks as
+    ; not-outgunned and over-valued the f6 passer (+910 in a dead-lost two-rook-down
+    ; game). Signed delta = B_heavy - W_heavy in R7.0; >0 => outgunned. Stored in
+    ; EVAL_TEMP1 (free here: CALC_MAT done, king-edge runs later); read by the
+    ; discount + runner gates below. R7/R8/R10 + M(R2) scratch; long branches only.
+    LDI 0
+    PLO 7                   ; delta = 0
+    RLDI 10, EVAL_B_ROOK_F1
+    LDN 10
+    XRI $FF
+    LBZ OG_B2               ; no black rook in slot 1
+    GLO 7
+    ADI 1
+    PLO 7
+OG_B2:
+    RLDI 10, EVAL_B_ROOK_F2
+    LDN 10
+    XRI $FF
+    LBZ OG_BQ               ; no black rook in slot 2
+    GLO 7
+    ADI 1
+    PLO 7
+OG_BQ:
+    RLDI 10, B_QUEEN_CNT
+    LDN 10
+    STR 2
+    GLO 7
+    ADD                     ; delta += B_QUEEN_CNT
+    PLO 7
+    RLDI 10, EVAL_W_ROOK_F1
+    LDN 10
+    XRI $FF
+    LBZ OG_W2               ; no white rook in slot 1
+    GLO 7
+    SMI 1
+    PLO 7
+OG_W2:
+    RLDI 10, EVAL_W_ROOK_F2
+    LDN 10
+    XRI $FF
+    LBZ OG_WQ               ; no white rook in slot 2
+    GLO 7
+    SMI 1
+    PLO 7
+OG_WQ:
+    RLDI 10, W_QUEEN_CNT
+    LDN 10
+    STR 2
+    GLO 7
+    SM                      ; delta -= W_QUEEN_CNT  (D=delta, M=wq, SM=D-M)
+    PLO 7
+    LBZ OG_NOT              ; delta == 0 -> not outgunned
+    ANI $80
+    LBNZ OG_NOT             ; delta < 0 (white ahead) -> not outgunned
+    LDI 1
+    LBR OG_STORE
+OG_NOT:
+    LDI 0
+OG_STORE:
+    RLDI 10, EVAL_TEMP1
+    STR 10                  ; EVAL_TEMP1 = outgunned flag (1=outgunned, 0=not)
+
     ; --- White passed pawns ---
     LDI 0
     PLO 13              ; R13.0 = file counter (0-7)
@@ -1508,19 +1572,12 @@ PP_W_ADD:
     LBZ PP_W_SCALE      ; W queen, B no queen -> conversion -> scale 1/4
     LBR PP_W_ADD_GO     ; both have queens -> full bonus
 PP_W_OUTGUN:
-    ; W has no queen. Outgunned iff B has a rook or queen AND W has no rook.
-    RLDI 8, B_QUEEN_CNT
+    ; Outgunned (precomputed EVAL_TEMP1 flag): black has more heavy pieces than
+    ; white -> passer is stoppable/uncompensating -> scale to 1/4. (Replaces the
+    ; old binary "white has a rook" test that was blind to 1-vs-2 rooks.)
+    RLDI 8, EVAL_TEMP1
     LDN 8
-    LBNZ PP_W_OG_WROOK  ; B has queen -> B is heavy
-    RLDI 8, EVAL_B_ROOK_F1
-    LDN 8
-    XRI $FF
-    LBZ PP_W_ADD_GO     ; B has no rook & no queen -> not outgunned -> full
-PP_W_OG_WROOK:
-    RLDI 8, EVAL_W_ROOK_F1
-    LDN 8
-    XRI $FF
-    LBNZ PP_W_ADD_GO    ; W has a rook to support -> not outgunned -> full
+    LBZ PP_W_ADD_GO     ; flag 0 = not outgunned -> full bonus
 PP_W_SCALE:
     LDN 2               ; scale passed bonus to 1/4
     SHR
@@ -1548,13 +1605,9 @@ PP_W_ADD_GO:
     ; advanced into a square fronted by our OWN clearable piece — e.g. the rook on
     ; c7 ahead of the c-pawn — so white wouldn't push. The escalating rank bonus
     ; drives advancing; the search handles genuine enemy blockades.)
-    RLDI 8, W_QUEEN_CNT
+    RLDI 8, EVAL_TEMP1
     LDN 8
-    LBNZ PP_W_RUN_OK        ; white has a queen
-    RLDI 8, EVAL_W_ROOK_F1
-    LDN 8
-    XRI $FF
-    LBZ PP_W_NEXT           ; no white rook & no queen -> outgunned -> skip
+    LBNZ PP_W_NEXT          ; outgunned (precomputed) -> skip runner bonus
 PP_W_RUN_OK:
     GHI 7
     SHR
