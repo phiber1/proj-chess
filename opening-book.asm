@@ -691,10 +691,14 @@ OPENING_BOOK:
     ; clean). Consistent with our French Advance treatment.
     DB $08, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $40, $30, $06, $25, $62, $42, $34, $44
 
-    ; Ply 8: e2e4 e7e6 d2d4 a7a5 b1c3 d7d5 e4e5 c7c5 -> c2c3 (Advance wedge)
-    ; Continues the French + ...a5 + ...d5 + e5 line. Black attacks d4 with
-    ; ...c5; classical French Advance reply is c3 supporting d4.
-    DB $08, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $63, $43, $34, $44, $62, $42, $12, $22
+    ; Ply 8: e2e4 e7e6 d2d4 a7a5 b1c3 d7d5 e4e5 c7c5 -> g1f3 (develop)
+    ; Continues the French + ...a5 + ...d5 + e5 line. Black attacks d4 with ...c5.
+    ; FIX 2026-06-17: response was c2c3 ($12,$22) -- ILLEGAL here because this
+    ; sibling already played b1c3 (Nc3), so c3 is occupied by our own knight (the
+    ; c3-wedge reply was copied from the no-Nc3 siblings by mistake; it caused an
+    ; illegal-move forfeit in a live match). Replaced with g1f3 (Nf3): develops and
+    ; meets ...cxd4 with Nxd4. Verified legal; book legality sweep now clean.
+    DB $08, $14, $34, $64, $54, $13, $33, $60, $40, $01, $22, $63, $43, $34, $44, $62, $42, $06, $25
 
     ; --- Opponent-prep addition (2026-04-27) ---
     ; Ply 8: e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 d8a5 -> g1f3 (French Advance, Wade variation)
