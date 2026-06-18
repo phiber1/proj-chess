@@ -46,7 +46,11 @@ STORM_PEN:
 ; our-queen-to-our-king Chebyshev dist). Makes bringing the queen home beat
 ; abandoning it. net_storm = max(0, STORM_PEN - DEFENSE_CREDIT).
 DEFENSE_CREDIT:
-    DB 0, 80, 60, 40, 20, 0, 0, 0   ; dist 0..7
+    DB 0, 0, 0, 0, 0, 0, 0, 0        ; dist 0..7 — ZEROED 2026-06-17: the queen-
+    ; near-king reward was net-negative (gluing the white queen home -> passivity,
+    ; and it literally paid for the caging queen in the 6/17 suffocation mate).
+    ; KING_SAFETY logic unchanged (net_storm = max(0, STORM - 0) = STORM). Restore
+    ; these values (0,80,60,40,20,0,0,0) to revert.
 ; Racing-passer bonus (2026-06-13): EXTRA value for an advanced white passer with a
 ; clear front, ramping toward queen value so white pushes it (the d5 search can't
 ; see the promotion). Indexed by rank-5/6/7. 16-bit (big-endian DW) — > one byte.
