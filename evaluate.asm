@@ -923,6 +923,43 @@ EVAL_NO_W_CASTLE:
 EVAL_NO_B_CASTLE:
 
     ; ==================================================================
+    ; Queen mobility (2026-06-17, always-on): low magnitude (mobility x2 = ~2cp/
+    ; square) to break ties toward an active queen without overriding material or
+    ; distorting trades. Tunable: SHL=x2 (start), SHL SHL=x4. Watch in matches for
+    ; premature queen sorties (the one real risk). See QUEEN_MOBILITY.
+    ; ==================================================================
+    RLDI 8, W_QUEEN_SQ
+    LDN 8
+    PLO 7                   ; R7.0 = white queen sq
+    XRI $FF
+    LBZ QMOB_BLACK          ; no white queen, skip
+    CALL QUEEN_MOBILITY     ; D = mobility (0..27)
+    SHL                     ; x2 (low magnitude)
+    STR 2
+    GLO 9
+    ADD
+    PLO 9
+    GHI 9
+    ADCI 0
+    PHI 9                   ; R9 += white queen mobility x2
+QMOB_BLACK:
+    RLDI 8, B_QUEEN_SQ
+    LDN 8
+    PLO 7                   ; R7.0 = black queen sq
+    XRI $FF
+    LBZ QMOB_DONE           ; no black queen, skip
+    CALL QUEEN_MOBILITY
+    SHL                     ; x2
+    STR 2
+    GLO 9
+    SM                      ; D = R9.0 - mobility x2
+    PLO 9
+    GHI 9
+    SMBI 0
+    PHI 9                   ; R9 -= black queen mobility x2
+QMOB_DONE:
+
+    ; ==================================================================
     ; Doubled Pawn Penalty: -15cp per extra pawn on same file
     ; Iterate 8 files; if count >= 2, penalty += (count - 1) * 15
     ; ==================================================================
@@ -2252,6 +2289,55 @@ KS_RET:
 KS_ZERO:
     LDI 0
     RETN
+
+; ------------------------------------------------------------------------------
+; QUEEN_MOBILITY - count empty squares the queen commands (8-direction ray walk).
+; The RIGHT instrument for queen activity (2026-06-17): rewards an active/safe queen
+; (high mobility), penalizes an idle OR self-caged queen (low mobility), and never
+; pays for a sac (a queen moving where it's captured has the SEARCH reject it, not
+; this term). Pure mobility -- no per-square attack check (too costly mid-game); the
+; search handles tactics. Symmetric (white adds, black subtracts) so a queen trade is
+; ~mobility-neutral UNLESS our queen is the less active one, in which case the term
+; correctly nudges us to trade it off.
+; In:  R7.0 = queen square (0x88; caller guarantees != $FF). Out: D = mobility 0..27.
+; Uses R8,R10,R11,R13. Preserves R9,R12. X=2 (mirrors KING_SAFETY).
+; ------------------------------------------------------------------------------
+QUEEN_MOBILITY:
+    SEX 2
+    LDI 0
+    PLO 8                   ; R8.0 = mobility = 0
+    RLDI 10, QUEEN_DIRS     ; R10 -> 8-direction delta table
+    LDI 8
+    PLO 13                  ; R13.0 = directions remaining
+QM_DIR:
+    LDA 10                  ; D = delta, R10++
+    PHI 8                   ; R8.1 = delta
+    LDI HIGH(BOARD)
+    PHI 11
+    GLO 7
+    PLO 11                  ; R11 = &BOARD[queen sq]
+QM_STEP:
+    GLO 11
+    STR 2                   ; M(2) = current ray square (low byte)
+    GHI 8                   ; D = delta
+    ADD                     ; D = square + delta
+    PLO 11                  ; R11.0 = next ray square
+    ANI $88
+    LBNZ QM_NEXT            ; off board -> end this ray
+    LDN 11                  ; D = BOARD[next square]
+    LBNZ QM_NEXT            ; occupied -> blocked, end this ray
+    GLO 8
+    ADI 1
+    PLO 8                   ; empty -> mobility++
+    LBR QM_STEP
+QM_NEXT:
+    DEC 13
+    GLO 13
+    LBNZ QM_DIR
+    GLO 8                   ; D = mobility count
+    RETN
+QUEEN_DIRS:
+    DB DIR_N, DIR_S, DIR_E, DIR_W, DIR_NE, DIR_NW, DIR_SE, DIR_SW
 
 ; ==============================================================================
 ; End of Evaluation
