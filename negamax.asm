@@ -804,8 +804,17 @@ NEGAMAX_PLY_DONE:
     ; Returns: D = move count
     ; NOTE: R9 now points PAST the end of the move list!
 
-    ; Save move count to stack
-    STXD
+    ; Save move count to ply-indexed memory (NOT the stack — see LOOP_MOVE_CNT).
+    ; D = count from GENERATE_MOVES; R11 is movegen scratch (dead on return).
+    PLO 11             ; stash count in R11.0
+    RLDI 10, CURRENT_PLY
+    LDN 10             ; D = ply
+    ADI LOW(LOOP_MOVE_CNT)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_CNT)
+    PHI 10             ; R10 = &LOOP_MOVE_CNT[ply]
+    GLO 11             ; D = count
+    STR 10             ; LOOP_MOVE_CNT[ply] = count
 
     ; Reset R9 to START of ply-indexed move list (128 bytes per ply)
     RLDI 10, CURRENT_PLY
@@ -839,9 +848,13 @@ NEGAMAX_RESET_DONE:
     SMI 5               ; Check if ply >= 5
     LBDF NEGAMAX_SKIP_KILLER  ; Skip if ply >= 5
 
-    INC 2               ; Point to move count on stack
-    LDN 2               ; D = move count (peek, don't pop)
-    DEC 2               ; Restore stack pointer
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    ADI LOW(LOOP_MOVE_CNT)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_CNT)
+    PHI 10              ; R10 = &LOOP_MOVE_CNT[ply]
+    LDN 10              ; D = move count (read from memory)
     CALL ORDER_KILLER_MOVES
 
 NEGAMAX_SKIP_KILLER:
@@ -854,9 +867,13 @@ NEGAMAX_SKIP_KILLER:
     SMI 5               ; Check if ply >= 5
     LBDF NEGAMAX_SKIP_CAPTURE_ORDER  ; Skip if ply >= 5
 
-    INC 2               ; Point to move count on stack
-    LDN 2               ; D = move count (peek, don't pop)
-    DEC 2               ; Restore stack pointer
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    ADI LOW(LOOP_MOVE_CNT)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_CNT)
+    PHI 10              ; R10 = &LOOP_MOVE_CNT[ply]
+    LDN 10              ; D = move count (read from memory)
     CALL ORDER_CAPTURES_FIRST
 
 NEGAMAX_SKIP_CAPTURE_ORDER:
@@ -895,9 +912,8 @@ NEGAMAX_SKIP_CAPTURE_ORDER:
     STR 10                      ; TT_MOVE_LO = ITER_BEST_TO
 
 NEGAMAX_TT_ORDER_CALL:
-    INC 2               ; Peek move count from stack
-    LDN 2
-    DEC 2
+    ; (move-count peek removed: ORDER_TT_MOVE below is disabled, so nothing
+    ;  consumed it. When re-enabled, read LOOP_MOVE_CNT[ply] into D first.)
     ; --- ORDER_TT_MOVE disabled 2026-05-13 pending 32-bit TT hash widening ---
     ; The byte-order fix in ORDER_TT_MOVE (commit 8aa04e6) is correct, but
     ; enabling it surfaced a regression: with TT keyed on only 16 hash bits,
@@ -1029,9 +1045,13 @@ NEGAMAX_SKIP_FUTILITY:
     STR 10              ; LMR_MOVE_INDEX = 0
 
     ; Check if there are any legal moves
-    INC 2               ; Point R2 at move count
-    LDN 2               ; Peek at move count
-    DEC 2               ; Restore stack pointer
+    RLDI 10, CURRENT_PLY
+    LDN 10              ; D = ply
+    ADI LOW(LOOP_MOVE_CNT)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_CNT)
+    PHI 10              ; R10 = &LOOP_MOVE_CNT[ply]
+    LDN 10              ; D = move count (read from memory)
     LBNZ NEGAMAX_HAS_MOVES  ; Long branch (may cross page boundary)
     ; No legal moves - checkmate or stalemate
     LBR NEGAMAX_NO_MOVES
@@ -1041,10 +1061,14 @@ NEGAMAX_MOVE_LOOP:
     ; -----------------------------------------------
     ; Loop through all moves
     ; -----------------------------------------------
-    ; Restore move count
-    INC 2              ; Point R2 at move count
-    LDN 2              ; Peek at move count (don't pop)
-    DEC 2              ; Restore stack pointer
+    ; Read move count from ply-indexed memory
+    RLDI 10, CURRENT_PLY
+    LDN 10             ; D = ply
+    ADI LOW(LOOP_MOVE_CNT)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_CNT)
+    PHI 10             ; R10 = &LOOP_MOVE_CNT[ply]
+    LDN 10             ; D = move count (read from memory)
     LBZ NEGAMAX_RETURN  ; No moves left
 
     ; Get next move from list (big-endian: high byte first)
@@ -1911,10 +1935,11 @@ LMR_NO_RESEARCH:
 
     ; Pop depth from stack to SEARCH_DEPTH memory
     ; Stack has: depth_lo, depth_hi (depth_lo at lower addr)
-    ; R9 no longer on stack - depth_hi is directly below move_count
+    ; R9 no longer on stack; move count no longer on stack (LOOP_MOVE_CNT) —
+    ; depth_hi is now the TOP byte of this iteration's search-context frame.
     LDXA                ; D = depth_lo, R2 advances to depth_hi
     PLO 7               ; Temp
-    LDX                 ; D = depth_hi, R2 stays (one below move_count)
+    LDX                 ; D = depth_hi, R2 stays AT depth_hi (frame top)
     PHI 7               ; R7 = depth (temp: hi.lo)
     RLDI 13, SEARCH_DEPTH
     GHI 7
@@ -2052,12 +2077,16 @@ NEGAMAX_DO_BETA_CUTOFF:
     STR 10              ; BEST_MOVE[1] = to
 
 NEGAMAX_BETA_NOT_ROOT:
-    ; Decrement move count before returning
-    INC 2
-    LDN 2
+    ; Decrement move count (in ply-indexed memory) before returning
+    RLDI 10, CURRENT_PLY
+    LDN 10
+    ADI LOW(LOOP_MOVE_CNT)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_CNT)
+    PHI 10              ; R10 = &LOOP_MOVE_CNT[ply]
+    LDN 10
     SMI 1
-    STR 2
-    DEC 2
+    STR 10             ; LOOP_MOVE_CNT[ply]--
 
     ; Encode cutoff move into R11 for killer table
     ; (R11 has stale data from ORDER_CAPTURES_FIRST, not the actual move)
@@ -2281,22 +2310,27 @@ NEGAMAX_NEXT_MOVE:
     ; -----------------------------------------------
     ; Decrement move counter and continue loop
     ; -----------------------------------------------
-    IRX                ; Point to move_count
-    LDX                ; Pop move count (R2 at now-empty slot)
+    RLDI 10, CURRENT_PLY
+    LDN 10             ; D = ply
+    ADI LOW(LOOP_MOVE_CNT)
+    PLO 10
+    LDI HIGH(LOOP_MOVE_CNT)
+    PHI 10             ; R10 = &LOOP_MOVE_CNT[ply]
+    LDN 10             ; D = move count
     SMI 1              ; Decrement
+    STR 10             ; LOOP_MOVE_CNT[ply]-- (D still holds new value)
     LBZ NEGAMAX_LOOP_DONE ; If count == 0, exit loop (long branch)
-    STXD               ; Push decremented count
     LBR NEGAMAX_MOVE_LOOP
 
 NEGAMAX_LOOP_DONE:
-    ; Count reached 0 - R2 is AT move_count, need to put it BELOW
-    DEC 2              ; Now R2 is below move_count, matching Path A
+    ; Count (now in LOOP_MOVE_CNT[ply], not the stack) reached 0.
+    ; R2 was never perturbed by count management — no stack re-sync needed.
 
     ; Check if any legal move updated BEST_SCORE.
     ; If BEST_SCORE is still $8001 (initial sentinel), no legal move
     ; was found - all pseudo-legal moves left king in check.
     ; This is checkmate or stalemate; handle via NEGAMAX_NO_MOVES.
-    ; (Stack state matches: R2 below move_count, same as line 734 path)
+    ; (R2 is at the function-entry position; count is in LOOP_MOVE_CNT, not stack)
     RLDI 10, BEST_SCORE_HI
     LDA 10              ; D = BEST_SCORE_HI
     XRI $80
@@ -2313,10 +2347,9 @@ NEGAMAX_RETURN:
     ; -----------------------------------------------
     ; Return best score (from BEST_SCORE memory) via R9
     ; -----------------------------------------------
-    ; Skip move count (1 byte) - IRX moves R2 to AT move_count, then
-    ; CALL RESTORE will overwrite it with SCRT linkage. This effectively
-    ; "pops" move_count without needing to read it.
-    IRX
+    ; Move count now lives in LOOP_MOVE_CNT[ply], never on the stack, so R2
+    ; is already at the function-entry position here — no count byte to pop.
+    ; (Was: IRX to skip a stack-resident move count. See LOOP_MOVE_CNT.)
 
     ; Copy BEST_SCORE to SCORE memory BEFORE restore (RESTORE clobbers R9!)
     ; Best score is in BEST_SCORE_HI/LO, copy to SCORE_HI/LO for return

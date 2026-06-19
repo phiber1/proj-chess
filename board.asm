@@ -194,6 +194,14 @@ EVAL_SKIP_PST     EQU $64AA   ; 1 byte - flag: 1=skip PST in EVALUATE (for QS sp
 ;       UCI_STATE/HASH/TT variables, causing corruption at higher plies.
 LOOP_MOVE_PTR     EQU $64DB   ; 16 bytes - R9 save per ply ($64DB-$64EA)
 
+; Ply-indexed save for the move COUNT during the negamax move loop.
+; Was on the stack at M(R2+1), peeked every iteration — a single-byte stack
+; imbalance on any sub-call path shifted R2 and the loop ran past the move list
+; forever (the 2026-06-18 hang). Same lifetime as LOOP_MOVE_PTR (survives the
+; recursive CALL NEGAMAX), so ply-indexed identically. 1 byte/ply, 8 plies.
+; Free slot: STACK_OVERFLOW_FLAG=$64EE below, ADV_PAWN_W=$64FD above.
+LOOP_MOVE_CNT     EQU $64EF   ; 8 bytes - move count save per ply ($64EF-$64F6)
+
 ; ------------------------------------------------------------------------------
 ; Null Move Pruning: $64A7-$64A8
 ; ------------------------------------------------------------------------------
