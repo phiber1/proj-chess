@@ -517,11 +517,17 @@ EVAL_NOT_BISHOP_TRACK:
     LBNZ EVAL_WR_F2
     GHI 8               ; D = file
     STR 11              ; F1 = file
+    RLDI 11, EVAL_W_ROOK_SQ1
+    LDN 13              ; D = 0x88 square (R13 -> EVAL_SQ_INDEX, read-only)
+    STR 11              ; SQ1 = square (king-safety v3)
     LBR EVAL_NOT_ROOK_TRACK
 EVAL_WR_F2:
     RLDI 11, EVAL_W_ROOK_F2
     GHI 8
     STR 11              ; F2 = file
+    RLDI 11, EVAL_W_ROOK_SQ2
+    LDN 13              ; D = 0x88 square (R13 -> EVAL_SQ_INDEX, read-only)
+    STR 11              ; SQ2 = square (king-safety v3)
     LBR EVAL_NOT_ROOK_TRACK
 EVAL_BROOK_TRACK:
     ; Black rook: store in F1 or F2
@@ -531,11 +537,17 @@ EVAL_BROOK_TRACK:
     LBNZ EVAL_BR_F2
     GHI 8
     STR 11
+    RLDI 11, EVAL_B_ROOK_SQ1
+    LDN 13              ; D = 0x88 square (R13 -> EVAL_SQ_INDEX, read-only)
+    STR 11              ; SQ1 = square (king-safety v3)
     LBR EVAL_NOT_ROOK_TRACK
 EVAL_BR_F2:
     RLDI 11, EVAL_B_ROOK_F2
     GHI 8
     STR 11
+    RLDI 11, EVAL_B_ROOK_SQ2
+    LDN 13              ; D = 0x88 square (R13 -> EVAL_SQ_INDEX, read-only)
+    STR 11              ; SQ2 = square (king-safety v3)
 EVAL_NOT_ROOK_TRACK:
 
     ; --- QUEEN: count + remember square (for redundant-queen cap and proximity bonus) ---

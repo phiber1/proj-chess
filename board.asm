@@ -185,6 +185,18 @@ LMR_OUTER         EQU $64A6   ; 1 byte - saved LMR_REDUCED (survives recursive c
 EVAL_SKIP_PST     EQU $64AA   ; 1 byte - flag: 1=skip PST in EVALUATE (for QS speed)
 
 ; ------------------------------------------------------------------------------
+; King-safety v3: rook SQUARES (0x88) for enemy-pressure proximity. $64AB-$64AE.
+; ------------------------------------------------------------------------------
+; The scan already tracks rook FILES (EVAL_*_ROOK_F1/F2) for open-file eval; v3
+; ALSO needs full squares for Chebyshev-to-king. Stored alongside the files in the
+; same rook-track branches (non-destructive LDN 13). VALID IFF the matching file var
+; != $FF (written in the same branch) — never read a SQ without checking its F first.
+EVAL_W_ROOK_SQ1   EQU $64AB   ; 1 byte - white rook 1 square (0x88)
+EVAL_W_ROOK_SQ2   EQU $64AC   ; 1 byte - white rook 2 square
+EVAL_B_ROOK_SQ1   EQU $64AD   ; 1 byte - black rook 1 square
+EVAL_B_ROOK_SQ2   EQU $64AE   ; 1 byte - black rook 2 square
+
+; ------------------------------------------------------------------------------
 ; Move Loop Pointer Save: $64DB-$64EA
 ; ------------------------------------------------------------------------------
 ; Ply-indexed save for R9 (move list pointer) during negamax move loop.
