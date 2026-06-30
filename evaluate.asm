@@ -1855,6 +1855,19 @@ KP_HAVE_DIST:
     LBNF EG_EDGE_DONE   ; score < 200, skip
 
 EG_DRIVE_BLACK:
+    ; MATE-MATERIAL GATE (2026-06-26): only drive if white holds a heavy piece
+    ; (rook or queen). A pawns/minors-only side has no mating material; driving
+    ; its king toward the enemy walks it into danger (the 6/26 phantom-passer king
+    ; march, eval +1080 then -2115 once the king was cornered). Score>200 alone is
+    ; self-referential — the phantom inflates the very score that trips the drive.
+    RLDI 11, EVAL_W_ROOK_F1
+    LDN 11
+    XRI $FF
+    LBNZ EG_DB_GO       ; white has a rook -> drive ok
+    RLDI 11, W_QUEEN_CNT
+    LDN 11
+    LBZ EG_EDGE_DONE    ; no rook AND no queen -> no mate material, skip drive
+EG_DB_GO:
     ; White winning — penalize black king for being in center
     ; R15.1 = black king index (saved during centralization)
     GHI 15              ; D = black king 0-63 index
@@ -1898,6 +1911,16 @@ EG_CHECK_BLACK:
     LBDF EG_EDGE_DONE   ; score > -201, not winning enough
 
 EG_DRIVE_WHITE:
+    ; MATE-MATERIAL GATE (2026-06-26): symmetric to EG_DRIVE_BLACK — only drive if
+    ; black holds a heavy piece (rook or queen). No mate material -> don't march.
+    RLDI 11, EVAL_B_ROOK_F1
+    LDN 11
+    XRI $FF
+    LBNZ EG_DW_GO       ; black has a rook -> drive ok
+    RLDI 11, B_QUEEN_CNT
+    LDN 11
+    LBZ EG_EDGE_DONE    ; no rook AND no queen -> no mate material, skip drive
+EG_DW_GO:
     ; Black winning — penalize white king for being in center
     ; R15.0 = white king index (saved during centralization)
     GLO 15              ; D = white king 0-63 index
