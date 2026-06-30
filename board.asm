@@ -231,6 +231,10 @@ EVAL_B_ROOK_F2    EQU $64B4   ; 1 byte - second black rook's file
 ; Queen counts (for redundant-queen cap: extra queens past the first score 0 cp)
 W_QUEEN_CNT       EQU $64B5   ; 1 byte - white queen count
 B_QUEEN_CNT       EQU $64B6   ; 1 byte - black queen count
+B_HAS_PIECE       EQU $64B7   ; 1 byte - 1 if black has any non-pawn piece (N/B/R/Q)
+                              ;   set in the eval scan; used by the white RUNNER_BONUS
+                              ;   "clear-run" gate (only race a passer if the enemy has
+                              ;   nothing to stop it). Reset each EVALUATE call.
 ; Queen squares (last queen seen, for queen-king proximity bonus). $FF = no queen.
 W_QUEEN_SQ        EQU $6720   ; 1 byte - 0x88 square of white queen ($FF if none)
 B_QUEEN_SQ        EQU $6721   ; 1 byte - 0x88 square of black queen ($FF if none)

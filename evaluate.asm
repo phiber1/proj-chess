@@ -298,6 +298,8 @@ EVAL_CLR_PAWN_CT:
     STR 11              ; W_QUEEN_CNT = 0
     INC 11
     STR 11              ; B_QUEEN_CNT = 0
+    INC 11
+    STR 11              ; B_HAS_PIECE = 0 ($64B7, runner clear-run flag; D still 0)
     ; Rook files = $FF (no rook); queen squares also default to $FF (no queen)
     LDI $FF
     RLDI 11, EVAL_W_ROOK_F1
@@ -345,6 +347,19 @@ EVAL_SCAN:
     LDN 11
     ADI 1
     STR 11
+
+    ; Flag if BLACK has any non-pawn piece (N/B/R/Q) — the white RUNNER_BONUS
+    ; clear-run gate (2026-06-26). type in R8.0 (1-5; king already skipped), color
+    ; in R15. Set is idempotent; R11/D clobbered (both reloaded below).
+    GLO 8
+    SMI 2               ; type - 2  (DF=0 if type < 2, i.e. pawn)
+    LBNF EVAL_HP_DONE   ; pawn -> not a piece, skip
+    GLO 15              ; color (0=white, 8=black)
+    LBZ EVAL_HP_DONE    ; white piece -> only black is tracked here
+    RLDI 11, B_HAS_PIECE
+    LDI 1
+    STR 11              ; B_HAS_PIECE = 1
+EVAL_HP_DONE:
 
     ; Check if pawn for advanced pawn bonus (graduated)
     GLO 8               ; piece type (1-5)
@@ -1609,9 +1624,15 @@ PP_W_ADD_GO:
     ; advanced into a square fronted by our OWN clearable piece — e.g. the rook on
     ; c7 ahead of the c-pawn — so white wouldn't push. The escalating rank bonus
     ; drives advancing; the search handles genuine enemy blockades.)
-    RLDI 8, EVAL_TEMP1
+    ; CLEAR-RUN GATE (2026-06-26): only race the passer if BLACK has NO piece to
+    ; stop it (N/B/R/Q). Replaces the old heavy-only "outgunned" gate, which let an
+    ; enemy KNIGHT/BISHOP blockade (e.g. Nd6 covering c8) still draw the full +600
+    ; rank-7 escalation -> the 6/26 phantom-passer +1080 read. The general passed-pawn
+    ; bonus still values the passer when pieces are present; only the toward-queen
+    ; escalation is reserved for genuine clear runs the d5 horizon can't tempo-count.
+    RLDI 8, B_HAS_PIECE
     LDN 8
-    LBNZ PP_W_NEXT          ; outgunned (precomputed) -> skip runner bonus
+    LBNZ PP_W_NEXT          ; black has a piece (not a clear run) -> skip runner bonus
 PP_W_RUN_OK:
     GHI 7
     SHR
