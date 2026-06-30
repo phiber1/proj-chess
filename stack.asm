@@ -37,100 +37,11 @@
 ;   top); reclaimed for SEE.
 
 ; ------------------------------------------------------------------------------
-; PUSH16 - Push 16-bit value onto stack
-; ------------------------------------------------------------------------------
-; Input:  6 = 16-bit value to push
-; Output: Stack updated, 2 decremented by 2
-; Uses:   None (6 preserved)
-; ------------------------------------------------------------------------------
-; PUSH16_R5 - REMOVED: R5 is SRET in BIOS mode, never touch it!
-; PUSH16_R6 - REMOVED: R6 is SCRT linkage, corrupted by every CALL!
-
-PUSH16_R7:
-    GLO 7
-    STXD
-    GHI 7
-    STXD
-    RETN
-
-PUSH16_R8:
-    GLO 8
-    STXD
-    GHI 8
-    STXD
-    RETN
-
-PUSH16_R9:
-    GLO 9
-    STXD
-    GHI 9
-    STXD
-    RETN
-
-PUSH16_RB:
-    GLO 11
-    STXD
-    GHI 11
-    STXD
-    RETN
-
-PUSH16_RC:
-    GLO 12
-    STXD
-    GHI 12
-    STXD
-    RETN
-
-; ------------------------------------------------------------------------------
-; POP16 - Pop 16-bit value from stack
-; ------------------------------------------------------------------------------
-; Input:  Stack pointer at saved value
-; Output: 6 = popped value, 2 incremented by 2
-; Uses:   D
-; ------------------------------------------------------------------------------
-; POP16_R5 - REMOVED: R5 is SRET in BIOS mode, never touch it!
-; POP16_R6 - REMOVED: R6 is SCRT linkage, corrupted by every CALL!
-
-POP16_R7:
-    IRX
-    LDXA
-    PHI 7
-    LDX
-    PLO 7
-    RETN
-
-POP16_R8:
-    IRX
-    LDXA
-    PHI 8
-    LDX
-    PLO 8
-    RETN
-
-POP16_R9:
-    IRX
-    LDXA
-    PHI 9
-    LDX
-    PLO 9
-    RETN
-
-POP16_RB:
-    IRX
-    LDXA
-    PHI 11
-    LDX
-    PLO 11
-    RETN
-
-POP16_RC:
-    IRX
-    LDXA
-    PHI 12
-    LDX
-    PLO 12
-    RETN
-
+; PUSH16_R{7,8,9,B,C} / POP16_R{7,8,9,B,C} - REMOVED 2026-06-26: zero call-sites
+;   (referenced only in their own comments). Leftover from before the engine moved
+;   to memory-based context saving (ply-state array + LOOP_MOVE_PTR/CNT). Reclaimed
+;   55 bytes ($0098-$00CE) for the endgame-eval Fix A1 knight-count work.
+;   (R5/R6 variants were never created: R5=SRET, R6=SCRT linkage.)
 ; ------------------------------------------------------------------------------
 ; SAVE_SEARCH_CONTEXT / RESTORE_SEARCH_CONTEXT - REMOVED (Dec 28, 2025)
 ; ------------------------------------------------------------------------------
