@@ -213,7 +213,11 @@ exit, LEAF (no internal CALL — confirmed: v2 uses none; v3 design uses none ei
 DANGER = PRESSURE × LUFT_FACTOR can't use a multiply. Resolution: a **2-D lookup table**,
 no multiply, fully tunable (matches v2 "table lookups only"):
 - PRESSURE clamped to 2 bits (0..3): queen weight 2, rook weight 1 → raw 0..4, clamp 3.
-- LUFT count 0..8 clamped to low 3 bits (0..7; 8→7, both = maximally safe).
+- LUFT count 0..8 clamped to 0..7 (8→7, both = maximally safe).
+  **>>> IMPLEMENTATION TRAP (cold-review 2026-07-02): the clamp MUST SATURATE — an
+  explicit compare-and-cap (SMI 8 / LBNF ok / LDI 7), NEVER `ANI $07`. Masking maps
+  luft 8 → index 0, i.e. a bare king in the open (8 empty neighbors — every KQK/bare-
+  king endgame) would read as MAXIMALLY TRAPPED = max danger. Probe #6 exercises this.**
 - index = (pressure_clamp << 3) | luft_clamp  → 0..31. `DANGER_V3_TABLE` = 32 bytes.
 - Shift+OR index = NO multiply. Table encodes "low pressure OR high luft → ~0; high
   pressure AND low luft → high danger" directly; tuning = edit 32 bytes. Replaces the
@@ -222,16 +226,28 @@ no multiply, fully tunable (matches v2 "table lookups only"):
 ### >>> DISTANCE-THRICE structure — design decision <<<
 Pressure tests up to 3 enemy pieces (Q,R1,R2). Inlining the ~40 B Chebyshev block 3×
 (~120 B) blows the page budget. Resolution: **one inline distance in a LOOP body** over
-the (≤3) present enemy heavy pieces. Uniform proximity test for BOTH Q and R:
-  bears = (filediff<=ZONE_R AND rankdiff<=ZONE_R) OR filediff==0 OR rankdiff==0
-(same-file/rank covers back-rank/file pressure for rooks AND long queen lines; Chebyshev
-covers near/diagonal). Only the WEIGHT differs (Q=2,R=1). One distance code site, run ≤3×.
-Keeps pressure phase ~60-80 B.
+the (≤3) present enemy heavy pieces, PER-PIECE bears test (one branch on the weight):
+  QUEEN: bears = (filediff<=ZONE_R AND rankdiff<=ZONE_R)              [Chebyshev only]
+  ROOK:  bears = Chebyshev<=ZONE_R  OR filediff==0 OR rankdiff==0     [+ file/rank]
+**>>> AMENDED (cold-review 2026-07-02): an earlier draft used a UNIFORM test (same-
+file/rank for the queen too). REJECTED — it contradicts the ENEMY_PRESSURE algorithm
+section above and widens the castled-king false-positive surface: a blocked queen
+anywhere on the king's file (e.g. fianchetto Qg7 vs Kg1) or an UNMOVED Rh8 vs a Kh1
+tuck (six blockers between) would fire persistent phantom pressure. Same-file/rank is
+blocker-blind; restrict it to ROOKS (back-rank/file is THE rook pattern and worth the
+false positives there; for the queen, Chebyshev already covers real proximity).**
+The per-piece branch costs only a few bytes inside the one distance site, run ≤3×.
+Keeps pressure phase ~65-85 B. Note: the rook same-FILE half can compare the already-
+stored FILE vars directly (no square math) — squares are needed for Chebyshev + rank.
 
 ### Size budget (must fit 256 B page)
-pressure loop+dist ~80 · luft 8-neighbor loop ~40 · combine/clamp/index ~25 · enemy-set
-select ~12 · DANGER_V3_TABLE 32 · weights/consts ~4  →  **~190 B / 256.** ~66 B margin.
-If tight: move DANGER_V3_TABLE to the $5FC0 code tail (64 B free) referenced cross-segment.
+pressure loop+dist ~85 · luft 8-neighbor loop ~40 · combine/clamp/index ~25 · enemy-set
+select ~12 · DANGER_V3_TABLE 32 · weights/consts ~4 · **shield fold-in ~30-40 (3 ahead-
+squares by color + SHIELD_PEN add — decided AFTER the original ~190 estimate, now
+counted)** → **~230 B / 256, ~26 B margin** (was optimistically ~190/66).
+If tight: move DANGER_V3_TABLE to the code tail — **now $5FAD with 82 B free**
+(post-mobility 3b717e8; the "$5FC0 / 64 B" figures above predate the serial reclaim),
+referenced cross-segment. The fallback is healthier than originally specced.
 
 ### Page-straddle
 Entire routine in ONE page ($7B00-$7BFF) ⇒ every SHORT branch target is in-page → no
@@ -257,6 +273,12 @@ on the 3 ahead-squares, as v2 did) — one walk, no second scan. Composition:
 Both terms pressure-gated (a cracked shield with NO enemy heavy piece = not in danger).
 SHIELD_PEN additive (pawn cover), luft table multiplicative-core (mating-net proxy).
 
+**>>> OUTPUT-BYTE CONSTRAINT (cold-review 2026-07-02):** the routine returns ONE byte
+(D = 0..255). SHIELD_PEN max = 100 (evaluate.asm:41, missing=3). Therefore
+**DANGER_V3_TABLE entries MUST be <= 155 by construction** so the sum can never wrap —
+same rule v2 documents at evaluate.asm:40 ("max SHIELD(100)+STORM(150)=250 fits one
+byte"). Enforce in the table bytes, not with a runtime saturate (free vs ~6 B).
+
 **>>> CRITICAL TUNING RISK #1 (found in design — the castled-king false positive) <<<**
 The cheap luft proxy counts intact SHIELD PAWNS as escape-blockers, so a SAFE castled
 Kg1 (f2/g2/h2 + Rf1) has luft 0-1. If an enemy queen wanders within ZONE_R — e.g. Qd4 is
@@ -269,6 +291,13 @@ Chebyshev 3 from g1, a NORMAL central queen NOT attacking g1 — pressure fires 
   cancel. Probe #1 (both kings castled, queens on) MUST read ~0 → tune the table until it
   does, THEN verify the boxed-king (mode B) still reads high. This is the make-or-break
   tuning loop; budget for several table iterations.
+- **EXPECTATION (cold-review 2026-07-02): with the steep table, a normal castled TARGET
+  king already has luft ~2 → factor ~0. So v3 in practice is almost entirely DEFENSE
+  (don't get boxed) + PHANTOM-OFFENSE REMOVAL; it will RARELY award attack credit.
+  That is the intended trade — do not be surprised post-v3 that ELPH doesn't attack
+  MORE, and do not "fix" it by flattening the table (that re-opens risk #1). Queen
+  activity is mobility's job now (3b717e8), which also means retiring QUEEN_PROX_BONUS
+  no longer leaves the queen with zero activity terms — sequencing is safe.**
 
 **>>> KNOWN LIMITATION, ACCEPTED FOR v1 (deferred per fork 3) <<<**
 The cheap proxy MISSES back-rank mate: Kg8 + intact f7/g7/h7 (missing=0) + enemy R on the
@@ -288,8 +317,8 @@ the eval term just doesn't pre-warn it.)
   COMPARE_TEMP-style named scratch).
 - Integration: called at QP_B_DONE (~evaluate.asm:865) where KS v2 is now, white then
   black; replaces the two CALL KING_SAFETY sites.
-- Byte estimate: luft loop (~40 B) + enemy-pressure (~60-100 B depending on decision 1)
-  + tables (~16 B) -> ~120-160 B, fits $7B00 with margin.
+- Byte estimate: SUPERSEDED — see "Size budget" in the static audit (~230 B / 256 incl.
+  the shield fold-in; the ~120-160 figure predated the 2-D table + shield decisions).
 
 ## Validation plan (probe BEFORE match, per process discipline)
 
@@ -300,5 +329,13 @@ the eval term just doesn't pre-warn it.)
    negative BEFORE the mate, early enough to avoid the box.
 4. queen-a6 + two-rook positions — danger must now fire (rook-aware, not queen-radius-bound).
 5. Build clean (grep "^[A-Z]" chess-engine.lst), opcode-verify, THEN match-test.
+6. **Bare-king/KQK probe (added cold-review 2026-07-02):** a lone king in the open vs
+   K+Q (e.g. tools/test_amplifier_kvskq.uci). Exercises the luft=8 SATURATE trap
+   directly (mask bug → lone king reads max-trapped → danger spike) AND confirms v3
+   doesn't perturb the KQK eval stability the resign-adjudication work depends on.
+7. **No-clobber sanity (added cold-review 2026-07-02):** same integration check used for
+   queen mobility — run test_hang_caro.uci pre/post; evals may move (behavior change)
+   but bestmove should stay sane and node counts plausible; any wild eval (|>2000| in a
+   quiet position) = R9/R12 clobber suspect. The v2 R12 bug is the canary.
 
 All probes: UCI movelist only (no FEN). Compare at EQUAL depth (the recurring anchor bug).
