@@ -139,6 +139,11 @@ def analyze_game(path):
 def classify(g):
     if g["mat_elph"] is None:
         return "UNREPLAYABLE"
+    # the movelist always ends with ELPH's own bestmove, so a checkmate final
+    # position means ELPH delivered the mate — a win regardless of material
+    # (win #31 2026-07-02: mate with material at only +100 -> read BALANCED)
+    if g["mate"]:
+        return "WON-MATE"
     if g["mat_elph"] <= LOSING_CP:
         return "LOSING"
     if g["mat_elph"] >= -LOSING_CP:
@@ -205,10 +210,12 @@ def main(paths, csv=False):
           f"({100*len(long_g)//n}%)   [pre-A+B corpus baseline: 49%]")
     if long_g:
         losing  = [g for g in long_g if classify(g) == "LOSING"]
-        winning = [g for g in long_g if classify(g) == "WINNING"]
+        winning = [g for g in long_g if classify(g) in ("WINNING", "WON-MATE")]
         bal     = [g for g in long_g if classify(g) == "BALANCED"]
+        mated   = [g for g in long_g if classify(g) == "WON-MATE"]
         print(f"  of LONG: LOSING {len(losing)} ({100*len(losing)//len(long_g)}%) "
-              f"WINNING {len(winning)} BALANCED {len(bal)}   [baseline: 59/21/20%]")
+              f"WINNING {len(winning)} (incl {len(mated)} on-board mates) "
+              f"BALANCED {len(bal)}   [baseline: 59/21/20%]")
         if losing:
             from collections import Counter
             c = Counter(resign_bucket(g) for g in losing)
@@ -220,9 +227,14 @@ def main(paths, csv=False):
                 avg = statistics.mean(g["tail_pct"][t] for g in bal)
                 print(f"  BALANCED drawn-shuffle: avg {avg:.0f}% of tail evals "
                       f"within +/-{t}cp   [baseline: 12% @10, 20% @50]")
-    phantoms = [g for g in games if g["phantom"] is not None and g["phantom"] > 300]
-    print(f"PHANTOM-EVAL games (tail eval > material +300cp, the old Fix-B signature): "
-          f"{len(phantoms)}")
+    # a positive phantom is only pathological when the game did NOT end in ELPH's
+    # favor — in a won attack the eval legitimately leads material (passer/mating
+    # attack, e.g. win #31's +541 before a8=Q#). Only flag non-wins.
+    phantoms = [g for g in games
+                if g["phantom"] is not None and g["phantom"] > 300
+                and classify(g) not in ("WINNING", "WON-MATE")]
+    print(f"PHANTOM-EVAL games (tail eval > material +300cp in a NON-WON game, "
+          f"the old Fix-B signature): {len(phantoms)}")
     for g in phantoms:
         print(f"  ! {g['path'].split('/')[-1]}  phantom={g['phantom']:+.0f}  "
               f"(eval says better than material by this much — investigate)")
