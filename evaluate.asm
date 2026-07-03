@@ -1807,6 +1807,10 @@ PP_B_SUB:
     ; white queened into a loss. Walk toward rank 1; check both adjacent files each
     ; rank. R10.0 = black pawn square (from the rank scan above).
     GLO 10
+    ANI $70
+    PHI 7               ; R7.1 = rank nibble stash for the runner ramp at PP_B_APPLY
+                        ; (R10.0 is clobbered by the adjacent-file walk below)
+    GLO 10
     PLO 7               ; R7.0 = scan square
 PP_B_RA_LOOP:
     GLO 7
@@ -1843,6 +1847,47 @@ PP_B_APPLY:
     GHI 9
     SMBI 0
     PHI 9               ; R9 -= passed pawn bonus (black advantage)
+
+    ; --- Racing-passer bonus, BLACK mirror (2026-07-02, task #51): the white-only
+    ; RUNNER_BONUS left ELPH BLIND to ENEMY runners (corpus: 12/122 games read >=0
+    ; while an enemy pawn stood one step from queening; the 7/2 adjudicated loss
+    ; read +455 during black's a4-a3-a2 run, then cliffed -2734 on a1=R). Same
+    ; rationale as the white ramp: the d5 horizon can't see the promotion, so the
+    ; eval must. Advanced = black pawn on rank 4/3/2 (black's 5th/6th/7th), same
+    ; 150/350/600 table. ESCORT GATE mirrored: fire unless BLACK is behind in
+    ; pieces (PIECE_BALANCE > 0); white gate skips on sign set, black skips on
+    ; positive nonzero. R7.1 = rank nibble (stashed at PP_B_SUB).
+    GHI 7               ; rank nibble $10..$60
+    SDI $30             ; D = $30 - nib; borrow (DF=0) if nib > $30 (rank > 4)
+    LBNF PP_B_NEXT      ; not advanced -> no runner
+    PHI 7               ; R7.1 = $00/$10/$20 for rank 4/3/2
+    RLDI 8, PIECE_BALANCE
+    LDN 8
+    LBZ PP_B_RUN_OK     ; balance 0 -> equal force -> escort ok
+    ANI $80
+    LBZ PP_B_NEXT       ; balance > 0 -> BLACK behind in pieces -> skip runner
+PP_B_RUN_OK:
+    GHI 7
+    SHR
+    SHR
+    SHR                 ; D = DW offset (0,2,4)
+    ADI LOW(RUNNER_BONUS)
+    PLO 8
+    LDI HIGH(RUNNER_BONUS)
+    ADCI 0
+    PHI 8
+    LDA 8               ; bonus hi (big-endian DW)
+    PHI 7
+    LDN 8               ; bonus lo
+    STR 2
+    GLO 9
+    SM                  ; R9.lo -= bonus lo
+    PLO 9
+    GHI 7               ; bonus hi
+    STR 2
+    GHI 9
+    SMB                 ; R9.hi -= bonus hi - borrow
+    PHI 9
 
 PP_B_NEXT:
     INC 11              ; next B_PAWN_FILE_CT entry
