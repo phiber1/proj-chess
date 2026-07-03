@@ -1,6 +1,6 @@
 # RCA 1802/1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate five times.
+A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate 31 times — including its first pure-technique mate (queen + knight coordination, no promotion required) in July 2026.
 
 ## Quick Stats
 
@@ -8,76 +8,82 @@ A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly lan
 |------|-------|
 | **CPU** | RCA CDP1806 @ 12 MHz |
 | **RAM** | 32KB |
-| **Code Size** | ~23.6KB (23,632 bytes) |
-| **Search** | Adaptive iterative deepening, depth 2-3 (extends to 4 when time allows) |
-| **Opening Book** | 478 entries, 8 openings + opponent-prep deviations, ply 14 deep |
+| **Code Size** | ~24KB (24,541 bytes) |
+| **Search** | Iterative deepening to depth 5, per-iteration time prediction |
+| **Opening Book** | 504 entries, 8 openings + opponent-prep deviations, ply 14 deep |
 | **Time Control** | 180 seconds per move (DS12887 RTC) |
-| **Wins vs Stockfish** | 5 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
+| **Wins vs Stockfish** | 31 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
 
-## Wins vs Stockfish
+## Wins vs Stockfish — firsts and highlights
 
-| # | Date | Opening | Result | Moves |
-|---|------|---------|--------|-------|
-| 1 | Feb 13, 2026 | Alekhine's Defense | Qg7# | 38 |
-| 2 | Mar 2, 2026 | Alekhine's Mokele Mbembe | Qg8# | 35 |
-| 3 | Mar 26, 2026 | Elephant Gambit | Rb8# | 36 |
-| 4 | Apr 21, 2026 | French Advance | Rf8# | 41 |
-| 5 | Apr 27, 2026 | Alekhine's Defense (Ng8 retreat) | Qxe7# | 17 |
+| # | Date | Highlight |
+|---|------|-----------|
+| 1 | Feb 13, 2026 | First win ever — Alekhine's Defense, Qg7# in 38 |
+| 5 | Apr 27, 2026 | Fastest win — Qxe7# in 17 moves |
+| 16 | May 18, 2026 | Marathon — 111 moves / 170 minutes, recovered from −395, two promotions |
+| 23 | Jun 2, 2026 | Validated the current stable engine base — coherent mate-in-30 conversion |
+| 30 | Jul 2, 2026 | **First pure-technique mate** — Q+N coordination, no promotion, monotonic eval start to finish |
+| 31 | Jul 2, 2026 | Mating attack at near-equal material — a-pawn runner to a8=Q, then Qg8# through the defender's own rook shell |
 
 ## Features
 
 ### Search
 - Negamax with alpha-beta pruning
-- Adaptive iterative deepening: extends to depth 4 when depth 3 finishes fast (elapsed < 60s)
-  with a hard safety cap at depth 4 (MOVE_LIST sized for 4 plies)
-- Transposition table (256 entries, Zobrist hashing, mate-rejection guard for 16-bit hash collisions)
+- Iterative deepening to depth 5 with per-iteration time prediction (predicts whether the next iteration fits the remaining budget)
+- Transposition table (256 entries, Zobrist hashing with XOR-fold indexing, mate-rejection guard for hash collisions)
 - Null move pruning (NMP)
 - Late move reductions (LMR)
+- Late move pruning (LMP) at low depth
 - Reverse futility pruning (RFP) with depth/ply/check guards
-- Futility pruning at frontier nodes with sentinel guard (per-ply table sized for MAX_PLY=8)
+- Futility pruning at frontier nodes with sentinel guard
 - Check extension at search horizon (with ply guard)
-- Killer move ordering
+- Move ordering: PV move first, TT move, killer moves, victim-value capture sort
 - Quiescence search with alpha-beta and capture ordering
-- Checkmate detection with ply-based score adjustment (shorter mates score higher per standard convention)
+- Checkmate detection with ply-based score adjustment (shorter mates score higher)
 - Stalemate detection
-- Repetition detection (16-bit position hash history, 255 entries)
+- Repetition detection (16-bit position hash history, 255 entries) — holds draws by threefold from worse positions
 - Fifty-move rule
+- Root-move validation (regenerates and legality-checks the move at bestmove emit)
+- Stack overflow guard
+- Fully deterministic search (replays reproduce exactly)
 
 ### Evaluation
 - Material counting
 - Piece-square tables (all 6 piece types)
 - Bishop pair bonus
 - Rook on semi-open / open file bonus
-- Castling rights bonus (+20cp per side with rights remaining)
-- Graduated advanced pawn bonus (+25/+50/+100/+150cp by rank 4/5/6/7, endgame-gated, 8-bit saturated)
-- Passed pawn bonus (file-count detection: +25/+50/+90/+140/+200/+250cp by rank 2-7)
-- Pawn-bonus 1/4 scaling in conversion phase only (own queen + opp has none) — curbs redundant-promotion bias without suppressing normal pawn play
-- Queen redundancy cap (extra queens beyond first score 0cp; prevents multi-promotion shuffles)
-- Queen-king proximity bonus (Chebyshev distance lookup, 60→0cp by distance 1-7)
-- Drive-to-edge bonus on enemy king in winning endgame (KING_EDGE_TABLE)
-- Endgame king centralization for own king (piece-count weighted)
-- Check bonus (±40cp on checking moves, endgame-gated)
+- Queen mobility (8-direction ray count, symmetric)
+- King safety: pawn-shield penalty + enemy-queen storm penalty
+- Castling rights bonus
+- Graduated advanced pawn bonus (endgame-gated, 8-bit saturated)
+- Passed pawn bonus, rank-aware (a pawn is passed if no enemy pawn *ahead* on adjacent files)
+- Racing-passer bonus, **both colors**: an advanced passer with escort ramps toward queen value (150/350/600 by rank) so promotion threats beyond the search horizon are priced in — gated on a signed piece-balance "can it actually be escorted home" test
+- Outgunned passer discount (passers scale to 1/4 when the enemy has heavy pieces and we have none)
+- Queen redundancy cap (extra queens beyond the first score 0; prevents multi-promotion shuffles)
+- King-king proximity and drive-to-edge bonuses in winning endgames (mating-technique gradient)
+- Endgame king centralization (piece-count weighted)
+- Insufficient-material draw detection (K-K, KN-K, KB-K, KB-KB same-color bishops score 0)
+- Hopeless-position amplifier: in a lost low-material endgame the eval is pushed past the GUI's resign threshold so decided games end instead of shuffling
 - Endgame detection via non-king piece count
 
 ### Board Representation
 - 0x88 board format (fast off-board detection)
 - Complete move generation for all piece types
-- Castling legality verified in search loop (IS_SQUARE_ATTACKED on king + transit square)
+- Castling legality verified in search (IS_SQUARE_ATTACKED on king + transit square)
 - Make/unmake with full state restoration (Zobrist-incremental)
-- Castling (kingside/queenside, rights revocation)
-- En passant
-- Pawn promotion (all piece types, in search and UCI output)
+- Castling, en passant, promotion to all piece types
 
 ### Opening Book
-- 473 entries: 8 mainline openings (Giuoco Piano, Sicilian Rossolimo, French Advance, Caro-Kann Advance, QGD Exchange, Alekhine Modern, Scandinavian, Pirc Austrian)
-- Plus opponent-prep deviations targeting Stockfish Skill-2 sidelines (Krejcik-sacrifice and Krejcik-retreat after Alekhine's Defense, extending coverage to ply 14)
-- Built from PGN databases with `tools/pgn_to_book.py`
+- 504 entries: 8 mainline openings (Giuoco Piano, Sicilian Rossolimo, French Advance, Caro-Kann Advance, QGD Exchange, Alekhine Modern, Scandinavian, Pirc Austrian)
+- Plus opponent-prep deviations targeting Stockfish Skill-2 sidelines, extending coverage to ply 14
+- Built from PGN databases with `tools/pgn_to_book.py`; every entry legality-audited with `tools/check_book_legality.py`
 
-### Interface
+### Interface & Diagnostics
 - UCI protocol over serial (19200 baud via BIOS)
 - CuteChess integration via Python serial bridge (`elph-bridge.py`)
 - RTC-based time management (DS12887 real-time clock)
 - UCI `info` output with depth, score (centipawns), and node count
+- Hardware break-button diagnostics: a physical button on /EF4 traps a live hang and dumps registers through the BIOS — debugging a real 1806, not an emulator
 
 ## Building
 
@@ -108,29 +114,25 @@ The engine responds to standard UCI commands:
 uci              -> id name RCA-Chess-1806 / uciok
 isready          -> readyok
 position startpos moves e2e4 d7d5
-go depth 3       -> bestmove e2e4
+go depth 5       -> bestmove ...
 ```
 
 ## Memory Map
 
 ```
-$0000-$5B7F  Code (~23.4KB)
+$0000-$5FDD  Code + tables (~24KB)
 $6000-$607F  Board array (128 bytes, 0x88 format)
 $6080-$608F  Game state (castling, en passant, king positions, etc.)
-$6090-$618F  Move history (undo stack, 256 bytes)
-$6200-$63FF  Move list (512 bytes, 4 plies)
-$6400-$64FF  Search workspace (killers, scores, undo state, queen counters, etc.)
-$6500-$66FD  Position hash history (255 entries, repetition detection)
-$6700-$670F  Per-ply best-move table (8 plies × 2 bytes)
-$6710-$671F  Pawn file counts (eval transients, white + black)
-$6720-$6721  Queen square trackers (eval transients)
-$6722-$6741  Futility pruning table (8 plies × 4 bytes)
-$6800-$6FFF  Transposition table (2KB, 256 entries × 8 bytes)
+$6090-$618F  Move history (undo stack)
+$6200-$67FF  Search/eval workspace (killers, scores, counters, hash history,
+             per-ply tables) — zeroed at every ucinewgame
+$6800-$6FFF  Transposition table (2KB, 256 entries x 8 bytes)
 $7000-$77FF  UCI input buffer (2KB)
-$7F00-$7FFF  Stack
+$7800-$7AFF  Move list (depth-5 search)
+$7B00-$7BFF  Reserved (future subroutine page)
+$7C00-$7CFF  XMODEM loader (resident)
+$7D00-$7FFF  Stack (overflow guard at $7D00)
 ```
-
-Workspace area `$6200-$67FF` is zeroed at every `ucinewgame` to prevent stale state between games.
 
 ## File Structure
 
@@ -138,7 +140,7 @@ Workspace area `$6200-$67FF` is zeroed at every `ucinewgame` to prevent stale st
 | File | Purpose |
 |------|---------|
 | `negamax.asm` | Alpha-beta search, iterative deepening, all pruning |
-| `evaluate.asm` | Material + PST + pawn structure + queen-cap + queen-king proximity + endgame heuristics |
+| `evaluate.asm` | Material + PST + pawn structure + king safety + mobility + endgame heuristics |
 | `pst.asm` | Piece-square tables (6 piece types) |
 | `endgame.asm` | Endgame king centralization heuristics |
 | `transposition.asm` | TT probe/store, Zobrist hash update |
@@ -147,11 +149,10 @@ Workspace area `$6200-$67FF` is zeroed at every `ucinewgame` to prevent stale st
 ### Board & Moves
 | File | Purpose |
 |------|---------|
-| `board-0x88.asm` | Board representation, constants, memory layout |
-| `movegen-fixed.asm` | Complete move generation (all pieces) |
+| `board.asm` | Board representation, constants, memory layout |
+| `movegen.asm` | Complete move generation (all pieces) |
 | `movegen-helpers.asm` | Move generation support routines |
 | `makemove.asm` | Move execution with full undo support |
-| `makemove-helpers.asm` | Castling, en passant, promotion handling |
 | `check.asm` | Check and attack detection |
 
 ### Interface & Support
@@ -159,12 +160,12 @@ Workspace area `$6200-$67FF` is zeroed at every `ucinewgame` to prevent stale st
 |------|---------|
 | `uci.asm` | UCI protocol parser and response |
 | `serial-io.asm` | Serial I/O (BIOS or standalone) |
-| `opening-book.asm` | Opening book data (473 entries) |
+| `opening-book.asm` | Opening book data (504 entries) |
 | `opening-book-lookup.asm` | Book position matching |
 | `main.asm` | Entry point, initialization |
 | `config.asm` | Build configuration |
 | `support.asm` | 16-bit arithmetic library |
-| `math.asm` | Multiply/divide routines |
+| `scrt.asm` | Standard call/return technique (subroutine linkage) |
 | `stack.asm` | Stack management for recursion |
 
 ### Tools
@@ -172,7 +173,10 @@ Workspace area `$6200-$67FF` is zeroed at every `ucinewgame` to prevent stale st
 |------|---------|
 | `tools/pgn_to_book.py` | Convert PGN files to opening book ASM |
 | `tools/merge_books.py` | Merge and deduplicate opening books |
+| `tools/check_book_legality.py` | Replay-audit every book entry for legality |
 | `tools/gen_zobrist.py` | Generate Zobrist hash key tables |
+| `tools/analyze_loss.py` | Ground engine evals against replayed material (match forensics) |
+| `tools/analyze_endgame_mechanism.py` | Endgame/adjudication mechanism analysis over match logs |
 | `elph-bridge.py` | CuteChess serial bridge (Python/pyserial) |
 | `build.sh` | Build script (preprocess, concat, assemble) |
 
@@ -184,9 +188,9 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 |--|-------------------|-------------|
 | **CPU** | RCA 1802 @ 6.1 MHz | RCA 1806 @ 12 MHz |
 | **RAM** | 2KB | 32KB |
-| **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + RFP + futility + check ext |
-| **Opening Book** | Small | 478 entries, 8 openings + opponent-prep |
-| **Wins** | N/A | 5 vs Stockfish |
+| **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + LMP + RFP + futility + check ext, depth 5 |
+| **Opening Book** | Small | 504 entries, 8 openings + opponent-prep |
+| **Wins** | N/A | 31 vs Stockfish |
 
 ## Credits
 
