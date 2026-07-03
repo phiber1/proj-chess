@@ -1,6 +1,6 @@
-# RCA 1802/1806 Chess Engine
+# RCA 1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1802/1806 assembly language. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate 31 times — including its first pure-technique mate (queen + knight coordination, no promotion required) in July 2026.
+A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate 31 times — including its first pure-technique mate (queen + knight coordination, no promotion required) in July 2026.
 
 ## Quick Stats
 
@@ -195,7 +195,7 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 ## Credits
 
 - **Engine design and implementation**: Claude Code (Anthropic) in collaboration with Mark Abene
-- **Target platform**: RCA CDP1802/CDP1806 (RCA Corporation, 1976)
+- **Target platform**: RCA CDP1806 (1802-family, RCA Corporation)
 - **A18 cross-assembler**: William C. Colley, III / Herb Johnson
 - **BIOS**: Elf/OS (Mike Riley)
 - **UCI protocol**: Stefan Meyer-Kahlen
