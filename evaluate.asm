@@ -32,10 +32,14 @@ SHIELD_PEN:
 ; luft 0-1. Entries <= 155 so SHIELD_PEN(max 100) + entry always fits one byte.
 ; This is THE tuning surface: edit these 32 bytes, re-probe, repeat.
 DANGER_V3_TABLE:
-    DB   0,  0,  0,  0, 0, 0, 0, 0   ; pressure 0 (unreachable: short-circuited)
-    DB  40, 20,  5,  0, 0, 0, 0, 0   ; pressure 1 (lone rook)
-    DB  90, 50, 15,  5, 0, 0, 0, 0   ; pressure 2 (lone queen / two rooks)
-    DB 150, 90, 45, 20, 5, 0, 0, 0   ; pressure 3 (queen + rook(s))
+    DB   0,  0,  0,  0,  0, 0, 0, 0  ; pressure 0 (unreachable: short-circuited)
+    DB  40, 20,  5,  0,  0, 0, 0, 0  ; pressure 1 (lone rook)
+    DB  90, 50, 15,  5,  0, 0, 0, 0  ; pressure 2 (lone queen / two rooks — STEEP:
+                                     ;  this row is the castled-king false-positive
+                                     ;  surface; weight stays at luft 0-1 only)
+    DB 150,100, 70, 40, 10, 0, 0, 0  ; pressure 3 (queen + rook(s) bearing = nearly
+                                     ;  always a REAL attack; mid-luft raised after
+                                     ;  probe 2 read the 7/3 storm too lightly)
 ; Enemy piece-square pointer table for the v3 pressure loop (big-endian DW,
 ; read LDA-hi/LDA-lo). Order queen, rook1, rook2 (weight decided by phase).
 KSV_PTAB:
