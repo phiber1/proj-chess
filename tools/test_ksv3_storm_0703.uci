@@ -1,10 +1,16 @@
 # KING_SAFETY_V3 probe: the 7/3 queenside-storm loss, position after ...Nb6-c4
-# (white to move, several moves BEFORE the Rxa3 sac landed). Black Qa4 + Rc3 +
-# Nc4 all aimed at the long-castled Kb1; a2 already vacated (a2a3 hook).
+# (white to move, several moves BEFORE the Rxa3 sac landed).
+# Movelist EXTRACTED PROGRAMMATICALLY from elph-debug-loss-queenside-storm-0703.log
+# and replay-verified with python-chess (v1 of this file had a hand-transcription
+# error at ply 14 — Qxd6 not Bxd6 — which made every later move a different game;
+# ELPH's UCI parser applies moves without legality checks, so it silently
+# evaluated a garbage position. ALWAYS extract + replay-verify, never hand-copy.)
+# Attackers on the long-castled Kb1: Qa4 (Chebyshev 3), Rc3 (Chebyshev 2),
+# Rb8 (same file!), Nc4 + Nd5 (v3 ignores minors by design). a2 already vacated.
 # OLD build (v2 + queen-prox) read +62/+122 here and lost without warning.
-# v3 expectation: white king danger fires — pressure = Q(a4, Chebyshev 3) x2
-# + R(c3, Chebyshev 2) x1 = 3, luft(b1) ~2 (a1/a2 flights), shield missing >= 1
-# -> roughly -70 to -100 swing vs the old reading. Eval should sit near 0 or
-# NEGATIVE, telling white to spend a move on defense while it still can.
-position startpos moves e2e4 g8f6 e4e5 f6g8 d2d4 e7e6 g1f3 h7h6 c1e3 f8e7 d1d3 d7d6 e5d6 e7d6 b1c3 c8d7 e1c1 a7a6 c1b1 d7c6 c3e4 d6b4 a2a3 b4a4 e4c3 a4a5 f1e2 e7d6 d1d2 g8e7 d2d1 b8d7 d1d2 b7b5 h1e1 c6b7 c3e4 b7e4 d3e4 a8b8 e2d3 d7f6 e4h4 e8g8 e3f4 e7d5 f4e5 f8c8 e1f1 f6d7 e5d6 c7d6 d2e2 c8c3 f1h1 d7b6 h1d1 a5a4 d1c1 b6c4
+# v3 static expectation: pressure = Q2+R1+R1 = 4 -> clamp 3; luft(b1) = 2 (a1,a2);
+# shield missing 1 -> danger ~= 25 + TABLE[3,2]=45 = 70 against white, plus search
+# propagation of the attack lines -> eval should read near 0 or NEGATIVE at d4/d5
+# (vs the old +62/+122 serenity), telling white to defend while it still can.
+position startpos moves e2e4 g8f6 e4e5 f6g8 d2d4 e7e6 g1f3 h7h6 c1e3 f8e7 d1d3 d7d6 e5d6 d8d6 b1c3 c8d7 e1c1 a7a6 c1b1 d7c6 c3e4 d6b4 a2a3 b4a4 e4c3 a4a5 f1e2 e7d6 d1d2 g8e7 d2d1 b8d7 d1d2 b7b5 h1e1 c6b7 c3e4 b7e4 d3e4 a8b8 e2d3 d7f6 e4h4 e8g8 e3f4 e7d5 f4e5 f8c8 e1f1 f6d7 e5d6 c7d6 d2e2 c8c3 f1h1 d7b6 h1d1 a5a4 d1c1 b6c4
 go depth 5
