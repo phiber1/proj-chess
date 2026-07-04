@@ -1,0 +1,9 @@
+# King-safety v2 CLEAN probe: ply 58 = right after Qxa6 (rook already grabbed),
+# white Q stranded on a6, king g1 exposed, black Q on h3. No material grab competes.
+# v2 TEST: does ELPH bring the queen HOME to defend (Qa6 -> toward g1/e2/f1) instead
+# of a passive/offside move? Defense-credit should make a king-ward queen move best.
+uci
+ucinewgame
+position startpos moves e2e4 e7e5 g1f3 f8d6 f1c4 g8f6 b1c3 b8c6 a2a4 c6a5 c4d3 a7a6 e1g1 e8g8 d1e2 g8h8 a1b1 d8e7 c3d5 f6d5 e4d5 f7f6 f1e1 c7c6 d5c6 a8b8 c6b7 a5b7 d3a6 b7a5 a6c8 e7f7 c8d7 f7d7 e2d3 b8b4 e1e4 a5c6 c2c3 b4b6 e4e2 f6f5 f3e5 c6e5 e2e5 d7a4 e5e1 a4h4 g2g3 h4g4 b2b4 g4h3 d3d4 b6a6 d4c4 f5f4 c4a6 f4g3
+isready
+go depth 5

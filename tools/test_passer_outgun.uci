@@ -1,0 +1,7 @@
+# Passed-pawn outgunned-discount probe: the +515 endgame (white K+6P vs black K+R+B+2P).
+# PRE-fix this scored ~+140 (6 pawns ~= R+B). POST-fix expect ~-115 (white clearly worse).
+uci
+ucinewgame
+position startpos moves e2e4 e7e5 g1f3 f8d6 f1c4 b8c6 e1g1 a7a6 f1e1 g8f6 d2d4 c6d4 f3d4 b7b5 d4b5 a6b5 c4d3 c7c6 b1d2 d8c7 d1f3 a8a4 b2b3 a4a8 c1b2 d6b4 c2c3 b4c5 a2a3 e8g8 b3b4 c5e7 a1d1 f8d8 c3c4 c7b8 c4b5 h7h6 b5c6 d7c6 d2c4 c8g4 f3e3 g4d1 e1d1 b8a7 e3a7 a8a7 c4e5 a7c7 d1c1 c6c5 d3c4 d8f8 e5f7 f8f7 c4f7 g8f7 c1c4 f6d7 b2d4 c7b7 d4c5 d7c5 f2f4 c5d7 c4d4 b7a7 g1f1 d7f8 f4f5 f8d7 d4d7 a7d7 f1e2 d7b7 e2e3 f7g8 e4e5 e7g5 e3f2 b7c7 e5e6 c7c2 f2f3 c2c3 f3g4 c3c4 g4h5 c4h4 h5g6 h4d4 b4b5 g5e7 b5b6 d4d6 b6b7 d6b6 h2h3 h6h5 g6h5 b6b7 h5g4 b7b8 g2g3 e7c5 h3h4 c5a3 g4h3 a3d6 g3g4 d6e5 h3g2 e5c7 g2h3 b8b3 h3g2 b3b2 g2f1 c7d6 f1g1 b2b8 g1f1 d6c7 f1g2 c7e5 g2h1 g8f8 h1g2 b8b5 g2h3 g7g5 h4h5 b5b3 h3g2 b3b2 g2f3 b2b8 f3f2 e5f4 f2f3 f4e5 f3f2 e5d4 f2f3 d4a1 f3f2 b8b3 f2g2 b3b5 g2f2 a1e5 f2f3 b5b4 h5h6 f8e7 h6h7 e5h8 f3g3 e7d6 g3f2 d6e7 f2g3 b4b8 g3f3 b8b3 f3g2 b3a3 g2h2 a3a8 h2g1 a8c8 g1f2 h8b2 f2e2 b2a1 e2e3 a1e5 e3e4 e5b2 e4d3 b2f6 d3e3 c8h8 e3e2 e7e8 e2d3 f6d8 d3d4 d8f6
+isready
+go depth 5

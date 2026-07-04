@@ -1,0 +1,8 @@
+# Regression probe: quiet Italian, both kings castled & fully shielded, queens on
+# but far from kings. King-safety should be ~0 here (full shields, no storm) -> eval
+# and bestmove should look NORMAL. If this craters, king-safety is over-firing on safe kings.
+uci
+ucinewgame
+position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 e1g1 g8f6 d2d3 e8g8 c1g5 d7d6 b1c3 c8e6
+isready
+go depth 5
