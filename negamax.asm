@@ -84,6 +84,10 @@ NEGAMAX_PLY_OK:
     ; Save context to ply-indexed state array (no stack manipulation!)
     CALL SAVE_PLY_STATE
 
+    RLDI 10, TRACE_WHERE
+    LDI $A1
+    STR 10              ; tracer: in NEGAMAX node
+
     ; -- TT node flag: default ALPHA (upper bound) --
     RLDI 10, CURRENT_PLY
     LDN 10
@@ -2523,6 +2527,10 @@ QUIESCENCE_SEARCH:
     ; Ensure X=2 for stack operations
     SEX 2
 
+    RLDI 10, TRACE_WHERE
+    LDI $C1
+    STR 10              ; tracer: in QSEARCH
+
     ; Stack overflow detection (see NEGAMAX comment).
     CALL CHECK_STACK_OVERFLOW
 
@@ -3910,6 +3918,28 @@ SEARCH_POSITION:
     RLDI 10, SEARCH_ELAPSED
     LDI 0
     STR 10                      ; SEARCH_ELAPSED = 0
+
+    ; --- Canary check (2026-07-03 crash hunt): CANARY_ZONE $64F7-$64FC must be
+    ; all zero (WORKSPACE_CLEAR zeroes it; NO code owns it). The 7/3 crash dump
+    ; found stray writes there. Sticky-OR the zone into CANARY_HIT once per
+    ; search; a nonzero CANARY_HIT in any post-crash dump = the stray writer
+    ; struck this game, and the zone bytes say what it wrote.
+    RLDI 10, CANARY_ZONE
+    LDI 0
+    STR 2                       ; M(2) = accumulator = 0
+    LDI 6
+    PLO 11                      ; R11.0 = byte counter (R11 reloaded below)
+SP_CANARY_LP:
+    LDA 10
+    OR                          ; D = zone byte | acc
+    STR 2                       ; acc back to M(2)
+    DEC 11
+    GLO 11
+    LBNZ SP_CANARY_LP
+    RLDI 10, CANARY_HIT
+    LDN 10
+    OR                          ; D = CANARY_HIT | acc
+    STR 10                      ; sticky
 
     ; --- Clear node counter (once for entire search) ---
     RLDI 11, NODES_SEARCHED

@@ -316,6 +316,10 @@ TT_CLEAR_LOOP:
 TT_PROBE:
     PLO 8               ; R8.0 = required depth
 
+    RLDI 9, TRACE_WHERE
+    LDI $B1
+    STR 9              ; tracer: in TT_PROBE
+
     ; Clear TT_MOVE (prevents stale data if hash misses)
     RLDI 9, TT_MOVE_HI
     LDI 0
@@ -475,6 +479,10 @@ TT_STORE:
     STXD                ; Push depth
     GLO 8
     STXD                ; Push flag
+
+    RLDI 10, TRACE_WHERE
+    LDI $B2
+    STR 10              ; tracer: in TT_STORE
 
     ; Load current hash
     RLDI 10, HASH_HI

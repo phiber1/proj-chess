@@ -237,6 +237,10 @@ EVALUATE:
     ; Ensure X=2 for all stack/memory operations
     SEX 2
 
+    RLDI 10, TRACE_WHERE
+    LDI $E1
+    STR 10              ; tracer: in EVALUATE
+
     ; Insufficient-material dead-draw short-circuit (item C, 2026-05-18).
     ; Safe by construction: only fires for K-K / K+N-K / K+B-K / K+B-K+B
     ; same-colour; any other material falls through to the full eval.
@@ -2003,6 +2007,10 @@ EVALUATE_MATERIAL:
 ; ------------------------------------------------------------------------------
 KING_SAFETY_V3:
     SEX 2
+
+    RLDI 10, TRACE_WHERE
+    LDI $E2
+    STR 10              ; tracer: in KING_SAFETY_V3
     RLDI 10, KSV_COLOR
     GHI 7
     STR 10              ; stash friendly color (R7.1 becomes piece-sq scratch)
@@ -2227,6 +2235,10 @@ KSV_ZERO:
 ; ------------------------------------------------------------------------------
 QUEEN_MOBILITY:
     SEX 2
+
+    RLDI 10, TRACE_WHERE
+    LDI $E3
+    STR 10              ; tracer: in QUEEN_MOBILITY
     LDI 0
     PLO 8                   ; R8.0 = mobility = 0
     RLDI 10, QUEEN_DIRS     ; R10 -> 8-direction delta table
