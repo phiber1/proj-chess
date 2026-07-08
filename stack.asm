@@ -72,6 +72,18 @@ SAVE_PLY_STATE:
     ; Get current ply and calculate frame address
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply (0-7)
+    ; --- PLY ASSERTION (2026-07-07 crash hunt): ply must be 0-7 here (the
+    ; NEGAMAX entry guard returns before any per-ply access at ply >= 8). A
+    ; larger value = CURRENT_PLY corruption (it neighbors SCORE_LO at $6447)
+    ; or drift -> the frame math would read/write OUTSIDE $6450-$649F, which
+    ; is the leading theory for the 7/3 wild-jump crash. Hard-trap into the
+    ; ROM monitor via MARK/SEP 1 with LIVE registers.
+    SMI 8               ; D = ply - 8
+    LBNF SPS_PLY_OK          ; ply <= 7 -> fine
+    MARK
+    SEP 1               ; corrupt ply: breakpoint with full state
+SPS_PLY_OK:
+    LDN 10              ; reload D = ply (assertion clobbered it)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2
     ; Use stack for temp storage (push then immediate pop - net zero change)
@@ -139,6 +151,18 @@ RESTORE_PLY_STATE:
     ; Get current ply and calculate frame address
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply (0-7)
+    ; --- PLY ASSERTION (2026-07-07 crash hunt): ply must be 0-7 here (the
+    ; NEGAMAX entry guard returns before any per-ply access at ply >= 8). A
+    ; larger value = CURRENT_PLY corruption (it neighbors SCORE_LO at $6447)
+    ; or drift -> the frame math would read/write OUTSIDE $6450-$649F, which
+    ; is the leading theory for the 7/3 wild-jump crash. Hard-trap into the
+    ; ROM monitor via MARK/SEP 1 with LIVE registers.
+    SMI 8               ; D = ply - 8
+    LBNF RPS_PLY_OK          ; ply <= 7 -> fine
+    MARK
+    SEP 1               ; corrupt ply: breakpoint with full state
+RPS_PLY_OK:
+    LDN 10              ; reload D = ply (assertion clobbered it)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2
     ; Use stack for temp storage (push then immediate pop - net zero change)
