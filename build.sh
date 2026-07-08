@@ -162,6 +162,9 @@ else
     cat main.asm >> "$OUTPUT"
 fi
 
+echo "  - overflow-7b00.asm (\$7B00 overflow page tenants)"
+cat overflow-7b00.asm >> "$OUTPUT"
+
 echo ""
 echo "Step 3: Concatenation complete. Output: $OUTPUT"
 echo "  File size: $(wc -l < "$OUTPUT") lines"

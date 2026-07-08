@@ -741,6 +741,28 @@ QC_B_DONE:
     ADCI 0
     PHI 9
 
+    ; --- O-O-O discomfort (2026-07-08, task #53): queenside king posture vs a
+    ; developed enemy queen (files a-d). CALL returns D = signed net (-50/0/+50);
+    ; sign-extend and add to R9. Routine in the $7B00 overflow page.
+    CALL OOO_DISCOMFORT
+    STR 2               ; M(2) = signed adjustment
+    ANI $80
+    LBZ OOO_SEXT_POS
+    LDI $FF
+    LBR OOO_SEXT_GO
+OOO_SEXT_POS:
+    LDI $00
+OOO_SEXT_GO:
+    PHI 8               ; R8.1 = sign-extension byte
+    GLO 9
+    ADD                 ; R9.lo += adjustment (M(2))
+    PLO 9
+    GHI 8
+    STR 2
+    GHI 9
+    ADC                 ; R9.hi += sign byte + carry
+    PHI 9
+
     ; (v3 retirement note: the ~150 B of queen-prox Chebyshev code that lived
     ; here, plus the v2 KING_SAFETY routine and its STORM_PEN/DEFENSE_CREDIT
     ; tables, were removed 2026-07-03 — see git history for the old bodies.)
