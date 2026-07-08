@@ -121,8 +121,14 @@ PST_QUEEN:
 ; KING PST (Middlegame) - Castle! Stay safe on the side
 ; ------------------------------------------------------------------------------
 PST_KING:
-    ; Rank 1 - castled king is safest (b1/g1 kingside, c1 queenside)
-    DB  20, 60, 40,-20,-20, 10, 60, 20
+    ; Rank 1 (retuned 2026-07-08): kingside castle valued ABOVE queenside —
+    ; ~30cp standing preference for g1 over b1/c1. Corpus: 28 O-O-O games
+    ; carry a recurring queenside-storm loss pattern (2 in 5 days; the
+    ; a5-queen pre-aim sits outside v3's ZONE_R at castle time, so no
+    ; proximity term can catch it pre-commitment). O-O-O still chosen when
+    ; the position offers > ~30cp of compensation — a nudge, not a ban.
+    ; Old values: 20, 60, 40,-20,-20, 10, 60, 20
+    DB  10, 30, 15,-20,-20, 10, 60, 20
     ; Rank 2 - behind pawn shelter OK
     DB  20, 20,-10,-30,-30,-10, 20, 20
     ; Rank 3

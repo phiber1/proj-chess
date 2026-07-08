@@ -1,0 +1,7 @@
+# Castle-bias probe (2026-07-08): the loss-4 position where the old table chose
+# O-O-O (e1c1) with black's queen pre-aimed from a5 -> queenside storm mate.
+# King PST rank-1 retune (c1 40->15, b1 60->30, g1 stays 60) should make the
+# search prefer a develop-toward-O-O plan (or at least drop e1c1's eval ~25-30).
+# Movelist extracted programmatically + replay-verified. Old bestmove: e1c1.
+position startpos moves e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 g1f3 d7d6 c1f4 b8d7 d1d3 d8a5
+go depth 5
