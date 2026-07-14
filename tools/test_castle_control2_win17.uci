@@ -1,0 +1,9 @@
+# CONTROL #2 (task #53, replaces the win23 control — that position was +10
+# material, too won to discriminate policy). Win #17's O-O-O moment: eval was
+# a BALANCED ~+120, black queen home on d8 (OOO_DISCOMFORT provably silent),
+# and the game was a clean win after castling long. PASS = e1c1 survives as
+# bestmove, or is replaced by something of comparable eval (~within 30cp).
+# A flip to a clearly worse plan here = the PST notch over-taxing -> revert
+# the notch, keep the discomfort term only.
+position startpos moves e2e4 g8f6 e4e5 f6g8 d2d4 d7d6 e5d6 e7d6 g1f3 g8f6 d1e2 f8e7 h1g1 a7a6 b1c3 b7b5 c1g5 e8f8
+go depth 5

@@ -42,15 +42,7 @@ SHIELD_PEN:
     DB 0, 25, 60, 100       ; missing 0,1,2,3 shield pawns
 STORM_PEN:
     DB 0, 80, 150           ; idx 0 (dist3, unused), 1 (dist2), 2 (dist1)
-; v2 defense credit: OUR queen near OUR endangered king cancels storm (indexed by
-; our-queen-to-our-king Chebyshev dist). Makes bringing the queen home beat
-; abandoning it. net_storm = max(0, STORM_PEN - DEFENSE_CREDIT).
-DEFENSE_CREDIT:
-    DB 0, 0, 0, 0, 0, 0, 0, 0        ; dist 0..7 — ZEROED 2026-06-17: the queen-
-    ; near-king reward was net-negative (gluing the white queen home -> passivity,
-    ; and it literally paid for the caging queen in the 6/17 suffocation mate).
-    ; KING_SAFETY logic unchanged (net_storm = max(0, STORM - 0) = STORM). Restore
-    ; these values (0,80,60,40,20,0,0,0) to revert.
+; (DEFENSE_CREDIT table removed 2026-07-13 — see KING_SAFETY note.)
 ; Racing-passer bonus (2026-06-13): EXTRA value for an advanced white passer with a
 ; clear front, ramping toward queen value so white pushes it (the d5 search can't
 ; see the promotion). Indexed by rank-5/6/7. 16-bit (big-endian DW) — > one byte.
@@ -2251,77 +2243,10 @@ KS_HAVE_DIST:
     PHI 10
     LDN 10              ; D = STORM_PEN[3-dist]
     PLO 11              ; R11.0 = storm penalty (R11.1 still = shield)
-    ; --- v2 defense credit: OUR queen near OUR king cancels storm ---
-    ; pick OUR queen square from memory by friendly pawn color (R8.0).
-    ; (Do NOT use R12 — it is the caller's side-to-move color and must survive.)
-    GLO 8
-    XRI W_PAWN
-    LBNZ KS_OURQ_B
-    RLDI 10, W_QUEEN_SQ
-    LBR KS_OURQ_RD
-KS_OURQ_B:
-    RLDI 10, B_QUEEN_SQ
-KS_OURQ_RD:
-    LDN 10              ; D = our queen sq
-    PHI 7               ; R7.1 = our queen sq (enemy queen no longer needed)
-    XRI $FF
-    LBZ KS_STORM_FULL   ; no our queen -> full storm
-    ; chebyshev(our queen R7.1, our king R7.0)
-    GHI 7
-    ANI $70
-    SHR
-    SHR
-    SHR
-    SHR                 ; our q rank
-    PLO 13
-    GLO 7
-    ANI $70
-    SHR
-    SHR
-    SHR
-    SHR                 ; our k rank
-    STR 2
-    GLO 13
-    SD                  ; k_rank - q_rank
-    LBDF KS_DR_OK
-    SDI 0
-KS_DR_OK:
-    PHI 13              ; |rank diff|
-    GHI 7
-    ANI $07             ; our q file
-    PLO 13
-    GLO 7
-    ANI $07             ; our k file
-    STR 2
-    GLO 13
-    SD                  ; k_file - q_file
-    LBDF KS_DF_OK
-    SDI 0
-KS_DF_OK:
-    PLO 13              ; |file diff|
-    GHI 13
-    STR 2
-    GLO 13
-    SD                  ; |rank| - |file|
-    LBDF KS_DD_RANK
-    GLO 13              ; max = file
-    LBR KS_DD_HAVE
-KS_DD_RANK:
-    GHI 13              ; max = rank
-KS_DD_HAVE:
-    ADI LOW(DEFENSE_CREDIT)
-    PLO 10
-    LDI HIGH(DEFENSE_CREDIT)
-    ADCI 0
-    PHI 10
-    LDN 10              ; D = DEFENSE_CREDIT[dist]
-    STR 2               ; M2 = credit
-    GLO 11              ; storm
-    SM                  ; D = storm - credit
-    LBDF KS_NET_OK      ; storm >= credit -> net = storm - credit
-    LDI 0               ; storm < credit -> clamp net to 0
-KS_NET_OK:
-    PLO 11              ; R11.0 = net storm
+    ; (v2 defense-credit path REMOVED 2026-07-13 for the staging reclaim:
+    ; DEFENSE_CREDIT was zeroed 2026-06-17, so this block computed and
+    ; subtracted a constant 0 every eval — ~70 B dead by configuration.
+    ; git-revert this commit to restore the queen-home credit machinery.)
 KS_STORM_FULL:
     GLO 11              ; net (or full) storm
     STR 2
