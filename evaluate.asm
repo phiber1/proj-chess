@@ -32,7 +32,10 @@ SHIELD_PEN:
 ; luft 0-1. Entries <= 155 so SHIELD_PEN(max 100) + entry always fits one byte.
 ; This is THE tuning surface: edit these 32 bytes, re-probe, repeat.
 DANGER_V3_TABLE:
-    DB   0,  0,  0,  0,  0, 0, 0, 0  ; pressure 0 (unreachable: short-circuited)
+    DB   0,  0,  0,  0,  0, 0, 0, 0  ; pressure 0: ALL-ZERO row is LOAD-BEARING
+                                     ; (2026-07-13 hybrid: zero-pressure kings
+                                     ; with an enemy queen flow through the
+                                     ; combine and must collect SHIELD only)
     DB  40, 20,  5,  0,  0, 0, 0, 0  ; pressure 1 (lone rook)
     DB  90, 50, 15,  5,  0, 0, 0, 0  ; pressure 2 (lone queen / two rooks — STEEP:
                                      ;  this row is the castled-king false-positive
@@ -2120,10 +2123,30 @@ KSV_PNEXT:
     SMI 1
     PHI 11
     LBNZ KSV_PLOOP
-    ; SHORT-CIRCUIT: no pressure -> no danger, skip luft + shield
+    ; SHORT-CIRCUIT — HYBRID v2/v3 (2026-07-13, loss6): exit-zero ONLY when
+    ; pressure==0 AND the enemy has no queen. With an enemy queen on the board,
+    ; a zero-pressure king still pays SHIELD (v2 semantics restored): fall
+    ; through — DANGER_V3_TABLE row 0 is ALL ZEROS, so the normal combine
+    ; yields shield-only automatically. Loss6 = h3+g4+O-O self-wreck at
+    ; pressure 0 (Qc7 = file-distance 4), mated in 12; under v2 that shield
+    ; damage was never free. Luft scan now runs in queens-on quiet positions
+    ; (~40 cycles/king) — correctness over task #27.
     GLO 11
-    LBZ KSV_ZERO
+    LBNZ KSV_CLAMP      ; pressure > 0 -> full path
+    GLO 8
+    SMI 6
+    PLO 8               ; rewind R8 to the enemy-set base (= &enemy queen sq;
+                        ; the 3-entry walk advanced it +6, same page both sets)
+    LDA 8
+    PHI 10
+    LDA 8
+    PLO 10              ; R10 = &enemy queen square
+    LDN 10
+    XRI $FF
+    LBZ KSV_ZERO        ; pressure 0 AND queenless -> true zero exit
+KSV_CLAMP:
     ; clamp pressure to 3 (raw max 4 = Q+R+R)
+    GLO 11
     SMI 4
     LBNF KSV_LUFT       ; pressure <= 3 -> keep
     LDI 3

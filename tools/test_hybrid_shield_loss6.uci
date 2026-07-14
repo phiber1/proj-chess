@@ -1,0 +1,10 @@
+# HYBRID shield probe (2026-07-13): loss6's O-O decision — white castles into a
+# self-wrecked kingside (h3+g4 pushed, g2=bishop, h2 empty) with black Q on c7
+# (pressure 0 -> pure v3 read this as FREE). Hybrid restores v2 semantics:
+# shield-missing now prices with any enemy queen on the board. NOTE the honest
+# expectation: the e1 king's own shield (d2/e2 open) is ALSO taxed here, so the
+# castle choice may not flip — what MUST change is the overall eval level
+# (~-60 vs the old +100s) and post-castle wreckage no longer being free.
+# Old build (pure v3) at this phase read +100..+140. Movelist replay-verified.
+position startpos moves e2e4 c7c6 d2d4 d8c7 b1c3 e7e6 g1f3 g8f6 c1g5 f8b4 g5f6 g7f6 a2a3 b4e7 d1e2 h7h6 a1a2 c7b6 c3a4 b6a5 a4c3 a5b6 h2h3 d7d5 e4d5 e6d5 g2g4 e8d8 f1g2 h6h5 c3a4 b6c7
+go depth 5
