@@ -233,6 +233,10 @@ EVALUATE:
     ; Ensure X=2 for all stack/memory operations
     SEX 2
 
+    RLDI 10, TRACE_WHERE
+    LDI $E1
+    STR 10              ; tracer: in EVALUATE
+
     ; Insufficient-material dead-draw short-circuit (item C, 2026-05-18).
     ; Safe by construction: only fires for K-K / K+N-K / K+B-K / K+B-K+B
     ; same-colour; any other material falls through to the full eval.
@@ -881,6 +885,29 @@ QP_B_DONE:
     PLO 9
     GHI 9
     ADCI 0
+    PHI 9
+
+    ; --- O-O-O discomfort (ported 2026-07-13, task #53): queenside king
+    ; posture vs a developed enemy queen (files a-d). Returns D = signed net
+    ; (-50/0/+50); sign-extend and add to R9. Routine in the $7B00 page.
+    ; Master IS exposed: losses 2+3 (7/2, 7/3) were master-line storm mates.
+    CALL OOO_DISCOMFORT
+    STR 2               ; M(2) = signed adjustment
+    ANI $80
+    LBZ OOO_SEXT_POS
+    LDI $FF
+    LBR OOO_SEXT_GO
+OOO_SEXT_POS:
+    LDI $00
+OOO_SEXT_GO:
+    PHI 8               ; R8.1 = sign-extension byte
+    GLO 9
+    ADD                 ; R9.lo += adjustment (M(2))
+    PLO 9
+    GHI 8
+    STR 2
+    GHI 9
+    ADC                 ; R9.hi += sign byte + carry
     PHI 9
 
     ; Add piece-square table bonuses
@@ -2130,6 +2157,10 @@ EVALUATE_MATERIAL:
 ; ------------------------------------------------------------------------------
 KING_SAFETY:
     SEX 2
+
+    RLDI 10, TRACE_WHERE
+    LDI $E2
+    STR 10              ; tracer: in KING_SAFETY (v2)
     ; No enemy queen -> no king-safety penalty at all. Prevents penalizing an
     ; actively centralized (shieldless) king in queenless endgames.
     GHI 7
@@ -2274,6 +2305,10 @@ KS_ZERO:
 ; ------------------------------------------------------------------------------
 QUEEN_MOBILITY:
     SEX 2
+
+    RLDI 10, TRACE_WHERE
+    LDI $E3
+    STR 10              ; tracer: in QUEEN_MOBILITY
     LDI 0
     PLO 8                   ; R8.0 = mobility = 0
     RLDI 10, QUEEN_DIRS     ; R10 -> 8-direction delta table

@@ -97,6 +97,16 @@ QS_BEST_LO      EQU $6419   ; 1 byte - stand-pat/best score low
 QS_MOVE_PTR_HI  EQU $641A   ; 1 byte - move list pointer high
 QS_MOVE_PTR_LO  EQU $641B   ; 1 byte - move list pointer low
 QS_TEMP         EQU $641C   ; 1 byte - temp storage
+; Debug tracer (ported from king-safety-v3 2026-07-13): TRACE_WHERE = last
+; region entered. IDs: $A1 NEGAMAX node  $C1 QSEARCH  $E1 EVALUATE
+; $E2 KING_SAFETY(v2)  $E3 QUEEN_MOBILITY  $E4 OOO_DISCOMFORT
+; $B1 TT_PROBE  $B2 TT_STORE
+; CANARY_ZONE $64F7-$64FC: DELIBERATELY UNUSED, must stay 0 (7/3 crash dump
+; showed stray writes here on the v3 build). CANARY_HIT = sticky OR of the
+; zone, checked once per SEARCH_POSITION.
+TRACE_WHERE     EQU $641D   ; 1 byte - tracer: last region entered
+CANARY_HIT      EQU $641E   ; 1 byte - sticky stray-write detector
+CANARY_ZONE     EQU $64F7   ; 6 bytes - unclaimed zone under watch
 
 ; Evaluation state
 EVAL_SQ_INDEX   EQU $641D   ; 1 byte - square counter for evaluate

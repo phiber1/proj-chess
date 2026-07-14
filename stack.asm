@@ -72,6 +72,16 @@ SAVE_PLY_STATE:
     ; Get current ply and calculate frame address
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply (0-7)
+    ; --- PLY ASSERTION (ported 2026-07-13): ply must be 0-7 here (NEGAMAX's
+    ; entry guard returns before any per-ply access at ply >= 8). Larger =
+    ; CURRENT_PLY corruption (neighbors SCORE_LO $6447) or drift -> frame math
+    ; strays outside $6450-$649F. Hard-trap into the ROM monitor, LIVE regs.
+    SMI 8               ; D = ply - 8
+    LBNF SPS_PLY_OK          ; ply <= 7 -> fine
+    MARK
+    SEP 1               ; corrupt ply: breakpoint with full state
+SPS_PLY_OK:
+    LDN 10              ; reload D = ply (assertion clobbered it)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2
     ; Use stack for temp storage (push then immediate pop - net zero change)
@@ -139,6 +149,16 @@ RESTORE_PLY_STATE:
     ; Get current ply and calculate frame address
     RLDI 10, CURRENT_PLY
     LDN 10              ; D = current ply (0-7)
+    ; --- PLY ASSERTION (ported 2026-07-13): ply must be 0-7 here (NEGAMAX's
+    ; entry guard returns before any per-ply access at ply >= 8). Larger =
+    ; CURRENT_PLY corruption (neighbors SCORE_LO $6447) or drift -> frame math
+    ; strays outside $6450-$649F. Hard-trap into the ROM monitor, LIVE regs.
+    SMI 8               ; D = ply - 8
+    LBNF RPS_PLY_OK          ; ply <= 7 -> fine
+    MARK
+    SEP 1               ; corrupt ply: breakpoint with full state
+RPS_PLY_OK:
+    LDN 10              ; reload D = ply (assertion clobbered it)
 
     ; Multiply ply by 10: ×10 = ×8 + ×2
     ; Use stack for temp storage (push then immediate pop - net zero change)
