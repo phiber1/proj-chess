@@ -51,8 +51,11 @@ OOO_DISCOMFORT:
     ANI $04
     LBNZ OOO_B_SIDE     ; files e-h -> not aimed at the queenside
     GLO 11
-    SMI 50
-    PLO 11              ; net -= 50 (white king uncomfortable)
+    SMI 75
+    PLO 11              ; net -= 75 (white king uncomfortable; raised from 50
+                        ; 2026-07-14: master's v2 shield nets +25 PRO-castle in
+                        ; the loss4 probe — e1 misses d2+e2, c1 only d2 — so 50
+                        ; was outvoted; control probe immune, trigger-cold)
 OOO_B_SIDE:
     ; --- black king in queenside posture? (files a-c, ranks 7-8) ---
     RLDI 10, GAME_STATE + STATE_B_KING_SQ
@@ -77,8 +80,8 @@ OOO_B_SIDE:
     ANI $04
     LBNZ OOO_DONE       ; files e-h -> not aimed
     GLO 11
-    ADI 50
-    PLO 11              ; net += 50 (black king uncomfortable)
+    ADI 75
+    PLO 11              ; net += 75 (black king uncomfortable; mirror of white)
 OOO_DONE:
     GLO 11              ; D = signed net
     RETN
