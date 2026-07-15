@@ -1,0 +1,4 @@
+# Bisection child: flip position + f1g2 (black to move). Compare vs siblings —
+# the flipped subtree carries the absurd score.
+position startpos moves e2e4 c7c6 d2d4 d7d5 e4e5 c8f5 g1f3 f5g4 h2h3 g4f3 d1f3 e7e6 f3f4 d8b6 b1c3 f8e7 h3h4 c6c5 d4c5 b6c5 f1b5 e8f8 c1e3 c5b4 f4b4 e7b4 a2a3 b4e7 a1d1 h7h5 c3e2 g7g6 h1h3 g8h6 e3h6 h8h6 e1f1 b8c6 b5c6 b7c6 f1g1 f8g7 e2c3 h6h8 b2b4 a8b8 d1d2 a7a5 b4a5 h8e8 a3a4 b8b4 h3h2 e8a8 h2h3 a8a6 h3d3 a6a8 d3d4 a8a7 d4d3 a7a6 g2g3 e7d8 d3d4 b4b2 c3d1 b2a2 c2c3 a2a1 d4f4 a6a8 g3g4 d8c7 g4h5 g6h5 f4f3 a8a5 f3g3 g7h8 g3g5 a5a7 g5h5 h8g7 h5g5 g7h6 g1g2 a7a8 d1b2 a1a3 c3c4 c7a5 d2e2 a5c3 c4d5 a3a2 b2d1 a2e2 d5e6 c3e5 e6f7 e5g7 g5g4 a8f8 g2f1 e2e7 d1c3 g7c3 g4c4 c3b2 c4c6 h6h7 c6c2 b2a1 c2c6 e7f7 f2f4 f7f4 f1g2
+go depth 4
