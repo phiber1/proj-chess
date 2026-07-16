@@ -412,6 +412,20 @@ TT_PROBE:
     SD                  ; D = entry_depth - required_depth
     LBNF TT_PROBE_MISS  ; Borrow → depth insufficient (but TT_MOVE saved!)
 
+    ; --- side-bit verification (2026-07-15): a 16-bit hash match can be a
+    ; DIFFERENT position (proven: loss8's +2341 = a white-to-move entry
+    ; served to a black-to-move node = sign inversion). Reject the SCORE on
+    ; side mismatch; the ordering move above is already saved (benign — a
+    ; wrong-position move matches nothing in the generated list).
+    INC 10              ; → 5 (flag)
+    LDN 10              ; D = entry flag (bit 3 = storing side)
+    STR 2
+    GLO 12              ; current side to move ($00/$08)
+    XOR
+    ANI $08
+    LBNZ TT_PROBE_MISS  ; cross-side entry -> treat as miss
+    DEC 10              ; → 4 (depth), as the flow below expects
+
     ; Usable hit! Copy entry data to TT_* variables
     ; Back up to start of entry
     DEC 10
@@ -434,6 +448,7 @@ TT_PROBE:
     STR 9
     INC 9
     LDA 10              ; flag
+    ANI $07             ; strip the side bit — consumers compare bound types
     STR 9
     INC 9
     LDA 10              ; move_hi
@@ -547,7 +562,13 @@ TT_STORE:
     LDX                 ; depth
     STR 10
     INC 10
+    ; --- side-bit (2026-07-15, the $1B81 collision fix): fold the storing
+    ; side into flag bit 3 so a 16-bit false hit can't cross perspectives.
+    GLO 12
+    ANI $08
+    STR 2               ; M(2) = side bit (spent stack slot, safe scratch)
     GLO 8               ; flag
+    OR                  ; flag | side
     STR 10
     INC 10
 
