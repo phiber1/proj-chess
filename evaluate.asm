@@ -616,12 +616,15 @@ EVAL_DONE:
     ; R9 contains material score
 
     ; ==================================================================
-    ; Redundant-queen cap: extra queens beyond the first (per side) score
-    ; as 0 cp. Prevents the engine from preferring more pawn promotions
-    ; over delivering mate when it already has a queen — the eval bug
-    ; that caused yesterday's 3-queen shuffle endgame.
-    ; Implementation: subtract (W_QUEEN_CNT - 1) * 900 from white side,
-    ; add (B_QUEEN_CNT - 1) * 900 for black side.
+    ; Redundant-queen cap (RETUNED 2026-07-15): extra queens beyond the
+    ; first score 500 cp, not 0. The 0-cap (anti-3-queen-shuffle) was
+    ; side-symmetric and DELETED the OPPONENT's 2nd queen from the ledger:
+    ; move 47 vs b1=Q read Rxc2 as "+500, opponent gains nothing" and the
+    ; engine walked into a Q-vs-2Q mate reading +773. At 500/extra the
+    ; anti-shuffle intent survives (2nd queen << 900, promotion never
+    ; outbids mating) but an enemy 2nd queen stays a live threat.
+    ; Implementation: subtract (W_QUEEN_CNT - 1) * 400 from white side,
+    ; add (B_QUEEN_CNT - 1) * 400 for black side (900 - 400 = 500 net).
     ; ==================================================================
 
     ; --- White side ---
@@ -636,12 +639,12 @@ EVAL_DONE:
     PHI 7               ; clean R7.1 for predictable DEC
 
 QC_W_LOOP:
-    LDI $84             ; low byte of 900 ($0384)
+    LDI $90             ; low byte of 400 ($0190)
     STR 2
     GLO 9
     SM
     PLO 9
-    LDI $03             ; high byte of 900
+    LDI $01             ; high byte of 400
     STR 2
     GHI 9
     SMB
@@ -663,12 +666,12 @@ QC_W_DONE:
     PHI 7
 
 QC_B_LOOP:
-    LDI $84
+    LDI $90             ; low byte of 400
     STR 2
     GLO 9
     ADD
     PLO 9
-    LDI $03
+    LDI $01             ; high byte of 400
     STR 2
     GHI 9
     ADC

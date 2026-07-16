@@ -1,0 +1,7 @@
+# Queen-cap retune probe (2026-07-15): loss9, the position right after b1=Q —
+# white Q vs black QQ, material truth ~-500. The 0-cap build read +353 here
+# (and +773 two moves later) and played into a double-queen mate believing it.
+# Retuned build (extras = 500cp) must read ~500 lower: ~-150 or worse.
+# Movelist extracted programmatically + replay-verified.
+position startpos moves e2e4 c7c6 d2d4 e7e6 b1c3 g8f6 g1f3 d7d5 e4d5 c6d5 f1e2 f8b4 e1g1 b8c6 a2a3 b4a5 b2b4 a5b6 c1f4 f6h5 f4e3 b6c7 g2g4 h5f6 g4g5 f6e4 c3b5 c7b8 e2d3 e8g8 d1e2 f7f5 a1e1 d8e8 c2c4 a7a6 c4d5 a6b5 d5c6 b7c6 e2b2 e8h5 f3e5 e4g5 d3e2 h5h4 b2b3 g5h3 g1h1 a8a6 e5f3 h4e7 e3c1 e7f7 f3e5 b8e5 d4e5 f5f4 b3h3 c6c5 b4c5 a6a4 e2d3 g7g6 h3h6 b5b4 d3c2 b4b3 c2d1 a4c4 c1b2 c8a6 f1g1 f8d8 g1g5 d8d2 d1e2 d2b2 e2c4 a6c4 h1g1 f7b7 g5g4 c4e2 g4f4 b7e7 e1c1 b2c2 f4d4 b3b2 d4d8 e7d8 c1c2 b2b1q
+go depth 5
