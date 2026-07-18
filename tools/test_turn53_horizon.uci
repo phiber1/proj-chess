@@ -1,0 +1,12 @@
+# Turn-53 horizon test (yesterday 17:22 match, the h5h6 issue)
+# Position right before engine chose h5h6 (eval +535 -> -355 next ply)
+# With ORDER_TT_MOVE re-enabled, see if engine picks a different best
+# move OR reduces the eval-jump magnitude between turns 53 and 54.
+#
+# Pre-fix observation (2026-05-19):
+#   d=5 score cp 535, bestmove h5h6, next-turn d=5 score cp -355
+#
+# Watch for: bestmove != h5h6, OR d=5 score < 535 (engine sees deeper)
+
+position startpos moves e2e4 g8f6 e4e5 f6d5 d2d4 d7d6 g1f3 c7c6 e5d6 d8d6 b1d2 d6c7 c2c4 d5b4 a2a3 b4a6 d1a4 c8g4 f1d3 e7e6 e1g1 g4h5 f1d1 f8e7 d1f1 e8g8 d2e4 c6c5 c1e3 b8c6 e4c5 a6c5 d4c5 h5f3 a4c2 f3g4 d3h7 g8h8 f2f3 g4f5 h7f5 e6f5 c2f5 c7e5 f5e5 c6e5 a1a2 a8d8 f1c1 a7a5 g1f1 e5c6 c1e1 e7h4 g2g3 h4e7 f3f4 d8d3 g3g4 f8a8 g4g5 a8f8 h2h3 e7d8 e1e2 a5a4 a2a1 g7g6 f1g1 d8c7 a1b1 f8e8 e3d4 d3d4 e2e8 h8g7 f4f5 g6f5 b2b3 c7f4 b3a4 f4g5 b1b7 d4c4 b7b5 c4c2 a4a5 c2a2 a5a6 a2a3 h3h4 g5f6 b5b6 c6d4 h4h5 a3a1 g1h2 f6e5 h2g2 a1a2 g2g1 d4f3 g1f1 e5d4
+go depth 5

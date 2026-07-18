@@ -1,0 +1,13 @@
+# Turn-29 queen-sac A/B test (2026-05-20 match)
+# Position right before engine chose Qxf8+ (with ORDER_TT_MOVE enabled).
+# Bxa5 wins queen cleanly; Qxf8+ does queen-for-rook sac then Bxa5 anyway,
+# leaving ~+400 cp on the table.
+#
+# Build under test: ORDER_TT_MOVE DISABLED (54411b4 baseline, no working-tree mods)
+# Watch for:
+#   bestmove d3a5 or b4a5 (Bxa5) -> ORDER_TT_MOVE caused the blunder, confirm revert
+#   bestmove f2f8 (Qxf8+)        -> ORDER_TT_MOVE innocent, the engine genuinely prefers
+#                                   queen-trade sequence; the bug is eval/horizon, not ordering
+
+position startpos moves e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 g1f3 d7d6 c1f4 d6d5 d1d3 b8d7 e4d5 e6d5 e1c1 g8f6 f3e5 e8g8 c1b1 a7a5 d3e3 e7b4 e5d7 c8d7 f1d3 d7g4 f2f3 g4c8 a2a3 c8e6 a3b4 a5b4 c3e2 d8a5 c2c3 b4b3 b1c1 a8e8 e3f2 a5a1 c1d2 a1a2 d1b1 a2a5 f4d6 f6e4 f3e4 d5e4 d3e4 e6g4 e2g3 g7g6 d2c1 f7f5 d6b4 f5e4
+go depth 5

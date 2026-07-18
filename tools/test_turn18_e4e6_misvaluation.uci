@@ -1,0 +1,23 @@
+# Turn-18 misvaluation A/B test (2026-05-20 trainwreck match)
+#
+# Position right before white moved Qe4-Qxe6, which loses the queen to
+# Qxe6+ recapture (black queen on e7 attacks e6 along the e-file).
+# Real material delta: gained pawn (+100), lost queen (-900) = -800 cp
+# Engine's d=4 search returned +225 for this move (off by ~1000 cp).
+#
+# Build under test: TT score-cutoff DISABLED (LBZ -> LBR at line 342).
+# TT_PROBE still populates TT_MOVE_HI/LO for move-ordering hints.
+# Expected behavior:
+#   If e4e6's d=4 score becomes more negative (say <= -300) ->
+#     TT-score-cutoff was returning collision-corrupted scores.
+#     Diagnosis: 16-bit hash too narrow; need score-validation or
+#     stop trusting TT scores at deep depths.
+#   If e4e6's d=4 score stays around +225 (still wrongly positive) ->
+#     TT is innocent; bug is in eval or alpha-beta search elsewhere.
+#     Diagnosis: investigate EVALUATE on post-Qxe6+Kd2 leaf.
+#
+# NOTE: search will be noticeably slower due to disabled cutoffs.
+# Time budget may not allow d=5; d=4 result is the key measurement.
+
+position startpos moves e2e4 c7c6 d2d4 d7d6 b1c3 d8b6 g1f3 c8g4 c3a4 b6c7 h2h3 g4h5 a4c3 b8d7 g2g4 h5g6 f3h4 e7e6 h4g6 h7g6 c1e3 d6d5 e4d5 e8c8 d5e6 d7b6 d1d3 f7e6 d3e4 c7f7 e3g5 f8e7 g5e7 f7e7
+go depth 5

@@ -1,0 +1,28 @@
+# Promotion-urgency A/B test (2026-05-27)
+#
+# Position: 46 plies into 2026-05-22 PM match (the one that ended in
+# Black's bishop-underpromotion endgame loss). White-to-move.
+# At this point engine was at d=5 score -350, about to play c1d1
+# (rook shuffle from c1 to d1). No pawn pushing despite materially-
+# down position.
+#
+# With promotion-urgency restoration active:
+#   - preeg likely <= -300 here (engine reported -350 final eval)
+#   - Item-B clamp would normally wipe out ADV_PAWN_W
+#   - The fix restores ADV_PAWN_W to R9 after the clamp
+#   - This should encourage pawn-push moves over rook shuffles
+#
+# Expected outcomes:
+#   1. (Best) bestmove flips to a pawn push (e.g., g3g4, b2b3, etc.)
+#   2. (Acceptable) bestmove stays c1d1 BUT score is less negative
+#      (the boost is being applied, just not flipping the choice)
+#   3. (No effect) bestmove same, score same (fix not firing or has bug)
+#
+# Engine status:
+#   - Materially down (-350 cp range)
+#   - Various pawn pushes available (a2, b2, c2 unmoved white pawns;
+#     d4, e5 advanced)
+#   - Rook shuffles are the "comfortable" eval move
+
+position startpos moves e2e4 g8f6 e4e5 f6g8 d2d4 e7e6 g1f3 d7d6 b1d2 f8e7 e1e2 b8c6 e2e3 g8h6 f1b5 h6f5 e3e2 c8d7 e5d6 c6d4 f3d4 f5d4 e2e3 d4f5 e3f3 d7b5 d6e7 d8d5 d2e4 d5d4 d1d4 f5d4 f3g3 d4f5 g3h3 f5e7 e4c5 b7b6 c1g5 b6c5 g5e7 e8e7 h1c1 b5d7 g2g3 h8d8
+go depth 5

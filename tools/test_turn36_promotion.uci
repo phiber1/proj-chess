@@ -1,0 +1,13 @@
+# Turn-36 promotion test (2026-05-21 N3 match)
+# Pre-move-36: white has b7 pawn ready to promote. White's choice was
+# b7b8q at d=4 score +1099. Real value (one ply later): -656.
+# Engine missed black's Rxb8 forced recapture; promotion only nets -100.
+#
+# Hardware retest expected outcomes:
+#   bestmove != b7b8q: engine sees a better move (good — better tactical eval)
+#   bestmove = b7b8q at d=5 score near 0 or negative: engine sees the Rxb8
+#     but still picks promotion as best (might be forced-by-no-alternative)
+#   bestmove = b7b8q at d=5 score >>+500: TT/eval bug still active
+
+position startpos moves e2e4 e7e5 g1f3 b8c6 f1c4 d8f6 c4f1 f6g6 d2d3 d7d6 f3h4 g6e6 h4f3 e6g6 h2h3 f7f5 e4f5 g6f7 g2g4 g7g6 f5g6 f7g6 f3h4 g6f7 c1d2 c8e6 a2a3 h7h5 d2c1 d6d5 a1a2 e8c8 f1g2 f8e7 h4f5 e6f5 g4f5 g8h6 f5f6 d8f8 g2f3 f7f6 b1d2 f6f7 c2c4 h8g8 c4d5 c8b8 d5c6 f7a2 d2c4 e7g5 c1g5 g8g5 c6b7 g5g7 a3a4 g7e7 h3h4 e7f7 f3e4 h6g4 f2f3 a7a5 f3g4 f7f4 c4e5 a2b2 e5d7 b8a7
+go depth 5

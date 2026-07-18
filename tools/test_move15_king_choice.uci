@@ -1,0 +1,25 @@
+# Move-15 king-move test (2026-05-22 PM match)
+#
+# Position: White is in check from Bc3 (black bishop captured d2 pawn
+# en route to c3, now attacks Ke1 through empty d2).
+#
+# Black's last move was b4c3 (bishop captures pawn that recaptured on c3).
+#
+# Engine's choices (from check):
+#   Kd1   - safe square, king moves
+#   Kf1   - safe square, king moves (chosen in match)
+#   Bc1d2 - BLOCKS check AND develops bishop AND threatens c3 bishop next
+#
+# Engine choice in actual match: e1f1, d=5 score +42
+# Hypothesis: engine doesn't weigh Bd2 (block-with-development) highly enough,
+# possibly because of:
+#   1. Move ordering: Bd2 comes after king moves in move list
+#   2. PST/eval terms favor Kf1 incorrectly
+#   3. Castling rights loss (-20 for Kf1) isn't strong enough deterrent
+#
+# Expected of a well-calibrated eval:
+#   Bestmove = Bc1d2 (best move - blocks check, develops, threatens material recovery)
+#   Or at minimum: Kd1/Kf1 with notably negative score (king-safety loss)
+
+position startpos moves e2e4 c7c6 d2d4 d7d5 e4e5 e7e6 b1c3 f8b4 a2a4 c6c5 f1b5 e8f8 a1a2 g8e7 f2f4 a7a6 b5e2 c5d4 d1d4 d8a5 d4f2 e7f5 g2g4 d5d4 g4f5 d4c3 b2c3 b4c3
+go depth 5

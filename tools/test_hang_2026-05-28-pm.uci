@@ -1,0 +1,28 @@
+# Engine hang test (2026-05-28 PM-late match)
+#
+# Engine hung solid during d=4 search on this position.
+# Last activity in elph-debug.log: info depth 3 score cp -80 nodes 197
+# at 25:53. No d=4 result, no bestmove emitted. Engine stopped
+# responding entirely.
+#
+# Context: this is on binary 5966070 (asymmetric amp + conditional
+# promotion-survival). 36 plies into a match. Engine is white,
+# materially down after queen-sac at move 24 (Q for R+2P).
+#
+# Hypothesis: search at d=4 entered an infinite loop or hit
+# stack overflow without the trap (commit 7b3a53d MARK/SEP 1)
+# firing cleanly. Need hardware test to reproduce — flash binary,
+# feed this position, and observe:
+#   - If hangs again: deterministic hang in this position
+#   - If completes: was a one-time glitch
+#   - Stack overflow guard at $7D00 should fire and emit info
+#     string at next IDS boundary IF stack overflow was the cause
+#
+# Note: the asymmetric-amp / promotion-survival changes don't fire
+# in this position (pc > 12, endgame block skipped, Item-B inert).
+# So if the hang reproduces, it's NOT from today's commits — it's
+# a pre-existing search/movegen bug surfaced by this specific
+# position.
+
+position startpos moves e2e4 g8f6 e4e5 f6e4 d2d3 e4f2 e1f2 b8c6 g1f3 c6e5 f3e5 d7d6 e5f7 e8f7 b1d2 e7e5 d1e1 d6d5 e1e5 f8c5 f2e1 h8e8 d2f3 e8e5 f3e5 f7e8 c2c4 d8e7 c1f4 d5c4 f4g3 c8d7 d3c4 d7f5 a1d1 a8d8
+go depth 5

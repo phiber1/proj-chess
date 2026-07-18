@@ -1,0 +1,46 @@
+# Faithful replay of the 2026-06-09 move-8 hang (stock king-prox build 62f0e84).
+# Mirrors the live match's TX stream VERBATIM (see elph-debug.log):
+#   - ONE ucinewgame at the start (TT/killers/history accumulate across the game)
+#   - every move driven by  go depth 5  (NOT a fixed lower depth)
+#
+# WHY go depth 5 everywhere (correction to the prior fixed-depth script):
+# Moves 4, 5, 7 RECEIVED `go depth 5` live but internally stopped at d4 — the
+# prediction gate aborted before/at d5 and fell back to the d4 bestmove. Driving
+# them with `go depth 4` instead (the old script) completes d4 cleanly and never
+# runs the d5-entry/abort path, leaving DIFFERENT TT residue. That different TT
+# steers move-8's d4 down a different leaf, so the old script could not reproduce
+# the hang by construction. The prediction gate's d4-vs-d5 choice is TIMING-
+# dependent, so this replay is intermittently non-deterministic — run it MANY
+# times; the hang is expected to appear on SOME runs (matching the historical
+# "sometimes a full match replay freezes").
+#
+# CHECK ON EACH RUN:
+#   - moves 4-7 bestmoves: g1f3, c2c4, b1d2, a2a3 (state-faithful when they match)
+#   - which depth each move stops at (d4 vs d5) — log it; that's the state variable
+#   - move 8: does it hang in d4? Record hang-vs-complete per run.
+uci
+ucinewgame
+position startpos
+isready
+go depth 5
+position startpos moves e2e4 g8f6
+isready
+go depth 5
+position startpos moves e2e4 g8f6 e4e5 f6d5
+isready
+go depth 5
+position startpos moves e2e4 g8f6 e4e5 f6d5 d2d4 e7e6
+isready
+go depth 5
+position startpos moves e2e4 g8f6 e4e5 f6d5 d2d4 e7e6 g1f3 b8c6
+isready
+go depth 5
+position startpos moves e2e4 g8f6 e4e5 f6d5 d2d4 e7e6 g1f3 b8c6 c2c4 f8b4
+isready
+go depth 5
+position startpos moves e2e4 g8f6 e4e5 f6d5 d2d4 e7e6 g1f3 b8c6 c2c4 f8b4 b1d2 d5e7
+isready
+go depth 5
+position startpos moves e2e4 g8f6 e4e5 f6d5 d2d4 e7e6 g1f3 b8c6 c2c4 f8b4 b1d2 d5e7 a2a3 b4a5
+isready
+go depth 5

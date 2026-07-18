@@ -1,0 +1,18 @@
+# N2 hanging-pawn test (2026-05-21)
+# Position right before white played g2g4 (move 38) in the 2026-05-20 PM
+# easy-loss match. Bf5 attacks g4 — engine should now penalize moves
+# that push pawns to f5's diagonal squares.
+#
+# Pre-N2 behavior (yesterday's match): bestmove g2g4, d=5 score cp 295
+#
+# Expected post-N2 outcomes (in order of best to acceptable):
+#   bestmove != g2g4 (preferably a defending move like Nd3 to block Bf5)
+#   bestmove == g2g4 but d=5 score noticeably lower (penalty visible)
+#
+# Reminder: c2 is ALREADY hanging in this position (Bf5 diagonal). The
+# baseline score should drop ~25 cp from that alone. Pushing g2-g4 adds
+# another attacker to g4, doubling the penalty. Defending moves (Nd3 to
+# interpose) remove the c2 attack -> remove the penalty.
+
+position startpos moves e2e4 e7e5 g1f3 d7d6 d2d4 g8f6 d4e5 f6e4 d1d5 e4c5 c1g5 f8e7 f1c4 c8e6 c4b5 c7c6 g5e7 d8e7 d5d6 c6b5 d6e7 e8e7 e1g1 b8d7 b1a3 b5b4 a3b1 g7g6 b1d2 a8d8 f1d1 d7b8 h2h3 b7b6 h3h4 a7a5 d1c1 d8d7 c1f1 h7h6 f1c1 b8a6 c1f1 a5a4 b2b3 h8b8 b3a4 b8d8 d2b3 e6g4 a1b1 g4f5 b3c5 b6c5 b1c1 d8a8 f1e1 f5g4 c1d1 a8c8 d1d7 e7d7 e1d1 d7e6 d1d6 e6e7 d6a6 g4f5 f3e1 c8d8 a6a7 d8d7 a7d7 e7d7
+go depth 5
