@@ -8,7 +8,8 @@ flash.
 **Convention:** after flashing firmware, copy the listing here as
 `chess-engine-<short-commit-hash>.lst`. If the tree was dirty at flash time,
 use a descriptive suffix and rename once committed
-(e.g. `chess-engine-diag-0717-uncommitted.lst` -> `chess-engine-4f34ae2.lst` (done 7/17)`).
+(e.g. `chess-engine-diag-0717-uncommitted.lst`). NOTE: a listing is archived in the
+COMMIT AFTER the one it documents — a commit cannot contain its own hash.
 
 **Dump-set -> listing map:**
 - `hang-0717-memdump-*.log` (Caro-Bf5 d2 freeze, 2026-07-17)
