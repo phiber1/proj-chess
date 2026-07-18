@@ -1,0 +1,59 @@
+# stress_qs_0717.uci — QS-load stress harness (Mark's brute-force plan, 2026-07-17)
+# 10 capture-dense positions mined from the corpus (top early-depth stalls +
+# both hang specimens). Each: ucinewgame -> software-identical passes; physical
+# timing (RTC phase etc.) is the only variable run-to-run. go depth 5 = match
+# conditions. Worst-case pass ~30-35 min. HANG CRITERION: >10 min silence
+# (d2 iterations are unkillable by design — 3 min stalls are legitimate).
+# On hang: EF4 button FIRST (QS_LOOP + ATTACK_SLIDE trapped); if dead, warm
+# reset -> read $641D ($00-$80 = eval scan square; >=$A0 = region stamp; table
+# in board.asm). All movelists python-chess replay-verified at build time.
+
+# pos 1: HANG-0717 (the specimen itself) (8 plies)
+ucinewgame
+position startpos moves e2e4 c7c6 d2d4 d7d5 e4e5 d8c7 b1c3 c8f5
+go depth 5
+
+# pos 2: elph-debug-loss-aggressive-queen.log (6 plies)
+ucinewgame
+position startpos moves e2e4 g8f6 e4e5 f6g8 d2d4 e7e6
+go depth 5
+
+# pos 3: elph-debug-bonus-suppression-didnt-work.log (38 plies)
+ucinewgame
+position startpos moves e2e4 g8f6 e4e5 f6g8 d2d4 d7d6 e5d6 d8d6 b1c3 g7g6 d1d3 g8f6 d3b5 c7c6 b5c5 d6c7 g1f3 h7h6 a1b1 c8g4 f3e5 g4f5 e5f7 b8d7 c5b4 h8h7 c1h6 h7h6 f7h6 f8h6 b1a1 h6f4 f1c4 e8c8 b4e7 d8h8 a1d1 g6g5
+go depth 5
+
+# pos 4: elph-debug-win-too-many-queens.log (32 plies)
+ucinewgame
+position startpos moves e2e4 c7c6 d2d4 e7e6 b1c3 f8b4 a2a3 b4e7 g1f3 d7d6 c1f4 d8d7 h2h4 d7d8 a1b1 d6d5 f1d3 b8d7 e1g1 d7f6 e4d5 e6d5 d1d2 c8g4 f3e5 g4d7 e5d7 f6d7 b1e1 d7b6 e1e5 d8d7
+go depth 5
+
+# pos 5: elph-debug-tactical-miss.log (40 plies)
+ucinewgame
+position startpos moves e2e4 g8f6 e4e5 f6e4 d2d3 e4c5 g1f3 b8c6 f1e2 e7e6 c1e3 d7d6 e3c5 d6c5 b1c3 c6d4 a1c1 f8e7 e1f1 f7f5 f3d4 c5d4 c3b5 e8g8 f1g1 h7h6 b2b4 e7g5 c1b1 g5f4 e2f3 a7a5 g2g3 f4e5 d1e2 e5f6 f3b7 c8b7 e2e6 g8h8
+go depth 5
+
+# pos 6: elph-debug-battle-queens-loss.log (38 plies)
+ucinewgame
+position startpos moves e2e4 c7c6 d2d4 e7e6 b1c3 f8e7 g1f3 d7d6 c1f4 h7h6 h2h4 a7a6 d1d3 b7b5 e1c1 b8d7 f1e2 c8b7 d1f1 d8c7 f1e1 b5b4 c3d1 c6c5 d1e3 e8c8 e3c4 c8b8 e1d1 g8f6 c4d6 e7d6 f3e5 f6e4 e5d7 d8d7 f4g3 c5d4
+go depth 5
+
+# pos 7: elph-debug-draw.log (34 plies)
+ucinewgame
+position startpos moves e2e4 c7c6 d2d4 d7d6 b1c3 d8b6 g1f3 c8g4 c3a4 b6c7 h2h3 g4h5 a4c3 e7e6 g2g4 h5g6 f3h4 b8d7 h4g6 h7g6 c1e3 b7b5 g4g5 a7a6 d1g4 d6d5 e4d5 e6d5 h1g1 f8d6 f1g2 d7f8 c3d5 c6d5
+go depth 5
+
+# pos 8: elph-debug-midgame-regression-queen-sac-loss.log (58 plies)
+ucinewgame
+position startpos moves e2e4 c7c6 d2d4 d7d6 b1c3 g7g6 f1e2 a7a5 f2f4 b8d7 a2a4 d7f6 a1a2 f8g7 c3b1 e7e5 d4e5 f6e4 g1h3 d8h4 g2g3 h4e7 a2a3 c8h3 e5d6 e4d6 a3e3 h3e6 b2b3 a8d8 c1d2 d6f5 e3e6 f7e6 d1c1 d8d7 g3g4 f5d4 e2d1 c6c5 g4g5 h7h6 c1a3 e7d6 g5h6 g7f8 h6h7 g8f6 h1f1 e8f7 c2c4 b7b6 f4f5 d6e5 e1f2 h8h7 f5g6 f7g6
+go depth 5
+
+# pos 9: elph-debug-queen-shuffle-loss.log (18 plies)
+ucinewgame
+position startpos moves e2e4 c7c6 d2d4 d7d6 b1c3 b8d7 g1f3 d8c7 c1e3 b7b5 d1d3 b5b4 c3e2 a7a5 c2c4 c8a6 e1c1 d7b6
+go depth 5
+
+# pos 10: HANG-0528 (historical, movecount-era) (36 plies)
+ucinewgame
+position startpos moves e2e4 g8f6 e4e5 f6e4 d2d3 e4f2 e1f2 b8c6 g1f3 c6e5 f3e5 d7d6 e5f7 e8f7 b1d2 e7e5 d1e1 d6d5 e1e5 f8c5 f2e1 h8e8 d2f3 e8e5 f3e5 f7e8 c2c4 d8e7 c1f4 d5c4 f4g3 c8d7 d3c4 d7f5 a1d1 a8d8
+go depth 5

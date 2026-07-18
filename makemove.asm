@@ -15,6 +15,11 @@
 ;         D = 0 if success
 ; ==============================================================================
 MAKE_MOVE:
+    ; DIAG stamp (2026-07-17 hang hunt).
+    RLDI 8, TRACE_WHERE
+    LDI $A3
+    STR 8               ; tracer: in MAKE_MOVE (R8 reloaded below)
+
     ; Save undo information
     RLDI 8, UNDO_FROM
 
@@ -585,6 +590,11 @@ MMRHC_CLEAR:
 ; Output: Board restored to previous state
 ; ==============================================================================
 UNMAKE_MOVE:
+    ; DIAG stamp (2026-07-17 hang hunt).
+    RLDI 9, TRACE_WHERE
+    LDI $A4
+    STR 9               ; tracer: in UNMAKE_MOVE (R9 reloaded below)
+
     ; Get moving piece from to square
     RLDI 9, UNDO_TO
     LDN 9               ; D = to square

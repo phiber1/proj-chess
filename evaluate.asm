@@ -981,6 +981,12 @@ QMOB_BLACK:
     PHI 9                   ; R9 -= black queen mobility x2
 QMOB_DONE:
 
+    ; DIAG stamp (2026-07-17 hang hunt): eval tail after mobility
+    ; (doubled pawns / rook files / passed pawns / endgame gate).
+    RLDI 11, TRACE_WHERE
+    LDI $E5
+    STR 11              ; tracer: eval tail (R11 reloaded below)
+
     ; ==================================================================
     ; Doubled Pawn Penalty: -15cp per extra pawn on same file
     ; Iterate 8 files; if count >= 2, penalty += (count - 1) * 15
@@ -2138,6 +2144,10 @@ CHECK_BONUS_SUB:
 CHECK_BONUS_DONE:
 
 BKS_DONE:
+    ; DIAG stamp (2026-07-17 hang hunt): EVALUATE about to return.
+    RLDI 10, TRACE_WHERE
+    LDI $E6
+    STR 10              ; tracer: EVALUATE returning
     RETN
 
 ; ------------------------------------------------------------------------------

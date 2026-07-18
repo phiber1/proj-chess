@@ -28,6 +28,12 @@ GENERATE_MOVES:
     ; Ensure X=2 for all stack/memory operations (XOR, ADD, etc.)
     SEX 2
 
+    ; DIAG stamp (2026-07-17 hang hunt): movegen loop nest is untrapped;
+    ; this stamp brackets it. R9 (move-list arg) untouched.
+    RLDI 10, TRACE_WHERE
+    LDI $A5
+    STR 10              ; tracer: in GENERATE_MOVES (R10 reloaded below)
+
     GLO 9
     PLO 15
     GHI 9

@@ -49,6 +49,12 @@ NEGAMAX:
     ; Ensure X=2 for stack operations
     SEX 2
 
+    ; DIAG stamp (2026-07-17 hang hunt): covers prologue window
+    ; (stack-check/ply-assert/SAVE_PLY_STATE) before the $A1 node stamp.
+    RLDI 10, TRACE_WHERE
+    LDI $A0
+    STR 10              ; tracer: NEGAMAX prologue (R10 reloaded below)
+
     ; Stack overflow detection (added 2026-05-12). MOVE_LIST at $7800-$7A7F
     ; sits directly below stack guard $7B00. If recursion pushes R2 below
     ; $7B00, MOVE_LIST gets silently corrupted — the suspected cause of the
@@ -1606,6 +1612,12 @@ CE_DONE:
     CALL NEGAMAX
     ; Returns score in R9 (R6 is SCRT linkage - off limits!)
 
+    ; DIAG stamp (2026-07-17 hang hunt): post-child bookkeeping window
+    ; (LMR pops, score negate, alpha/beta, killer store, next-move fetch).
+    RLDI 10, TRACE_WHERE
+    LDI $A2
+    STR 10              ; tracer: back from child (R10 reloaded below)
+
     ; -----------------------------------------------
     ; Pop LMR state (reverse order)
     ; -----------------------------------------------
@@ -1822,6 +1834,11 @@ LMR_DO_RESEARCH:
 
     ; Call NEGAMAX again (full depth this time)
     CALL NEGAMAX
+
+    ; DIAG stamp (2026-07-17 hang hunt): back from LMR re-search child.
+    RLDI 10, TRACE_WHERE
+    LDI $A7
+    STR 10              ; tracer: post-LMR-re-search (R10 reloaded below)
 
     ; Restore LMR_MOVE_INDEX (the re-searched child clobbered it)
     IRX
@@ -2410,6 +2427,11 @@ NEGAMAX_LEAF:
     CALL QUIESCENCE_SEARCH
     ; Returns score in R9 (already from side-to-move's perspective)
 
+    ; DIAG stamp (2026-07-17 hang hunt): leaf bookkeeping after QSEARCH.
+    RLDI 10, TRACE_WHERE
+    LDI $A6
+    STR 10              ; tracer: back from QSEARCH (R10 reloaded below)
+
     ; Save return value to SCORE memory BEFORE restore (RESTORE clobbers R9!)
     ; Big-endian: store high byte at lower address (SCORE_HI), low at SCORE_LO
     RLDI 10, SCORE_HI
@@ -2537,6 +2559,11 @@ QUIESCENCE_SEARCH:
     ; Stand-pat: evaluate current position
     CALL EVALUATE
     ; Returns score in R9 (from white's perspective)
+
+    ; DIAG stamp (2026-07-17 hang hunt): QS stand-pat/capture-gen window.
+    RLDI 10, TRACE_WHERE
+    LDI $C2
+    STR 10              ; tracer: QS post-eval (R10 reloaded below)
 
     ; Negate R9 if black to move (white-perspective → side-to-move)
     GLO 12

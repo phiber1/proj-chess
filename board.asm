@@ -98,9 +98,22 @@ QS_MOVE_PTR_HI  EQU $641A   ; 1 byte - move list pointer high
 QS_MOVE_PTR_LO  EQU $641B   ; 1 byte - move list pointer low
 QS_TEMP         EQU $641C   ; 1 byte - temp storage
 ; Debug tracer (ported from king-safety-v3 2026-07-13): TRACE_WHERE = last
-; region entered. IDs: $A1 NEGAMAX node  $C1 QSEARCH  $E1 EVALUATE
-; $E2 KING_SAFETY(v2)  $E3 QUEEN_MOBILITY  $E4 OOO_DISCOMFORT
-; $B1 TT_PROBE  $B2 TT_STORE
+; region entered. IDs (DIAG set expanded 2026-07-17, hang hunt):
+;   $A0 NEGAMAX prologue      $A1 NEGAMAX node (post-save)
+;   $A2 back from child       $A3 MAKE_MOVE     $A4 UNMAKE_MOVE
+;   $A5 GENERATE_MOVES        $A6 back from QSEARCH (leaf)
+;   $A7 back from LMR re-search
+;   $B1 TT_PROBE  $B2 TT_STORE
+;   $C1 QSEARCH entry  $C2 QS post-eval
+;   $E1 EVALUATE  $E2 KING_SAFETY(v2)  $E3 QUEEN_MOBILITY
+;   $E4 OOO_DISCOMFORT  $E5 eval tail (post-mobility)  $E6 EVALUATE returning
+; *** ALIAS (found + documented 2026-07-17): TRACE_WHERE shares $641D with
+; EVAL_SQ_INDEX, the eval board-scan counter. The scan only takes values
+; $00-$80 and ALL stamp IDs are >= $A0, so a dump byte decodes unambiguously:
+; $00-$80 = hung INSIDE the eval scan at that square index; >= $A0 = last
+; region stamp. INVARIANT: no stamp may ever fire between eval scan init
+; (EVALUATE ~line 261) and scan exit (EVAL_DONE) — it would corrupt the live
+; counter. All 18 current stamp sites verified outside the scan. Keep it so.
 ; CANARY_ZONE $64F7-$64FC: DELIBERATELY UNUSED, must stay 0 (7/3 crash dump
 ; showed stray writes here on the v3 build). CANARY_HIT = sticky OR of the
 ; zone, checked once per SEARCH_POSITION.
@@ -110,10 +123,12 @@ CANARY_ZONE     EQU $64F7   ; 6 bytes - unclaimed zone under watch
 
 ; Evaluation state
 EVAL_SQ_INDEX   EQU $641D   ; 1 byte - square counter for evaluate
+                            ; *** ALIASED with TRACE_WHERE — see tracer note
 
-; Move generation state
-GEN_LOOP_CTR    EQU $641E   ; 1 byte - loop counter for knight/king gen
-GEN_FROM_SQ     EQU $641F   ; 1 byte - from square for knight/king gen
+; Move generation state (DEAD equates, zero uses — 2026-07-17 audit; old
+; knight/king gen. Do NOT resurrect at these addresses: $641E is CANARY_HIT.)
+GEN_LOOP_CTR    EQU $641E   ; 1 byte - DEAD (was: loop counter knight/king gen)
+GEN_FROM_SQ     EQU $641F   ; 1 byte - DEAD (was: from square knight/king gen)
 
 ; Killer moves table (aligned to $6420)
 KILLER_MOVES    EQU $6420   ; 32 bytes - 2 per ply × 16 ply ($6420-$643F)
