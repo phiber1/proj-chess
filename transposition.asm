@@ -289,8 +289,13 @@ TT_CLEAR:
     ; Use R9 as 16-bit counter
     RLDI 9, TT_ENTRIES * TT_ENTRY_SIZE
 
-    LDI 0               ; Value to write
 TT_CLEAR_LOOP:
+    LDI 0               ; BUGFIX 2026-07-24: reload EVERY iteration — GHI/GLO
+                        ; below clobber D, so the old loop filled the table
+                        ; with counter bytes ($07 bands...), not zeros. Found
+                        ; via the 7/23 crash-scene $6840 dump. Junk "cleared"
+                        ; entries = patterned fake hashes = a possible
+                        ; contributor to same-side TT false hits.
     STR 10
     INC 10
     DEC 9
@@ -597,6 +602,12 @@ TT_STORE:
 ; Output: HASH_HI/LO updated
 ; Uses:   R7, R9, R10, R11, R13
 ; ==============================================================================
+; --- DIAG-3 RELOCATION PAD (2026-07-24, hang hunt): 4 x $D1 shifts every
+; HXPS fetch address by +4. Discriminator for the $5858 fetch-failure class:
+; post-pad crash with R3=$5859 = fault is ADDRESS-locked ($5858 itself);
+; R3=$585D = fault FOLLOWS the instruction pattern (LDA/XOR/PHI sequence).
+; The pad bytes are SEP 1 = instant breakpoint if anything ever lands here.
+    DB $D1, $D1, $D1, $D1
 HASH_XOR_PIECE_SQ:
     ; Skip if piece is EMPTY
     GLO 8

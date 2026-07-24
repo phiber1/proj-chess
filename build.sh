@@ -82,13 +82,10 @@ echo "; Module: Support Routines (16-bit arithmetic)" >> "$OUTPUT"
 echo "; ==============================================================================" >> "$OUTPUT"
 
 # Append modules in dependency order
-# Skip SCRT in BIOS mode - BIOS already provides R4=CALL, R5=RET, R2=stack
-if grep -q "^USE_BIOS.*EQU 1" "$CONFIG_FILE" 2>/dev/null; then
-    echo "  - (skipping scrt.asm - BIOS provides SCRT)"
-else
-    echo "  - scrt.asm (Standard Call/Return Technique)"
-    cat scrt.asm >> "$OUTPUT"
-fi
+# SCRT comes from the BIOS (bios/bios.asm call:/ret: - both do SEX R2, D saved
+# in RE). The old standalone scrt.asm (R7-based, ORG $6F00 = inside the TT!)
+# was never part of the BIOS build and now lives in attic/ (moved 2026-07-19).
+echo "  - (SCRT provided by BIOS)"
 
 # Include serial I/O EARLY to keep short branches in range
 if grep -q "^USE_BIOS.*EQU 1" "$CONFIG_FILE" 2>/dev/null; then

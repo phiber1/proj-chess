@@ -85,3 +85,20 @@ OOO_B_SIDE:
 OOO_DONE:
     GLO 11              ; D = signed net
     RETN
+
+; ==============================================================================
+; BP_VECTOR - IDLE-exit crash catcher (2026-07-23, Mark's design; tested in
+; interrupt_demo.asm). The 1806 loads P from R0 on IDL, so a wild-PC freeze
+; (the hang class: wild jump -> $00 byte -> IDLE) parks the CPU waiting on R0.
+; START arms R0 = BP_VECTOR and enables IE (SEX 3/RET/$23 inline idiom), so
+; grounding /INTERRUPT on a frozen machine executes THIS: MARK saves (X,P),
+; SEP 1 enters the BIOS breakpoint handler = FULL register dump — including
+; R3 = the address immediately after the fatal IDL = the crash site.
+; /INT is hard-tied high; only a deliberate probe ground ever triggers this.
+; Bonus signature: an armed frozen machine shows THIS address on the bus, not
+; the old $FCF7 boot fossil.
+; ==============================================================================
+BP_VECTOR:
+    MARK                ; T & M(R2) <- (X,P)
+    SEP 1               ; -> BIOS breakpoint handler: full register dump
+    LBR $8003           ; monitor warm start (safety, if handler returns)

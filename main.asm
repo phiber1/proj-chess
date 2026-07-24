@@ -18,6 +18,18 @@ START:
     ; If we set R2=$7FFF, our stack would overwrite monitor variables,
     ; breaking warm start at $8003.
     SEX 2               ; Ensure X = R2 for stack operations
+
+    ; --- ARM THE CRASH CATCHER (2026-07-23, Mark's design; see BP_VECTOR in
+    ; overflow-7b00.asm and interrupt_demo.asm). Enable IE via the inline-RET
+    ; idiom: SEX 3 makes RET consume the next byte ($23) as its (X,P) operand
+    ; -> IE=1, X=2, P=3, execution flows on. Then aim R0 (the IDLE-exit
+    ; vector) at BP_VECTOR. Zero runtime cost; /INT is hard-tied high and only
+    ; a deliberate probe ground on a frozen machine ever fires it. ---
+    SEX 3               ; X = P: RET reads its operand inline
+    RET                 ; IE <- 1; (X,P) <- $23 -> X=2, P=3
+    DB $23              ; RET operand: X=2, P=3 (consumed, not executed)
+    RLDI 0, BP_VECTOR   ; R0 = IDLE-exit vector = the crash catcher
+
     ; Serial I/O uses BIOS entry points, no init needed
 #else
 ; ------------------------------------------------------------------------------
@@ -43,6 +55,26 @@ MAIN_CONTINUE:
     ; Initialize serial I/O (sets Q high for idle, R14.0 = 2)
     CALL SERIAL_INIT
 #endif
+
+    ; --- DIAG-3 TRIPWIRE SEED (2026-07-24, hang hunt, boot-once): fill the
+    ; MOVE_LIST region $7800-$7AFF with $D1 (SEP 1). Legit movegen writes
+    ; overwrite seeds harmlessly; legit code never executes or over-reads
+    ; list cells. Any WANDERING execution touching an unwritten cell fires
+    ; an instant breakpoint with full registers — converts silent near-miss
+    ; excursions (the unexplained $00 sweep at $7840-7F) into loud captures.
+    ; Boot-once deliberately: NOT in ucinewgame (its processing window
+    ; already drops serial bytes — see the PARTIAL_ECHO note in uci.asm).
+    RLDI 10, $7800
+    RLDI 9, $0300
+SEED_D1_LOOP:
+    LDI $D1             ; reload every iteration (GHI/GLO clobber D)
+    STR 10
+    INC 10
+    DEC 9
+    GHI 9
+    LBNZ SEED_D1_LOOP
+    GLO 9
+    LBNZ SEED_D1_LOOP
 
     ; Clear workspace RAM ($6200-$64FF) to prevent stale variable bugs
     CALL WORKSPACE_CLEAR
