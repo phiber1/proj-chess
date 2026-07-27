@@ -6,7 +6,7 @@ died on d4 as a forced mate-block). Key finding at birth (173 games):
   - captures near-parity (W 1.37 / B 1.53, median 1 = the queen exchange)
   - CHECKS are the discriminator: W 0.73/game median 0 (58% of games the
     white queen never checks) vs B 2.40/game — 3.3x asymmetry.
-Run with the /tmp/chess_venv python (needs python-chess).
+Run with the project venv python: venv/bin/python (needs python-chess).
 See memory: weak_queen_must_revisit.
 """
 import re, glob, chess, statistics, sys

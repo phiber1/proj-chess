@@ -21,3 +21,8 @@ chess-unified.asm
 # Editor files
 *~
 *.swp
+
+# Local-only working areas (survive /tmp wipes, travel with rsync, stay out of git)
+venv/
+scratch/
+stress-runs/
