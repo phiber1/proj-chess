@@ -1,6 +1,6 @@
 # RCA 1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish 40 times — including its first pure-technique mate (queen + knight coordination, no promotion required) and an 18-move blitz checkmate, both in July 2026.
+A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). It runs on the **ELPH**, a custom 1806 system designed and built by Mark Abene, architecture-compatible with Bob Armstrong's Elf 2000. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish 40 times — including its first pure-technique mate (queen + knight coordination, no promotion required) and an 18-move blitz checkmate, both in July 2026.
 
 **On exhibit at the Vintage Computer Fair, August 1–2, 2026.**
 
@@ -103,7 +103,7 @@ This preprocesses `config.asm`, concatenates all modules in dependency order, an
 ### Configuration
 
 Edit `config.asm` to select between:
-- **BIOS mode** (default): Uses Elf/OS BIOS for serial I/O and SCRT
+- **BIOS mode** (default): Uses the Elf BIOS for serial I/O and SCRT
 - **Standalone mode**: Bit-bang serial for bare hardware
 
 ## Playing
@@ -204,9 +204,12 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 ## Credits
 
 - **Engine design and implementation**: Claude Code (Anthropic) in collaboration with Mark Abene
-- **Target platform**: RCA CDP1806 (1802-family, RCA Corporation)
+- **ELPH hardware platform**: designed and built by Mark Abene — architecture-compatible with Bob Armstrong's Elf 2000 (Elf2K)
+- **CPU**: RCA CDP1806 (1802-family, RCA Corporation)
 - **A18 cross-assembler**: William C. Colley, III / Herb Johnson
-- **BIOS**: Elf/OS (Mike Riley)
+- **Elf BIOS**: Mike Riley
+- **BOOTS ROM Monitor**: Bob Armstrong
+- **EMMA02 emulator** (initial, early prototyping): Marcel van Tongeren
 - **UCI protocol**: Stefan Meyer-Kahlen
 - **CuteChess**: Ilari Pihlajisto, Arto Jonsson
 
