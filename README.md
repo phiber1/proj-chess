@@ -1,6 +1,8 @@
 # RCA 1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish by checkmate 31 times — including its first pure-technique mate (queen + knight coordination, no promotion required) in July 2026.
+A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish 40 times — including its first pure-technique mate (queen + knight coordination, no promotion required) and an 18-move blitz checkmate, both in July 2026.
+
+**On exhibit at the Vintage Computer Fair, August 1–2, 2026.**
 
 ## Quick Stats
 
@@ -8,11 +10,11 @@ A fully playable chess engine written in hand-crafted RCA 1806 assembly language
 |------|-------|
 | **CPU** | RCA CDP1806 @ 12 MHz |
 | **RAM** | 32KB |
-| **Code Size** | ~24KB (24,541 bytes) |
+| **Code Size** | ~24KB main image (through $5F4B) + overflow code page at $7B00 |
 | **Search** | Iterative deepening to depth 5, per-iteration time prediction |
 | **Opening Book** | 504 entries, 8 openings + opponent-prep deviations, ply 14 deep |
 | **Time Control** | 180 seconds per move (DS12887 RTC) |
-| **Wins vs Stockfish** | 31 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
+| **Wins vs Stockfish** | 40 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
 
 ## Wins vs Stockfish — firsts and highlights
 
@@ -24,13 +26,16 @@ A fully playable chess engine written in hand-crafted RCA 1806 assembly language
 | 23 | Jun 2, 2026 | Validated the current stable engine base — coherent mate-in-30 conversion |
 | 30 | Jul 2, 2026 | **First pure-technique mate** — Q+N coordination, no promotion, monotonic eval start to finish |
 | 31 | Jul 2, 2026 | Mating attack at near-equal material — a-pawn runner to a8=Q, then Qg8# through the defender's own rook shell |
+| 37 | Jul 25, 2026 | 35-minute blitz mate — queen warpath (Qxg7/Qxf6/Qh8#) with a four-capture knight tour |
+| 39 | Jul 25, 2026 | 18-move blitz checkmate in 30 minutes — Caro-Kann dismantled, Qg7# |
+| 40 | Jul 27, 2026 | Recovered from down-the-exchange to strip Stockfish to a bare king by move 65 — won by adjudication |
 
 ## Features
 
 ### Search
 - Negamax with alpha-beta pruning
 - Iterative deepening to depth 5 with per-iteration time prediction (predicts whether the next iteration fits the remaining budget)
-- Transposition table (256 entries, Zobrist hashing with XOR-fold indexing, mate-rejection guard for hash collisions)
+- Transposition table (256 entries, Zobrist hashing with XOR-fold indexing, side-to-move disambiguation bit, mate-rejection guard for hash collisions)
 - Null move pruning (NMP)
 - Late move reductions (LMR)
 - Late move pruning (LMP) at low depth
@@ -84,6 +89,8 @@ A fully playable chess engine written in hand-crafted RCA 1806 assembly language
 - RTC-based time management (DS12887 real-time clock)
 - UCI `info` output with depth, score (centipawns), and node count
 - Hardware break-button diagnostics: a physical button on /EF4 traps a live hang and dumps registers through the BIOS — debugging a real 1806, not an emulator
+- Crash catcher: R0 is armed as an IDLE-exit breakpoint vector with interrupts enabled — grounding /INT on a frozen CPU prints a full register dump, with R3 pointing one byte past the crash site. Used in July 2026 to pinpoint (and fix) a marginal bus fetch that had caused rare, months-apart freezes
+- DIAG execution tracer: 18 lightweight trace stamps across search/makemove/movegen/eval record the last checkpoint reached, readable from a post-mortem memory dump
 
 ## Building
 
@@ -120,7 +127,7 @@ go depth 5       -> bestmove ...
 ## Memory Map
 
 ```
-$0000-$5FDD  Code + tables (~24KB)
+$0000-$5F4B  Code + tables (~24KB)
 $6000-$607F  Board array (128 bytes, 0x88 format)
 $6080-$608F  Game state (castling, en passant, king positions, etc.)
 $6090-$618F  Move history (undo stack)
@@ -129,7 +136,7 @@ $6200-$67FF  Search/eval workspace (killers, scores, counters, hash history,
 $6800-$6FFF  Transposition table (2KB, 256 entries x 8 bytes)
 $7000-$77FF  UCI input buffer (2KB)
 $7800-$7AFF  Move list (depth-5 search)
-$7B00-$7BFF  Reserved (future subroutine page)
+$7B00-$7BFF  Overflow code page (castle-side eval, crash-catcher vector)
 $7C00-$7CFF  XMODEM loader (resident)
 $7D00-$7FFF  Stack (overflow guard at $7D00)
 ```
@@ -162,10 +169,10 @@ $7D00-$7FFF  Stack (overflow guard at $7D00)
 | `serial-io.asm` | Serial I/O (BIOS or standalone) |
 | `opening-book.asm` | Opening book data (504 entries) |
 | `opening-book-lookup.asm` | Book position matching |
-| `main.asm` | Entry point, initialization |
+| `main.asm` | Entry point, initialization, crash-catcher arming |
 | `config.asm` | Build configuration |
 | `support.asm` | 16-bit arithmetic library |
-| `scrt.asm` | Standard call/return technique (subroutine linkage) |
+| `overflow-7b00.asm` | Overflow code page: castle-side eval + crash-catcher breakpoint vector |
 | `stack.asm` | Stack management for recursion |
 
 ### Tools
@@ -177,6 +184,8 @@ $7D00-$7FFF  Stack (overflow guard at $7D00)
 | `tools/gen_zobrist.py` | Generate Zobrist hash key tables |
 | `tools/analyze_loss.py` | Ground engine evals against replayed material (match forensics) |
 | `tools/analyze_endgame_mechanism.py` | Endgame/adjudication mechanism analysis over match logs |
+| `tools/measure_queen_activity.py` | Queen activity/passivity metrics across the match corpus |
+| `tools/audit_table_pages.py` | Post-build audit for carry-less table page-crossings the assembler misses |
 | `elph-bridge.py` | CuteChess serial bridge (Python/pyserial) |
 | `build.sh` | Build script (preprocess, concat, assemble) |
 
@@ -190,7 +199,7 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 | **RAM** | 2KB | 32KB |
 | **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + LMP + RFP + futility + check ext, depth 5 |
 | **Opening Book** | Small | 504 entries, 8 openings + opponent-prep |
-| **Wins** | N/A | 31 vs Stockfish |
+| **Wins** | N/A | 40 vs Stockfish |
 
 ## Credits
 
