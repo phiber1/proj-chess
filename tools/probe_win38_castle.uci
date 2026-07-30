@@ -1,0 +1,7 @@
+# probe_win38_castle.uci — exhibition-prep A+B validation (2026-07-30)
+# win38 NEGATIVE CONTROL (W mv16): O-O-O here won via technique. Black b6 only ->
+# storm term silent. WANT: e1c1 unchanged.
+# Movelist generated programmatically from the match log, replay-verified.
+ucinewgame
+position startpos moves e2e4 g8f6 e4e5 f6g8 d2d4 d7d6 e5d6 b8c6 d6c7 d8c7 d4d5 c6b4 f1b5 c8d7 b5d7 c7d7 c2c4 d7f5 d1a4 b4c6 d5c6 b7b6 c6c7 f5d7 a4d7 e8d7 c1f4 d7e8 b1d2 g8f6
+go depth 5

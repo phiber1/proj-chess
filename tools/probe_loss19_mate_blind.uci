@@ -1,0 +1,11 @@
+# probe_loss19_mate_blind.uci — loss19 (7/28 laptop): position after
+# 17...Qa5, White to move 18. Match search chose Rg1 (+175 at d3; d4
+# aborted at 180s) and was mated by 18...Qa1#. Defenses: Qa7/Qa3/Kc1/c3/c4.
+# Suspect: LMP quiet-check hole (no gives-check exemption, negamax.asm
+# ~1264) prunes Qa1# at ply-1/depth-2 nodes during the d3 iteration.
+# COLD probe (ucinewgame): if d3 again picks a non-defending move at a
+# positive score -> structural (LMP); a defense here -> TT-history suspect.
+# Movelist generated programmatically from the match log, replay-verified.
+ucinewgame
+position startpos moves e2e4 e7e6 d2d4 a7a5 b1c3 f8b4 e4e5 d7d5 g1f3 c8d7 c1e3 d7a4 d1d2 g8e7 e1c1 e8g8 a2a3 b4c3 d2c3 b7b5 f1d3 b5b4 a3b4 c7c6 d1f1 a4b5 d3b5 a5b4 c3b4 c6b5 c1b1 b8c6 b4c5 d8a5
+go depth 5

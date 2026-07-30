@@ -1,0 +1,12 @@
+# probe_loss21_fxe3_blind.uci — loss21 (7/29 laptop): position after
+# 35...Kf8, White to move 36. Match search played 36.fxe3 at +485 with ALL
+# FIVE depths blind (525/525/428/511/485) to the 3-ply refutation
+# 36...Nd4+! (quiet discovered check) 37.any Qxg6 — queen for knight.
+# LMP alone CANNOT explain d4/d5 blindness (ply-1 remaining depth >= 3).
+# Suspects: same-side TT false hit skipping the ply-1 subtree; or
+# LMR-of-quiet-check + re-search interaction. COLD probe (ucinewgame):
+# byte-identical repeat -> structural; a different move -> TT-history.
+# Movelist generated programmatically from the match log, replay-verified.
+ucinewgame
+position startpos moves e2e4 e7e6 d2d4 a7a5 b1c3 a5a4 g1f3 a4a3 b2a3 f8a3 c1a3 a8a3 d1d3 a3a5 e1c1 h7h6 c1b1 b7b6 d3e3 c8b7 f3e5 g8e7 e3f4 e8g8 f1d3 c7c5 h1f1 b7a6 d3a6 a5a6 f1e1 a6a8 d4c5 f7f6 e5g4 a8a3 c3b5 a3a6 b5c7 e6e5 g4h6 g7h6 f4g4 g8h8 c7a6 b6c5 a6b8 d8b6 b1c1 f8b8 g4h5 d7d5 h5h6 h8g8 c1d2 b6b4 d2e2 b4c4 e2f3 b8b4 h6f6 d5e4 f3g4 e4e3 g4f3 c4e4 f3e2 e7f5 f6g6 g8f8
+go depth 5

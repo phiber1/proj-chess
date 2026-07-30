@@ -39,6 +39,32 @@ OOO_DISCOMFORT:
     ANI $07
     SMI 3
     LBDF OOO_B_SIDE     ; file >= d -> not queenside
+    ; --- PAWN-STORM term (2026-07-30 exhibition-prep, loss19+loss23): both
+    ; O-O-O mates this week were PAWNS-FIRST storms — the queen arrived last,
+    ; so the queen-keyed term below stayed silent while a5/b5 (loss19) and
+    ; b5/a5 (loss23, from mv8) rolled in and Ra1#/Qa1# followed on the ripped
+    ; a-file. Signal: black storm pawn ON RANK 5 (a5/b5), -40 per file,
+    ; independent of the queen term; self-healing (read live each eval).
+    ; Rank 5 exactly, NOT missing-from-home: win36 (O-O-O blowout WIN)
+    ; castled with black a4-blocked + b6 — home-absence would have taxed a
+    ; proven-good castle; rank 5 is the crossing point where a storm is
+    ; committed but not yet landed, and separates all four probe games. ---
+    RLDI 10, BOARD + $40
+    LDN 10              ; a5
+    XRI B_PAWN
+    LBNZ OOO_W_B5
+    GLO 11
+    SMI 40
+    PLO 11              ; net -= 40 (a-pawn storming)
+OOO_W_B5:
+    RLDI 10, BOARD + $41
+    LDN 10              ; b5
+    XRI B_PAWN
+    LBNZ OOO_W_QUEEN
+    GLO 11
+    SMI 40
+    PLO 11              ; net -= 40 (b-pawn storming)
+OOO_W_QUEEN:
     ; black queen developed on files a-d?
     RLDI 10, B_QUEEN_SQ
     LDN 10
@@ -68,6 +94,23 @@ OOO_B_SIDE:
     ANI $07
     SMI 3
     LBDF OOO_DONE       ; file >= d -> not queenside
+    ; --- mirror PAWN-STORM term: white storm pawn on rank 4 (a4/b4) ---
+    RLDI 10, BOARD + $30
+    LDN 10              ; a4
+    XRI W_PAWN
+    LBNZ OOO_B_B4
+    GLO 11
+    ADI 40
+    PLO 11              ; net += 40 (a-pawn storming vs black king)
+OOO_B_B4:
+    RLDI 10, BOARD + $31
+    LDN 10              ; b4
+    XRI W_PAWN
+    LBNZ OOO_B_QUEEN
+    GLO 11
+    ADI 40
+    PLO 11              ; net += 40 (b-pawn storming vs black king)
+OOO_B_QUEEN:
     ; white queen developed on files a-d?
     RLDI 10, W_QUEEN_SQ
     LDN 10

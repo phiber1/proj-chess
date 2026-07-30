@@ -1,0 +1,7 @@
+# probe_win36_castle.uci — exhibition-prep A+B validation (2026-07-30)
+# win36 NEGATIVE CONTROL (W mv10): O-O-O here won a blowout. Black a4 (rank 4, not 5)
+# + b6 -> storm term MUST stay silent. WANT: e1c1 unchanged.
+# Movelist generated programmatically from the match log, replay-verified.
+ucinewgame
+position startpos moves e2e4 e7e6 d2d4 a7a5 b1c3 f8b4 e4e5 b7b6 g1f3 a5a4 c1e3 c8b7 a2a3 b7f3 d1f3 b4c3 b2c3 b8a6
+go depth 5

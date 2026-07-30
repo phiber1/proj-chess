@@ -1,0 +1,7 @@
+# probe_loss19_castle.uci — exhibition-prep A+B validation (2026-07-30)
+# loss19 pre-castle (W mv8). OLD build chose e1c1 -> storm-mated. Black a5 on rank 5
+# -> storm term fires -40 on post-O-O-O nodes. WANT: any move EXCEPT e1c1.
+# Movelist generated programmatically from the match log, replay-verified.
+ucinewgame
+position startpos moves e2e4 e7e6 d2d4 a7a5 b1c3 f8b4 e4e5 d7d5 g1f3 c8d7 c1e3 d7a4 d1d2 g8e7
+go depth 5

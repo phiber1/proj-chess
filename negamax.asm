@@ -1262,7 +1262,8 @@ NEGAMAX_NOT_FUTILE:
     ; have been searched, skip remaining quiet moves entirely. Empirical
     ; literature: 20-40% node reduction at low depths with low risk.
     ; Conditions (all must hold to prune):
-    ;   1. CURRENT_PLY > 0      — never prune at root (highest cost of error)
+    ;   1. CURRENT_PLY > 1      — never prune at root OR at root replies
+    ;                             (raised from >0 on 2026-07-30, loss19)
     ;   2. NODE_IN_CHECK == 0   — never prune when we're in check (legal
     ;                             escape moves can be late in ordering, and
     ;                             pruning them = false mate detection)
@@ -1277,10 +1278,18 @@ NEGAMAX_NOT_FUTILE:
     ; pruned them, causing NEGAMAX_NO_MOVES to fire and report mate.
     ; -----------------------------------------------
 
-    ; Cond 1: ply > 0?
+    ; Cond 1: ply > 1?  (2026-07-30 exhibition-prep: was ply > 0. Ply 1 =
+    ; replies to the root move — loss19's 18...Qa1# was a quiet check at
+    ; index >= 8 there, pruned during the d3 iteration (remaining depth 2),
+    ; and the d4 that would have seen it died at the 180s wall. Never prune
+    ; root replies: a mate-in-1 against the root move must always be seen.
+    ; Cost is nodes only — removing a prune cannot create tactical error.
+    ; Acceptance: tools/probe_loss19_mate_blind.uci must yield a defense.
     RLDI 10, CURRENT_PLY
     LDN 10
-    LBZ NEGAMAX_LMP_DONE        ; root: never prune
+    SMI 2
+    LBNF NEGAMAX_LMP_DONE       ; ply < 2: never prune (root + root replies)
+    LDN 10                      ; reload D = ply (cond 2 needs it for addressing)
 
     ; Cond 2: not in check at this node?
     ADI LOW(NODE_IN_CHECK)

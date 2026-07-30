@@ -1,0 +1,8 @@
+# probe_loss23_castle.uci — exhibition-prep A+B validation (2026-07-30)
+# loss23 pre-castle (W mv7). OLD build chose e1c1 -> storm-mated. Storm pawns only on
+# rank 6 here, term silent at castle time — e1c1 again is EXPECTED (accepted gap;
+# the term engages at mv8 when b5 lands). Recorded for the ledger either way.
+# Movelist generated programmatically from the match log, replay-verified.
+ucinewgame
+position startpos moves e2e4 e7e6 d2d4 d7d6 b1c3 a7a6 c1e3 h7h5 g1f3 b7b6 d1d3 g8f6
+go depth 5
