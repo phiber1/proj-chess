@@ -1,6 +1,6 @@
 # RCA 1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). It runs on the **ELPH**, a custom 1806 system designed and built by Mark Abene, architecture-compatible with Bob Armstrong's Elf 2000. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish 40 times — including its first pure-technique mate (queen + knight coordination, no promotion required) and an 18-move blitz checkmate, both in July 2026.
+A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). It runs on the **ELPH**, a custom 1806 system designed and built by Mark Abene, architecture-compatible with Bob Armstrong's Elf 2000. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish 42 times — including its first pure-technique mate (queen + knight coordination, no promotion required) and an 18-move blitz checkmate, both in July 2026.
 
 **On exhibit at the Vintage Computer Fair, August 1–2, 2026.**
 
@@ -10,11 +10,11 @@ A fully playable chess engine written in hand-crafted RCA 1806 assembly language
 |------|-------|
 | **CPU** | RCA CDP1806 @ 12 MHz |
 | **RAM** | 32KB |
-| **Code Size** | ~24KB main image (through $5F4B) + overflow code page at $7B00 |
+| **Code Size** | ~24KB main image (through $5F4E) + overflow code page at $7B00 |
 | **Search** | Iterative deepening to depth 5, per-iteration time prediction |
 | **Opening Book** | 504 entries, 8 openings + opponent-prep deviations, ply 14 deep |
 | **Time Control** | 180 seconds per move (DS12887 RTC) |
-| **Wins vs Stockfish** | 40 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
+| **Wins vs Stockfish** | 42 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
 
 ## Wins vs Stockfish — firsts and highlights
 
@@ -29,6 +29,8 @@ A fully playable chess engine written in hand-crafted RCA 1806 assembly language
 | 37 | Jul 25, 2026 | 35-minute blitz mate — queen warpath (Qxg7/Qxf6/Qh8#) with a four-capture knight tour |
 | 39 | Jul 25, 2026 | 18-move blitz checkmate in 30 minutes — Caro-Kann dismantled, Qg7# |
 | 40 | Jul 27, 2026 | Recovered from down-the-exchange to strip Stockfish to a bare king by move 65 — won by adjudication |
+| 41 | Jul 28, 2026 | **Queenless mate** — queen traded off by move 11, then R+N+B built a mating net and delivered 40.Rf8# with Black's queen still on the board |
+| 42 | Jul 30, 2026 | Five-ply forcing combination (Qxb4 Nxb4 Bxd7+ Kxd7 Nxb6+! fork) regains the queen, then a monotone conversion staircase to resignation |
 
 ## Features
 
@@ -127,7 +129,7 @@ go depth 5       -> bestmove ...
 ## Memory Map
 
 ```
-$0000-$5F4B  Code + tables (~24KB)
+$0000-$5F4E  Code + tables (~24KB)
 $6000-$607F  Board array (128 bytes, 0x88 format)
 $6080-$608F  Game state (castling, en passant, king positions, etc.)
 $6090-$618F  Move history (undo stack)
@@ -136,7 +138,7 @@ $6200-$67FF  Search/eval workspace (killers, scores, counters, hash history,
 $6800-$6FFF  Transposition table (2KB, 256 entries x 8 bytes)
 $7000-$77FF  UCI input buffer (2KB)
 $7800-$7AFF  Move list (depth-5 search)
-$7B00-$7BFF  Overflow code page (castle-side eval, crash-catcher vector)
+$7B00-$7BFF  Overflow code page (castle-side + pawn-storm eval, crash-catcher vector)
 $7C00-$7CFF  XMODEM loader (resident)
 $7D00-$7FFF  Stack (overflow guard at $7D00)
 ```
@@ -199,7 +201,7 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 | **RAM** | 2KB | 32KB |
 | **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + LMP + RFP + futility + check ext, depth 5 |
 | **Opening Book** | Small | 504 entries, 8 openings + opponent-prep |
-| **Wins** | N/A | 40 vs Stockfish |
+| **Wins** | N/A | 42 vs Stockfish |
 
 ## Credits
 
