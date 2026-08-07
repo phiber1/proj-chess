@@ -1,8 +1,8 @@
 # RCA 1806 Chess Engine
 
-A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). It runs on the **ELPH**, a custom 1806 system designed and built by Mark Abene, architecture-compatible with Bob Armstrong's Elf 2000. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish 42 times — including its first pure-technique mate (queen + knight coordination, no promotion required) and an 18-move blitz checkmate, both in July 2026.
+A fully playable chess engine written in hand-crafted RCA 1806 assembly language (the 1802's enhanced successor, using its extended instruction set). It runs on the **ELPH**, a custom 1806 system designed and built by Mark Abene, architecture-compatible with Bob Armstrong's Elf 2000. The engine communicates via UCI protocol over serial, plays through the CuteChess GUI via a Python bridge, and has defeated Stockfish 45 times — including its first pure-technique mate (queen + knight coordination, no promotion required) and an 18-move blitz checkmate, both in July 2026.
 
-**On exhibit at the Vintage Computer Fair, August 1–2, 2026.**
+**Exhibited live at the Vintage Computer Fair, August 1–2, 2026 — floor record 3 wins, 1 loss, 1 draw, including back-to-back checkmates on the Sunday.**
 
 ## Quick Stats
 
@@ -14,7 +14,7 @@ A fully playable chess engine written in hand-crafted RCA 1806 assembly language
 | **Search** | Iterative deepening to depth 5, per-iteration time prediction |
 | **Opening Book** | 504 entries, 8 openings + opponent-prep deviations, ply 14 deep |
 | **Time Control** | 180 seconds per move (DS12887 RTC) |
-| **Wins vs Stockfish** | 42 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
+| **Wins vs Stockfish** | 45 (Stockfish limited to Skill Level 2, 5s/move, depth 3) |
 
 ## Wins vs Stockfish — firsts and highlights
 
@@ -31,6 +31,8 @@ A fully playable chess engine written in hand-crafted RCA 1806 assembly language
 | 40 | Jul 27, 2026 | Recovered from down-the-exchange to strip Stockfish to a bare king by move 65 — won by adjudication |
 | 41 | Jul 28, 2026 | **Queenless mate** — queen traded off by move 11, then R+N+B built a mating net and delivered 40.Rf8# with Black's queen still on the board |
 | 42 | Jul 30, 2026 | Five-ply forcing combination (Qxb4 Nxb4 Bxd7+ Kxd7 Nxb6+! fork) regains the queen, then a monotone conversion staircase to resignation |
+| 43 | Jul 31, 2026 | **First win on the exhibition floor** — Stockfish played the Krejcik sacrifice line, straight into April's opponent-prep book entries; Re8# |
+| 44-45 | Aug 2, 2026 | **Back-to-back checkmates in front of Vintage Computer Fair guests** — both delivered at move 52 with clean conversion staircases |
 
 ## Features
 
@@ -201,7 +203,7 @@ The RCA 1802 was the first CMOS microprocessor (1976), used in the COSMAC VIP, s
 | **RAM** | 2KB | 32KB |
 | **Search** | Basic alpha-beta | Negamax + TT + NMP + LMR + LMP + RFP + futility + check ext, depth 5 |
 | **Opening Book** | Small | 504 entries, 8 openings + opponent-prep |
-| **Wins** | N/A | 42 vs Stockfish |
+| **Wins** | N/A | 45 vs Stockfish |
 
 ## Credits
 
